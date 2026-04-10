@@ -38,3 +38,4 @@ Commands in `.factory/services.yaml` inline these values because each shell is i
 - The repository started greenfield with no Android project
 - Toolchain bootstrap is handled by `./.factory/init.sh` and the first platform feature
 - Full Android validation is blocked until the project skeleton and AVD are working
+- Keep `org.gradle.daemon=false` in `gradle.properties` for this environment. Gradle daemon reuse from transient temp directories caused wrapper launches to fail with `NoSuchFileException` against `/tmp/.../gradle-8.10.2/lib/...`, while single-use builds remain stable.
