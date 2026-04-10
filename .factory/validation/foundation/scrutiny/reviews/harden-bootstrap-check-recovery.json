@@ -1,0 +1,21 @@
+{
+  "featureId": "harden-bootstrap-check-recovery",
+  "reviewedAt": "2026-04-10T15:45:00+00:00",
+  "commitId": "3dd20b145d389cd16cd48d3b61ba0e7492783ea6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. Compared with the original bootstrap commit, the fix closes the prior false-positive gap by making `./.factory/init.sh --check` validate actual SDK payload files and the real `atermApi35.avd` contents directory, while bootstrap reruns now recreate broken AVD state and reinstall missing SDK payloads only when health checks fail. The added isolated smoke harness covers the original failure mode plus the intended repair and no-op behaviors.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The android-platform-worker skill's red-first guidance is too rigid for bootstrap-hardening work that needs to prove destructive partial-state failures safely. The worker reasonably deviated by reproducing the false-positive against the real environment first, then adding an isolated shell smoke harness instead of damaging the real SDK/AVD before a test existed.",
+      "evidence": "`.factory/skills/android-platform-worker/SKILL.md:22` requires adding the smallest failing test/smoke check first. The fix handoff records `skillFeedback.followedProcedure=false` and explains the justified deviation: `handoffs/2026-04-10T07-08-41-976Z__harden-bootstrap-check-recovery__dcafb0ad-ef9c-4167-9085-8a2afb6e4905.json` says the worker patched `.factory/init.sh` before adding the smoke script because destructive reproduction against the real Android SDK/AVD would have violated worker safety constraints."
+    }
+  ],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/foundation/scrutiny/reviews/bootstrap-android-toolchain-and-project.json",
+  "summary": "Pass: this fix adequately resolves the prior scrutiny failure. The original bootstrap commit only checked binaries and the AVD `.ini` sentinel; this commit adds concrete SDK payload and AVD-content health checks in `.factory/init.sh`, repairs partial state on rerun, and backs the contract with an isolated smoke script that exercises missing-package, missing-AVD, repair, and healthy no-op cases."
+}

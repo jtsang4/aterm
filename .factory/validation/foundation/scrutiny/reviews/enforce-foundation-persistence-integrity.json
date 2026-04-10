@@ -1,0 +1,22 @@
+{
+  "featureId": "enforce-foundation-persistence-integrity",
+  "reviewedAt": "2026-04-10T07:45:00Z",
+  "commitId": "032d297c4e7764f8073c281baebb757bec5fe0a2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix addresses the prior blocking failures: encrypted identity/snippet persistence is now wrapped in Room transactions, the missing Host\u2192Identity / SessionMetadata\u2192Host / Snippet\u2192Host foreign keys are enforced with ownership-preserving delete behavior, and the v1\u2192v2 migration repairs legacy orphaned rows. I did not find any remaining blocking correctness issue in the scoped fix review. The earlier non-blocking architecture drift remains: `Identity` still carries an optional `username` even though the architecture states hosts own username/endpoint metadata.",
+    "issues": [
+      {
+        "file": "core/domain/src/main/kotlin/io/github/jtsang4/aterm/core/domain/model/Identity.kt",
+        "line": 15,
+        "severity": "non_blocking",
+        "description": "`Identity` still persists an optional `username`, while the architecture says hosts own username/endpoint metadata and identities own reusable secret/key material plus display metadata. This boundary drift predates the fix and does not block the persistence-integrity repair, but it remains unresolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/foundation/scrutiny/reviews/implement-local-data-and-security-foundation.json",
+  "summary": "Pass: this rerun fix adequately addresses the original scrutiny failure. The reviewed commit makes encrypted identity/snippet writes atomic (`RoomIdentityRepository`, `RoomSnippetRepository`), enforces the missing relational integrity rules with ownership-preserving foreign keys (`HostEntity`, `SessionMetadataEntity`, `SnippetEntity`), and adds a migration plus instrumentation coverage proving orphan repair, rollback behavior, and delete/relink semantics. The only remaining issue I found is the pre-existing non-blocking architecture drift that `Identity` still stores `username`."
+}
