@@ -40,3 +40,8 @@ Commands in `.factory/services.yaml` inline these values because each shell is i
 - Toolchain bootstrap is handled by `./.factory/init.sh` and the first platform feature
 - Full Android validation is blocked until the project skeleton and AVD are working
 - Keep `org.gradle.daemon=false` in `gradle.properties` for this environment. Gradle daemon reuse from transient temp directories caused wrapper launches to fail with `NoSuchFileException` against `/tmp/.../gradle-8.10.2/lib/...`, while single-use builds remain stable.
+
+## SSH Validation Constraint
+
+- The host SSH service at `127.0.0.1:22` is reachable from the emulator as `10.0.2.2:22`, but it is currently publickey-only and not automatable for Android app end-to-end auth proof with the credentials available in this mission.
+- If sessions-terminal work needs true emulator-to-SSH authentication proof, implement and use a repo-local SSH fixture on an allowed helper port instead of modifying system `sshd`.

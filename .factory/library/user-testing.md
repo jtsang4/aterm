@@ -16,8 +16,8 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 ### Surface 2: Android instrumentation on emulator
 - Tool: `./gradlew connectedDebugAndroidTest`
 - Environment: emulator `atermApi35` on `emulator-5554`
-- Real integration path: emulator reaches host SSH target at `10.0.2.2:22`
-- Use this surface for host/identity CRUD, trust prompts, real SSH connection, snippet execution, theme/font persistence, and repeat-use flows
+- Real integration path: emulator reaches host services via `10.0.2.2:<port>`; the system sshd on `10.0.2.2:22` is reachable but currently not automatable for app auth proof.
+- Use this surface for host/identity CRUD, trust prompts, real SSH connection, snippet execution, theme/font persistence, and repeat-use flows. For authenticated SSH end-to-end proof, prefer the repo-local fixture once it exists.
 - When filtering to app-only instrumentation classes, prefer `./gradlew :app:connectedDebugAndroidTest` so other modules do not try to load `:app` test classes
 
 ### Surface 3: Manual terminal QA on emulator/device
