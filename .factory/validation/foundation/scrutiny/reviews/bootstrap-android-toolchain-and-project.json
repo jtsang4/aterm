@@ -1,0 +1,28 @@
+{
+  "featureId": "bootstrap-android-toolchain-and-project",
+  "reviewedAt": "2026-04-10T06:35:00.512773+00:00",
+  "commitId": "d71d0fdaa6267bd32cae9c4b0ad9b54460b76cb2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The bootstrap commit successfully scaffolds the Android project and local toolchain flow, but the bootstrap verification logic is not reliable enough for the mission's idempotent AVD/package requirement.",
+    "issues": [
+      {
+        "file": ".factory/init.sh",
+        "line": 123,
+        "severity": "blocking",
+        "description": "`./.factory/init.sh --check` only verifies the presence of `java`, `sdkmanager`, `adb`, `emulator`, and the `~/.android/avd/atermApi35.ini` sentinel file. It never checks that `platforms;android-35`, `build-tools;35.0.0`, the system image contents, or the `atermApi35.avd` directory still exist, so a partially deleted/corrupted SDK or AVD can incorrectly report success and skip repair. That violates the feature's requirement for idempotent toolchain + baseline AVD bootstrap."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The repo-controlled bootstrap now depends on host utilities beyond the Android/JDK payloads (`curl`, `tar`, `unzip`, `python3`, and `yes`), but the shared environment docs only record the installed toolchain locations, not these prerequisite commands.",
+      "evidence": "`.factory/init.sh` uses `curl` (line 26), `tar` (line 41), `python3` (line 44), `unzip` (line 73), and `yes` (line 85). The transcript skeleton also shows the worker explicitly checking `python3`, `unzip`, and `curl` availability before generating the wrapper. `.factory/library/environment.md` does not list these host prerequisites."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the reviewed bootstrap feature mostly sets up the Android scaffold correctly, but its `--check` path can pass on broken partial SDK/AVD state, so the promised idempotent bootstrap guarantee is incomplete."
+}

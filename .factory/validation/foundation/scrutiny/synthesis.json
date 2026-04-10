@@ -1,0 +1,76 @@
+{
+  "milestone": "foundation",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew testDebugUnitTest --max-workers=4",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew assembleDebug --max-workers=4",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew lintDebug --max-workers=4",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "bootstrap-android-toolchain-and-project",
+      "implement-local-data-and-security-foundation"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "bootstrap-android-toolchain-and-project",
+      "severity": "blocking",
+      "description": "`.factory/init.sh --check` only verifies a few binaries and the AVD `.ini` sentinel, so broken or partially deleted SDK/AVD contents can incorrectly pass and skip repair, violating the promised idempotent bootstrap behavior."
+    },
+    {
+      "featureId": "implement-local-data-and-security-foundation",
+      "severity": "blocking",
+      "description": "Encrypted identity and snippet writes are not atomic: metadata is persisted before ciphertext without a Room transaction, so failures can leave partially persisted records."
+    },
+    {
+      "featureId": "implement-local-data-and-security-foundation",
+      "severity": "blocking",
+      "description": "The Room schema omits foreign keys for Host->Identity, SessionMetadata->Host, and Snippet->Host references while delete paths remove rows unconditionally, allowing orphaned records that violate the intended ownership model."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented local bootstrap host-tool prerequisites (`curl`, `tar`, `unzip`, `python3`, and `yes`) in `.factory/library/environment.md`.",
+      "sourceFeature": "bootstrap-android-toolchain-and-project"
+    },
+    {
+      "target": "library",
+      "description": "Documented the `core:designsystem` module in `.factory/library/architecture.md` as the shared home for theme, scaffolds, and reusable UI primitives.",
+      "sourceFeature": "build-app-shell-and-navigation-scaffold"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:android-feature-worker",
+      "suggestion": "Clarify that when a feature adds or modifies Android instrumentation/UI tests, workers must run the affected `connectedDebugAndroidTest` coverage (or explicitly document why the emulator surface is unavailable) before handoff.",
+      "evidence": "The `implement-local-data-and-security-foundation` feature added `androidTest` coverage but the handoff only reported `testDebugUnitTest` and `lintDebug`, leaving the emulator validation expectation ambiguous.",
+      "isSystemic": true
+    },
+    {
+      "target": "skill:android-feature-worker",
+      "suggestion": "Add guidance for Droid-Shield false positives noting that workers may need additional non-functional formatting or placeholder-shape adjustments after replacing synthetic fixture literals, while still avoiding any real-looking secrets.",
+      "evidence": "The `implement-local-data-and-security-foundation` handoff reported needing formatting-only adjustments in addition to placeholder replacement to satisfy secret scanning, but that recovery pattern is not documented in the skill.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

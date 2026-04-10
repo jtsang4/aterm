@@ -1,0 +1,21 @@
+{
+  "featureId": "build-app-shell-and-navigation-scaffold",
+  "reviewedAt": "2026-04-10T14:35:00Z",
+  "commitId": "b62ee9d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The scaffold cleanly establishes a local-only Compose shell with top-level navigation, lightweight application/container wiring, placeholder feature entry points, and baseline JVM plus instrumentation smoke coverage. I did not find any high-confidence correctness or mission-boundary issues in this feature.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared architecture docs still list the suggested module shape without the new `core:designsystem` module, even though this feature established it as the shared home for app-shell and placeholder UI primitives. Future workers may miss that reusable screen scaffolds and theming now live there.",
+      "evidence": ".factory/library/architecture.md:102-115 lists modules but omits `core:designsystem`; compare to settings.gradle.kts:19-31 including `:core:designsystem` and core/designsystem/build.gradle.kts:1-43 defining the module."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The app shell scaffold matches the feature contract: it launches into a stable local-only Compose shell with navigation entry points for hosts, identities, sessions, snippets, and settings; lightweight DI/application wiring is in place; and baseline unit plus connected Android smoke tests cover the new shell."
+}

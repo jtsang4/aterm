@@ -13,6 +13,7 @@ Environment variables, external dependencies, and setup notes.
 - Android SDK root at `/root/Android/Sdk`
 - Android cmdline-tools, platform-tools, emulator, build-tools, and platform packages installed by `./.factory/init.sh`
 - Baseline AVD name: `atermApi35`
+- Host bootstrap prerequisites present on the machine: `curl`, `tar`, `unzip`, `python3`, and `yes`
 
 ## Required Environment Variables
 

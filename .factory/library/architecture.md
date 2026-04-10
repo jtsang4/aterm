@@ -103,6 +103,7 @@ Reconnect policy for this mission is conservative: user-initiated reconnect is s
 
 A practical module split for this mission is:
 - `app` — navigation, DI, top-level app shell
+- `core:designsystem` — shared Compose theme, scaffolds, and reusable UI primitives
 - `core/domain` — entities + use cases + repository interfaces
 - `core/data` — Room/DataStore repositories and mappers
 - `core/security` — Keystore + crypto wrappers
