@@ -33,6 +33,8 @@ import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
+import io.github.jtsang4.aterm.core.domain.model.distinguishingDetail
+import io.github.jtsang4.aterm.core.domain.model.kindLabel
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import java.time.Instant
@@ -62,6 +64,7 @@ fun HostsScreen(
             identities = identities,
             onCreateHost = { destination = HostsDestination.Editor(host = null) },
             onEditHost = { destination = HostsDestination.Editor(host = it) },
+            onRepairHost = { destination = HostsDestination.Editor(host = it) },
         )
 
         is HostsDestination.Editor -> HostEditorScreen(
@@ -80,6 +83,7 @@ private fun HostsLibraryScreen(
     identities: List<Identity>,
     onCreateHost: () -> Unit,
     onEditHost: (Host) -> Unit,
+    onRepairHost: (Host) -> Unit,
 ) {
     AppScreenScaffold(
         title = "Hosts",
@@ -132,6 +136,7 @@ private fun HostsLibraryScreen(
                             host = host,
                             linkedIdentity = linkedIdentity,
                             onEditHost = onEditHost,
+                            onRepairHost = onRepairHost,
                         )
                     }
                 }
@@ -145,6 +150,7 @@ private fun HostRow(
     host: Host,
     linkedIdentity: Identity?,
     onEditHost: (Host) -> Unit,
+    onRepairHost: (Host) -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -163,20 +169,31 @@ private fun HostRow(
             Text(text = "Username: ${host.username}")
             Text(
                 text = linkedIdentity?.let {
-                    val identityLabel = when (it.kind) {
-                        IdentityKind.PASSWORD -> "Password identity"
-                        IdentityKind.IMPORTED_KEY -> "Imported key identity"
-                        IdentityKind.GENERATED_KEY -> "Generated key identity"
-                    }
-                    "$identityLabel: ${it.name}"
+                    "${it.kindLabel()}: ${it.name}"
                 } ?: "Identity needs repair",
                 modifier = Modifier.testTag("host_identity_label_${host.id}"),
             )
-            TextButton(
-                onClick = { onEditHost(host) },
-                modifier = Modifier.testTag("host_edit_${host.id}"),
-            ) {
-                Text("Edit")
+            linkedIdentity?.let {
+                Text(
+                    text = "Detail: ${it.distinguishingDetail()}",
+                    modifier = Modifier.testTag("host_identity_detail_${host.id}"),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = { onEditHost(host) },
+                    modifier = Modifier.testTag("host_edit_${host.id}"),
+                ) {
+                    Text("Edit")
+                }
+                if (linkedIdentity == null) {
+                    TextButton(
+                        onClick = { onRepairHost(host) },
+                        modifier = Modifier.testTag("host_repair_${host.id}"),
+                    ) {
+                        Text("Repair link")
+                    }
+                }
             }
         }
     }
@@ -413,11 +430,11 @@ private fun PasswordIdentitySelectionSection(
                         ) {
                             Text(text = identity.name)
                             Text(
-                                text = when (identity.kind) {
-                                    IdentityKind.PASSWORD -> "Reusable password identity"
-                                    IdentityKind.IMPORTED_KEY -> "Reusable imported key identity"
-                                    IdentityKind.GENERATED_KEY -> "Reusable generated key identity"
-                                },
+                                text = "Reusable ${identity.kindLabel().lowercase()}",
+                            )
+                            Text(
+                                text = identity.distinguishingDetail(),
+                                modifier = Modifier.testTag("host_identity_option_detail_${identity.id}"),
                             )
                         }
                     }

@@ -22,6 +22,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.hosts.HostsScreen
+import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
+import io.github.jtsang4.aterm.feature.identities.GeneratedKeyMaterial
 import io.github.jtsang4.aterm.feature.identities.IdentitiesScreen
 import io.github.jtsang4.aterm.feature.identities.ImportedKeyImportService
 import io.github.jtsang4.aterm.feature.identities.ImportedKeyParseResult
@@ -79,11 +81,12 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.onNodeWithTag("identity_generate_key_action").assertIsDisplayed()
 
         composeRule.onNodeWithTag("identity_import_key_action").performClick()
-        composeRule.onNodeWithTag("identity_import_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_key_editor").assertIsDisplayed()
 
         composeRule.onNodeWithTag("identity_import_cancel").performClick()
         composeRule.onNodeWithTag("identity_generate_key_action").performClick()
-        composeRule.onNodeWithTag("identity_generate_stub").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_key_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_generate_execute").assertIsDisplayed()
     }
 
     @Test
@@ -196,6 +199,49 @@ class IdentityPasswordFlowsInstrumentedTest {
     }
 
     @Test
+    fun generated_key_identity_can_be_saved_and_public_key_copied() {
+        val firstContainer = AppContainer.create(context)
+        val generatedService = ScriptedGeneratedKeyIdentityService(
+            GeneratedKeyMaterial(
+                privateKeyMaterial = "-----BEGIN OPENSSH PRIVATE KEY-----\nGENERATED_TEST_KEY\n-----END OPENSSH PRIVATE KEY-----",
+                publicKey = "ssh-rsa AAAAB3NzaGeneratedUiKey generated@test",
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = firstContainer.foundationGraph.identityRepository,
+                generatedKeyIdentityService = generatedService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_generate_key_action").performClick()
+        composeRule.onNodeWithTag("identity_import_name_field").performTextInput("Generated deploy key")
+        composeRule.onNodeWithTag("identity_generate_execute").performClick()
+        composeRule.onNodeWithTag("identity_public_key_preview").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_public_key_copy").performClick()
+        composeRule.onNodeWithTag("identity_public_key_copy_status").assertTextContains("Public key copied")
+        composeRule.onNodeWithTag("identity_import_save").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking {
+                firstContainer.foundationGraph.identityRepository.observeIdentities().first().any { it.kind == IdentityKind.GENERATED_KEY }
+            }
+        }
+
+        val generatedIdentity = runBlocking {
+            firstContainer.foundationGraph.identityRepository.observeIdentities().first().first { it.kind == IdentityKind.GENERATED_KEY }
+        }
+        assertEquals("ssh-rsa AAAAB3NzaGeneratedUiKey generated@test", generatedIdentity.publicKey)
+
+        val relaunchedContainer = AppContainer.create(context)
+        val relaunchedIdentity = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.observeIdentities().first().first { it.kind == IdentityKind.GENERATED_KEY }
+        }
+        assertEquals(generatedIdentity.id, relaunchedIdentity.id)
+    }
+
+    @Test
     fun imported_key_identity_is_visible_in_host_selector() {
         val identity = Identity(
             id = 42,
@@ -293,6 +339,152 @@ class IdentityPasswordFlowsInstrumentedTest {
         ).assertIsDisplayed()
         assertEquals(0, repository.currentIdentities().size)
     }
+
+    @Test
+    fun metadata_edit_keeps_existing_password_secret() {
+        val repository = FakeIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Original password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "still-secret")),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(identityRepository = repository)
+        }
+
+        composeRule.onNodeWithTag("identity_edit_1").performClick()
+        composeRule.onNodeWithTag("identity_name_field").performTextClearance()
+        composeRule.onNodeWithTag("identity_name_field").performTextInput("Renamed password")
+        composeRule.onNodeWithTag("identity_editor_save").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().name == "Renamed password"
+        }
+
+        assertEquals("still-secret", runBlocking { repository.getSecretMaterial(1) }?.primarySecret)
+    }
+
+    @Test
+    fun replacing_key_secret_updates_saved_public_key_and_secret_material() {
+        val originalIdentity = Identity(
+            id = 7,
+            name = "Shared key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAOriginalKey shared@test",
+            hasSecret = true,
+            hasPassphrase = false,
+        )
+        val repository = FakeIdentityRepository(
+            initialIdentities = listOf(originalIdentity),
+            initialSecrets = mapOf(7L to IdentitySecretMaterial(primarySecret = "old-key")),
+        )
+        val generatedService = ScriptedGeneratedKeyIdentityService(
+            GeneratedKeyMaterial(
+                privateKeyMaterial = "-----BEGIN OPENSSH PRIVATE KEY-----\nREPLACED_KEY\n-----END OPENSSH PRIVATE KEY-----",
+                publicKey = "ssh-rsa AAAAReplacementKey replacement@test",
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = repository,
+                generatedKeyIdentityService = generatedService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_edit_7").performClick()
+        composeRule.onNodeWithTag("identity_replace_secret").performClick()
+        composeRule.onNodeWithTag("identity_generate_key_action_inline").performClick()
+        composeRule.onNodeWithTag("identity_generate_execute").performClick()
+        composeRule.onNodeWithTag("identity_import_save").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().publicKey == "ssh-rsa AAAAReplacementKey replacement@test"
+        }
+
+        val updatedIdentity = repository.currentIdentities().first()
+        assertEquals(IdentityKind.GENERATED_KEY, updatedIdentity.kind)
+        assertEquals("ssh-rsa AAAAReplacementKey replacement@test", updatedIdentity.publicKey)
+        assertEquals("-----BEGIN OPENSSH PRIVATE KEY-----\nREPLACED_KEY\n-----END OPENSSH PRIVATE KEY-----", runBlocking { repository.getSecretMaterial(7) }?.primarySecret)
+    }
+
+    @Test
+    fun deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details() {
+        val identityOne = Identity(
+            id = 1,
+            name = "Shared key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAFirstKey duplicate@test",
+            hasSecret = true,
+        )
+        val identityTwo = Identity(
+            id = 2,
+            name = "Shared key",
+            kind = IdentityKind.GENERATED_KEY,
+            publicKey = "ssh-rsa AAAASecondKey duplicate@test",
+            hasSecret = true,
+        )
+        val identityRepository = FakeIdentityRepository(
+            initialIdentities = listOf(identityOne, identityTwo),
+            initialSecrets = mapOf(
+                1L to IdentitySecretMaterial(primarySecret = "first-key"),
+                2L to IdentitySecretMaterial(primarySecret = "second-key"),
+            ),
+        )
+        val hostRepository = FakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Prod",
+                    address = "10.0.2.2",
+                    port = 22,
+                    username = "root",
+                    identityId = 1,
+                ),
+            ),
+        )
+        var showHosts by mutableStateOf(false)
+
+        composeRule.setContent {
+            if (showHosts) {
+                HostsScreen(
+                    hostRepository = hostRepository,
+                    identityRepository = identityRepository,
+                )
+            } else {
+                IdentitiesScreen(identityRepository = identityRepository)
+            }
+        }
+        composeRule.onNodeWithTag("identity_detail_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_detail_2").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_delete_1").performClick()
+        composeRule.onNodeWithTag("identity_delete_warning").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_delete_detail").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_delete_confirm").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            identityRepository.currentIdentities().none { it.id == 1L }
+        }
+
+        composeRule.runOnIdle {
+            showHosts = true
+        }
+
+        composeRule.onNodeWithTag("host_identity_label_1").assertTextContains("Identity needs repair")
+        composeRule.onNodeWithTag("host_repair_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_repair_1").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_identity_option_2").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_identity_option_2").assertIsDisplayed()
+        composeRule.onNodeWithText("Reusable generated key identity").assertIsDisplayed()
+    }
 }
 
 private class FakeIdentityRepository(
@@ -337,6 +529,10 @@ private class FakeIdentityRepository(
 private class FakeHostRepository : HostRepository {
     private val hosts = MutableStateFlow<List<Host>>(emptyList())
 
+    constructor(initialHosts: List<Host> = emptyList()) {
+        hosts.value = initialHosts
+    }
+
     override fun observeHosts() = hosts
 
     override suspend fun getHost(id: Long): Host? = hosts.value.firstOrNull { it.id == id }
@@ -379,4 +575,10 @@ private class ScriptedImportedKeyImportService(
         index += 1
         return result
     }
+}
+
+private class ScriptedGeneratedKeyIdentityService(
+    private val generatedMaterial: GeneratedKeyMaterial,
+) : GeneratedKeyIdentityService() {
+    override fun generate(): GeneratedKeyMaterial = generatedMaterial
 }
