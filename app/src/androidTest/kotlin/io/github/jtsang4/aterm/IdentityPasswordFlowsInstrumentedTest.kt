@@ -16,10 +16,12 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.hosts.HostsScreen
@@ -182,7 +184,8 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.onNodeWithTag("identity_import_key_field").performTextInput(
             "-----BEGIN OPENSSH PRIVATE KEY-----\nui-test-placeholder\n-----END OPENSSH PRIVATE KEY-----",
         )
-        composeRule.onNodeWithTag("identity_import_save").performClick()
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runBlocking {
@@ -279,7 +282,9 @@ class IdentityPasswordFlowsInstrumentedTest {
 
         composeRule.onNodeWithTag("host_create_action").performClick()
         composeRule.onNodeWithTag("host_editor").assertIsDisplayed()
-        composeRule.onNodeWithText("Imported deploy key").assertIsDisplayed()
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("host_auth_mode_key").performClick()
+        composeRule.onAllNodesWithText("Imported deploy key").assertCountEquals(1)
         composeRule.onNodeWithText("Reusable imported key identity").assertIsDisplayed()
     }
 
@@ -697,4 +702,8 @@ private class ScriptedGeneratedKeyIdentityService(
     private val generatedMaterial: GeneratedKeyMaterial,
 ) : GeneratedKeyIdentityService() {
     override fun generate(): GeneratedKeyMaterial = generatedMaterial
+}
+
+private fun closeKeyboardIfShown() {
+    runCatching { closeSoftKeyboard() }
 }

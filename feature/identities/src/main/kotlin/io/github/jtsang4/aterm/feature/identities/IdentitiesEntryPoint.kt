@@ -50,6 +50,13 @@ object IdentitiesEntryPoint {
     const val route = "identities"
 }
 
+sealed interface IdentityLaunchDestination {
+    data object Library : IdentityLaunchDestination
+    data object CreatePassword : IdentityLaunchDestination
+    data object ImportKey : IdentityLaunchDestination
+    data object GenerateKey : IdentityLaunchDestination
+}
+
 private sealed interface IdentityDestination {
     data object Library : IdentityDestination
     data class PasswordEditor(val identity: Identity?) : IdentityDestination
@@ -68,9 +75,14 @@ fun IdentitiesScreen(
     identityRepository: IdentityRepository,
     importedKeyImportService: ImportedKeyImportService = ImportedKeyImportService(),
     generatedKeyIdentityService: GeneratedKeyIdentityService = GeneratedKeyIdentityService(),
+    initialDestination: IdentityLaunchDestination = IdentityLaunchDestination.Library,
+    onCloseRequest: (() -> Unit)? = null,
+    onIdentitySaved: ((Identity) -> Unit)? = null,
 ) {
     val identities by identityRepository.observeIdentities().collectAsState(initial = emptyList())
-    var destination by remember { mutableStateOf<IdentityDestination>(IdentityDestination.Library) }
+    var destination by remember(initialDestination) {
+        mutableStateOf(initialDestination.toInternalDestination())
+    }
 
     when (val currentDestination = destination) {
         is IdentityDestination.KeyEditor -> KeyIdentityEditorScreen(
@@ -79,8 +91,20 @@ fun IdentitiesScreen(
             identityRepository = identityRepository,
             importService = importedKeyImportService,
             generatedKeyIdentityService = generatedKeyIdentityService,
-            onCancel = { destination = IdentityDestination.Library },
-            onSaved = { destination = IdentityDestination.Library },
+            onCancel = {
+                if (onCloseRequest != null) {
+                    onCloseRequest()
+                } else {
+                    destination = IdentityDestination.Library
+                }
+            },
+            onSaved = { savedIdentity ->
+                if (onIdentitySaved != null) {
+                    onIdentitySaved(savedIdentity)
+                } else {
+                    destination = IdentityDestination.Library
+                }
+            },
         )
 
         IdentityDestination.Library -> IdentityLibraryScreen(
@@ -96,8 +120,20 @@ fun IdentitiesScreen(
         is IdentityDestination.PasswordEditor -> PasswordIdentityEditorScreen(
             identity = currentDestination.identity,
             identityRepository = identityRepository,
-            onCancel = { destination = IdentityDestination.Library },
-            onSaved = { destination = IdentityDestination.Library },
+            onCancel = {
+                if (onCloseRequest != null) {
+                    onCloseRequest()
+                } else {
+                    destination = IdentityDestination.Library
+                }
+            },
+            onSaved = { savedIdentity ->
+                if (onIdentitySaved != null) {
+                    onIdentitySaved(savedIdentity)
+                } else {
+                    destination = IdentityDestination.Library
+                }
+            },
         )
 
         is IdentityDestination.DeleteIdentity -> DeleteIdentityScreen(
@@ -282,7 +318,7 @@ private fun PasswordIdentityEditorScreen(
     identity: Identity?,
     identityRepository: IdentityRepository,
     onCancel: () -> Unit,
-    onSaved: () -> Unit,
+    onSaved: (Identity) -> Unit,
 ) {
     val isEditing = identity != null
     val requiresRepair = identity?.requiresSecretRepair == true
@@ -420,8 +456,8 @@ private fun PasswordIdentityEditorScreen(
                                         IdentitySecretMaterial(primarySecret = enteredPassword)
                                     },
                                 )
-                            }.onSuccess {
-                                onSaved()
+                            }.onSuccess { savedIdentity ->
+                                onSaved(savedIdentity)
                             }.onFailure { throwable ->
                                 saveError = when (throwable) {
                                     is SecretMaterialUnavailableException ->
@@ -448,7 +484,7 @@ private fun KeyIdentityEditorScreen(
     importService: ImportedKeyImportService,
     generatedKeyIdentityService: GeneratedKeyIdentityService,
     onCancel: () -> Unit,
-    onSaved: () -> Unit,
+    onSaved: (Identity) -> Unit,
 ) {
     val isEditing = identity != null
     val requiresRepair = identity?.requiresSecretRepair == true
@@ -802,8 +838,8 @@ private fun KeyIdentityEditorScreen(
                                                 null
                                             },
                                         )
-                                    }.onSuccess {
-                                        onSaved()
+                                    }.onSuccess { savedIdentity ->
+                                        onSaved(savedIdentity)
                                     }.onFailure { throwable ->
                                         saveError = when (throwable) {
                                             is SecretMaterialUnavailableException ->
@@ -899,3 +935,10 @@ private fun publicKeyPreview(publicKey: String): String =
             }
         }
         .orEmpty()
+
+private fun IdentityLaunchDestination.toInternalDestination(): IdentityDestination = when (this) {
+    IdentityLaunchDestination.Library -> IdentityDestination.Library
+    IdentityLaunchDestination.CreatePassword -> IdentityDestination.PasswordEditor(identity = null)
+    IdentityLaunchDestination.ImportKey -> IdentityDestination.KeyEditor(identity = null, initialMode = KeyEditorMode.Import)
+    IdentityLaunchDestination.GenerateKey -> IdentityDestination.KeyEditor(identity = null, initialMode = KeyEditorMode.Generate)
+}

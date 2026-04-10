@@ -1,16 +1,17 @@
 package io.github.jtsang4.aterm.feature.hosts
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -32,11 +33,14 @@ import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
-import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.distinguishingDetail
 import io.github.jtsang4.aterm.core.domain.model.kindLabel
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
+import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
+import io.github.jtsang4.aterm.feature.identities.IdentitiesScreen
+import io.github.jtsang4.aterm.feature.identities.ImportedKeyImportService
+import io.github.jtsang4.aterm.feature.identities.IdentityLaunchDestination
 import java.time.Instant
 import kotlinx.coroutines.launch
 
@@ -46,13 +50,20 @@ object HostsEntryPoint {
 
 private sealed interface HostsDestination {
     data object Library : HostsDestination
-    data class Editor(val host: Host?) : HostsDestination
+    data class Editor(val draft: HostEditorDraft) : HostsDestination
+    data class DeleteConfirmation(val host: Host) : HostsDestination
+    data class IdentityRecovery(
+        val draft: HostEditorDraft,
+        val launchDestination: IdentityLaunchDestination,
+    ) : HostsDestination
 }
 
 @Composable
 fun HostsScreen(
     hostRepository: HostRepository,
     identityRepository: IdentityRepository,
+    importedKeyImportService: ImportedKeyImportService = ImportedKeyImportService(),
+    generatedKeyIdentityService: GeneratedKeyIdentityService = GeneratedKeyIdentityService(),
 ) {
     val hosts by hostRepository.observeHosts().collectAsState(initial = emptyList())
     val identities by identityRepository.observeIdentities().collectAsState(initial = emptyList())
@@ -62,17 +73,67 @@ fun HostsScreen(
         HostsDestination.Library -> HostsLibraryScreen(
             hosts = hosts,
             identities = identities,
-            onCreateHost = { destination = HostsDestination.Editor(host = null) },
-            onEditHost = { destination = HostsDestination.Editor(host = it) },
-            onRepairHost = { destination = HostsDestination.Editor(host = it) },
+            onCreateHost = {
+                destination = HostsDestination.Editor(
+                    HostEditorDraft.from(host = null, identities = identities),
+                )
+            },
+            onEditHost = { host ->
+                destination = HostsDestination.Editor(
+                    HostEditorDraft.from(host = host, identities = identities),
+                )
+            },
+            onRepairHost = { host ->
+                destination = HostsDestination.Editor(
+                    HostEditorDraft.from(host = host, identities = identities),
+                )
+            },
         )
 
         is HostsDestination.Editor -> HostEditorScreen(
-            host = currentDestination.host,
-            availableIdentities = identities.filter { it.isAuthenticationReady },
+            initialDraft = currentDestination.draft,
+            existingHost = hosts.firstOrNull { it.id == currentDestination.draft.hostId },
+            identities = identities,
+            hostRepository = hostRepository,
             onCancel = { destination = HostsDestination.Library },
             onSaved = { destination = HostsDestination.Library },
+            onDeleteRequested = { host -> destination = HostsDestination.DeleteConfirmation(host) },
+            onLaunchIdentityRecovery = { draft, launchDestination ->
+                destination = HostsDestination.IdentityRecovery(draft, launchDestination)
+            },
+        )
+
+        is HostsDestination.DeleteConfirmation -> DeleteHostScreen(
+            host = currentDestination.host,
             hostRepository = hostRepository,
+            onCancel = {
+                destination = HostsDestination.Editor(
+                    HostEditorDraft.from(currentDestination.host, identities),
+                )
+            },
+            onDeleted = { destination = HostsDestination.Library },
+        )
+
+        is HostsDestination.IdentityRecovery -> IdentitiesScreen(
+            identityRepository = identityRepository,
+            importedKeyImportService = importedKeyImportService,
+            generatedKeyIdentityService = generatedKeyIdentityService,
+            initialDestination = currentDestination.launchDestination,
+            onCloseRequest = {
+                destination = HostsDestination.Editor(currentDestination.draft)
+            },
+            onIdentitySaved = { savedIdentity ->
+                destination = HostsDestination.Editor(
+                    currentDestination.draft.copy(
+                        authMode = if (savedIdentity.isCompatibleWith(HostAuthMode.PASSWORD)) {
+                            HostAuthMode.PASSWORD
+                        } else {
+                            HostAuthMode.KEY
+                        },
+                        selectedIdentityId = savedIdentity.id,
+                    ),
+                )
+            },
         )
     }
 }
@@ -85,12 +146,16 @@ private fun HostsLibraryScreen(
     onEditHost: (Host) -> Unit,
     onRepairHost: (Host) -> Unit,
 ) {
+    var query by remember { mutableStateOf("") }
+    val filteredHosts = remember(hosts, query) { hosts.filteredBy(query) }
+
     AppScreenScaffold(
         title = "Hosts",
-        supportingText = "Saved hosts keep endpoint metadata separate from reusable password and key identities.",
+        supportingText = "Saved hosts keep endpoint metadata and usernames separate from reusable password and key identities.",
         modifier = Modifier.testTag("screen_hosts"),
     ) {
         Column(
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Button(
@@ -102,11 +167,33 @@ private fun HostsLibraryScreen(
                 Text("Create host")
             }
 
+            if (hosts.isNotEmpty()) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Search hosts") },
+                    supportingText = { Text("Search by label, address, or username.") },
+                    trailingIcon = {
+                        if (query.isNotBlank()) {
+                            TextButton(
+                                onClick = { query = "" },
+                                modifier = Modifier.testTag("host_search_clear"),
+                            ) {
+                                Text("Clear")
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("host_search_field"),
+                )
+            }
+
             if (hosts.isEmpty()) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("host_identity_plumbing_empty_state"),
+                        .testTag("host_empty_state"),
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -118,19 +205,32 @@ private fun HostsLibraryScreen(
                         )
                         Text(
                             text = if (identities.any { it.isAuthenticationReady }) {
-                                "Create a host and link one of your reusable saved identities."
+                                "Create your first host and link one of your reusable saved identities."
                             } else {
-                                "Create an identity first, then come back here to link it from the host authentication section."
+                                "Create your first host here. If you still need credentials, the host form can open password, import-key, and generate-key identity flows."
                             },
                         )
                     }
                 }
+            } else if (filteredHosts.isEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("host_search_empty_state"),
+                ) {
+                    Text(
+                        text = "No hosts match \"$query\". Clear search to see the full library again.",
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.testTag("host_list"),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("host_list"),
                 ) {
-                    items(hosts, key = Host::id) { host ->
+                    items(filteredHosts, key = Host::id) { host ->
                         val linkedIdentity = identities.firstOrNull { it.id == host.identityId }
                         HostRow(
                             host = host,
@@ -165,8 +265,13 @@ private fun HostRow(
             Text(
                 text = host.label,
                 style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.testTag("host_label_${host.id}"),
             )
-            Text(text = "${host.address}:${host.port}")
+            Text(
+                text = "Selection detail: ${host.username}@${host.address}:${host.port}",
+                modifier = Modifier.testTag("host_selection_detail_${host.id}"),
+            )
+            Text(text = "Address: ${host.address}:${host.port}")
             Text(text = "Username: ${host.username}")
             Text(
                 text = linkedIdentity?.takeIf { it.isAuthenticationReady }?.let {
@@ -176,7 +281,7 @@ private fun HostRow(
             )
             linkedIdentity?.takeIf { it.isAuthenticationReady }?.let {
                 Text(
-                    text = "Detail: ${it.distinguishingDetail()}",
+                    text = "Identity detail: ${it.distinguishingDetail()}",
                     modifier = Modifier.testTag("host_identity_detail_${host.id}"),
                 )
             }
@@ -202,38 +307,42 @@ private fun HostRow(
 
 @Composable
 private fun HostEditorScreen(
-    host: Host?,
-    availableIdentities: List<Identity>,
+    initialDraft: HostEditorDraft,
+    existingHost: Host?,
+    identities: List<Identity>,
     hostRepository: HostRepository,
     onCancel: () -> Unit,
     onSaved: () -> Unit,
+    onDeleteRequested: (Host) -> Unit,
+    onLaunchIdentityRecovery: (HostEditorDraft, IdentityLaunchDestination) -> Unit,
 ) {
-    val isEditing = host != null
     val coroutineScope = rememberCoroutineScope()
-    var label by remember(host?.id) { mutableStateOf(host?.label.orEmpty()) }
-    var address by remember(host?.id) { mutableStateOf(host?.address.orEmpty()) }
-    var portText by remember(host?.id) { mutableStateOf(host?.port?.toString().orEmpty().ifBlank { "22" }) }
-    var username by remember(host?.id) { mutableStateOf(host?.username.orEmpty()) }
-    var selectedIdentityId by remember(host?.id, availableIdentities) {
-        mutableStateOf(
-            host?.identityId?.takeIf { existingId -> availableIdentities.any { it.id == existingId } }
-                ?: availableIdentities.firstOrNull()?.id,
-        )
-    }
-    var labelError by remember(host?.id) { mutableStateOf<String?>(null) }
-    var addressError by remember(host?.id) { mutableStateOf<String?>(null) }
-    var portError by remember(host?.id) { mutableStateOf<String?>(null) }
-    var usernameError by remember(host?.id) { mutableStateOf<String?>(null) }
-    var identityError by remember(host?.id) { mutableStateOf<String?>(null) }
-    var saveError by remember(host?.id) { mutableStateOf<String?>(null) }
+    var label by remember(initialDraft) { mutableStateOf(initialDraft.label) }
+    var address by remember(initialDraft) { mutableStateOf(initialDraft.address) }
+    var portText by remember(initialDraft) { mutableStateOf(initialDraft.portText) }
+    var username by remember(initialDraft) { mutableStateOf(initialDraft.username) }
+    var authMode by remember(initialDraft) { mutableStateOf(initialDraft.authMode) }
+    var selectedIdentityId by remember(initialDraft) { mutableStateOf(initialDraft.selectedIdentityId) }
+    var labelError by remember(initialDraft) { mutableStateOf<String?>(null) }
+    var addressError by remember(initialDraft) { mutableStateOf<String?>(null) }
+    var portError by remember(initialDraft) { mutableStateOf<String?>(null) }
+    var usernameError by remember(initialDraft) { mutableStateOf<String?>(null) }
+    var identityError by remember(initialDraft) { mutableStateOf<String?>(null) }
+    var saveError by remember(initialDraft) { mutableStateOf<String?>(null) }
+
+    val authenticationReadyIdentities = identities.filter(Identity::isAuthenticationReady)
+    val compatibleIdentities = authenticationReadyIdentities.compatibleWith(authMode)
+    val hasSelectedCompatibleIdentity = compatibleIdentities.any { it.id == selectedIdentityId }
 
     AppScreenScaffold(
-        title = if (isEditing) "Edit host" else "Create host",
-        supportingText = "Choose one reusable identity for this host. The host record keeps only the link, not duplicated credential material.",
+        title = if (initialDraft.isEditing) "Edit host" else "Create host",
+        supportingText = "Hosts save the endpoint and username while reusable identities keep the secret or key material.",
         modifier = Modifier.testTag("host_editor"),
     ) {
         Column(
-            modifier = Modifier.verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedTextField(
@@ -245,11 +354,18 @@ private fun HostEditorScreen(
                 },
                 label = { Text("Host label") },
                 isError = labelError != null,
-                supportingText = { Text(labelError ?: "Shown throughout the local host library.") },
+                supportingText = { Text(labelError ?: "Shown throughout the host library.") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("host_label_field"),
             )
+            labelError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("host_label_error"),
+                )
+            }
             OutlinedTextField(
                 value = address,
                 onValueChange = {
@@ -264,6 +380,13 @@ private fun HostEditorScreen(
                     .fillMaxWidth()
                     .testTag("host_address_field"),
             )
+            addressError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("host_address_error"),
+                )
+            }
             OutlinedTextField(
                 value = portText,
                 onValueChange = {
@@ -279,6 +402,13 @@ private fun HostEditorScreen(
                     .fillMaxWidth()
                     .testTag("host_port_field"),
             )
+            portError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("host_port_error"),
+                )
+            }
             OutlinedTextField(
                 value = username,
                 onValueChange = {
@@ -288,19 +418,50 @@ private fun HostEditorScreen(
                 },
                 label = { Text("Username") },
                 isError = usernameError != null,
-                supportingText = { Text(usernameError ?: "Usernames stay on the host record.") },
+                supportingText = { Text(usernameError ?: "Usernames belong to hosts, not shared identities.") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("host_username_field"),
             )
-            PasswordIdentitySelectionSection(
-                availableIdentities = availableIdentities,
-                selectedIdentityId = selectedIdentityId,
+            usernameError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("host_username_error"),
+                )
+            }
+            HostAuthModeSection(
+                authMode = authMode,
+                onAuthModeSelected = { newMode ->
+                    authMode = newMode
+                    selectedIdentityId = authenticationReadyIdentities.firstCompatibleIdOrNull(newMode)
+                    identityError = null
+                    saveError = null
+                },
+            )
+            HostIdentitySelectionSection(
+                authMode = authMode,
+                compatibleIdentities = compatibleIdentities,
+                selectedIdentityId = selectedIdentityId.takeIf { hasSelectedCompatibleIdentity },
                 error = identityError,
                 onSelected = {
                     selectedIdentityId = it
                     identityError = null
                     saveError = null
+                },
+                onLaunchRecovery = { launchDestination ->
+                    onLaunchIdentityRecovery(
+                        HostEditorDraft(
+                            hostId = initialDraft.hostId,
+                            label = label,
+                            address = address,
+                            portText = portText,
+                            username = username,
+                            authMode = authMode,
+                            selectedIdentityId = selectedIdentityId.takeIf { hasSelectedCompatibleIdentity },
+                        ),
+                        launchDestination,
+                    )
                 },
             )
             saveError?.let { message ->
@@ -320,12 +481,23 @@ private fun HostEditorScreen(
                 ) {
                     Text("Cancel")
                 }
+                if (existingHost != null) {
+                    TextButton(
+                        onClick = { onDeleteRequested(existingHost) },
+                        modifier = Modifier.testTag("host_editor_delete"),
+                    ) {
+                        Text("Delete")
+                    }
+                }
                 Button(
                     onClick = {
                         val trimmedLabel = label.trim()
                         val trimmedAddress = address.trim()
                         val trimmedUsername = username.trim()
                         val parsedPort = portText.toIntOrNull()
+                        val persistedIdentityId = selectedIdentityId.takeIf {
+                            compatibleIdentities.any { identity -> identity.id == it }
+                        }
 
                         labelError = if (trimmedLabel.isBlank()) "Host label is required." else null
                         addressError = if (trimmedAddress.isBlank()) "Address is required." else null
@@ -335,8 +507,8 @@ private fun HostEditorScreen(
                             null
                         }
                         usernameError = if (trimmedUsername.isBlank()) "Username is required." else null
-                        identityError = if (selectedIdentityId == null) {
-                            "Select a reusable password identity."
+                        identityError = if (persistedIdentityId == null) {
+                            "Select a reusable ${authMode.identityRequirementLabel()} before saving."
                         } else {
                             null
                         }
@@ -354,15 +526,15 @@ private fun HostEditorScreen(
                             runCatching {
                                 hostRepository.upsert(
                                     Host(
-                                        id = host?.id ?: 0,
+                                        id = initialDraft.hostId,
                                         label = trimmedLabel,
                                         address = trimmedAddress,
                                         port = requireNotNull(parsedPort),
                                         username = trimmedUsername,
-                                        identityId = selectedIdentityId,
-                                        isFavorite = host?.isFavorite ?: false,
-                                        lastUsedAt = host?.lastUsedAt,
-                                        createdAt = host?.createdAt ?: Instant.now(),
+                                        identityId = persistedIdentityId,
+                                        isFavorite = existingHost?.isFavorite ?: false,
+                                        lastUsedAt = existingHost?.lastUsedAt,
+                                        createdAt = existingHost?.createdAt ?: Instant.now(),
                                         updatedAt = Instant.now(),
                                     ),
                                 )
@@ -375,7 +547,7 @@ private fun HostEditorScreen(
                     },
                     modifier = Modifier.testTag("host_editor_save"),
                 ) {
-                    Text(if (isEditing) "Save changes" else "Save host")
+                    Text(if (initialDraft.isEditing) "Save changes" else "Save host")
                 }
             }
         }
@@ -383,33 +555,82 @@ private fun HostEditorScreen(
 }
 
 @Composable
-private fun PasswordIdentitySelectionSection(
-    availableIdentities: List<Identity>,
-    selectedIdentityId: Long?,
-    error: String?,
-    onSelected: (Long) -> Unit,
+private fun HostAuthModeSection(
+    authMode: HostAuthMode,
+    onAuthModeSelected: (HostAuthMode) -> Unit,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.testTag("host_password_identity_section"),
+        modifier = Modifier.testTag("host_auth_mode_section"),
+    ) {
+        Text(
+            text = "Authentication mode",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            HostAuthMode.entries.forEach { mode ->
+                HostAuthModeChip(
+                    authMode = mode,
+                    selected = authMode == mode,
+                    onSelected = { onAuthModeSelected(mode) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HostIdentitySelectionSection(
+    authMode: HostAuthMode,
+    compatibleIdentities: List<Identity>,
+    selectedIdentityId: Long?,
+    error: String?,
+    onSelected: (Long) -> Unit,
+    onLaunchRecovery: (IdentityLaunchDestination) -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("host_identity_selection_section"),
     ) {
         Text(
             text = "Authentication identity",
             style = MaterialTheme.typography.titleMedium,
         )
-        if (availableIdentities.isEmpty()) {
+        if (compatibleIdentities.isEmpty()) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("host_no_password_identities"),
+                    .testTag(
+                        if (authMode == HostAuthMode.PASSWORD) {
+                            "host_no_password_identities"
+                        } else {
+                            "host_no_key_identities"
+                        },
+                    ),
             ) {
-                Text(
-                    text = "No reusable identities are available yet. Create one from the Identities tab, then return here to select it.",
+                Column(
                     modifier = Modifier.padding(16.dp),
-                )
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = when (authMode) {
+                            HostAuthMode.PASSWORD ->
+                                "No reusable password identities are available. Recover from this flow by creating one and returning here."
+                            HostAuthMode.KEY ->
+                                "No compatible key identities are available. Recover from this flow by importing or generating a key, then return here to relink it."
+                        },
+                    )
+                    IdentityRecoveryActions(
+                        authMode = authMode,
+                        onLaunchRecovery = onLaunchRecovery,
+                    )
+                }
             }
         } else {
-            availableIdentities.forEach { identity ->
+            Text(
+                text = "Choose the reusable ${authMode.identityRequirementLabel()} for this host. Duplicate labels stay safe because each option also shows a distinguishing detail.",
+            )
+            compatibleIdentities.forEach { identity ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -426,13 +647,9 @@ private fun PasswordIdentitySelectionSection(
                             selected = identity.id == selectedIdentityId,
                             onClick = { onSelected(identity.id) },
                         )
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(text = identity.name)
-                            Text(
-                                text = "Reusable ${identity.kindLabel().lowercase()}",
-                            )
+                            Text(text = "Reusable ${identity.kindLabel().lowercase()}")
                             Text(
                                 text = identity.distinguishingDetail(),
                                 modifier = Modifier.testTag("host_identity_option_detail_${identity.id}"),
@@ -441,6 +658,10 @@ private fun PasswordIdentitySelectionSection(
                     }
                 }
             }
+            IdentityRecoveryActions(
+                authMode = authMode,
+                onLaunchRecovery = onLaunchRecovery,
+            )
         }
         error?.let { message ->
             Text(
@@ -448,6 +669,133 @@ private fun PasswordIdentitySelectionSection(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.testTag("host_identity_error"),
             )
+        }
+    }
+}
+
+@Composable
+private fun IdentityRecoveryActions(
+    authMode: HostAuthMode,
+    onLaunchRecovery: (IdentityLaunchDestination) -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("host_identity_recovery_actions"),
+    ) {
+        when (authMode) {
+            HostAuthMode.PASSWORD -> {
+                TextButton(
+                    onClick = { onLaunchRecovery(IdentityLaunchDestination.CreatePassword) },
+                    modifier = Modifier.testTag("host_recover_create_password_identity"),
+                ) {
+                    Text("Create password identity")
+                }
+            }
+
+            HostAuthMode.KEY -> {
+                TextButton(
+                    onClick = { onLaunchRecovery(IdentityLaunchDestination.ImportKey) },
+                    modifier = Modifier.testTag("host_recover_import_key_identity"),
+                ) {
+                    Text("Import key")
+                }
+                TextButton(
+                    onClick = { onLaunchRecovery(IdentityLaunchDestination.GenerateKey) },
+                    modifier = Modifier.testTag("host_recover_generate_key_identity"),
+                ) {
+                    Text("Generate key")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteHostScreen(
+    host: Host,
+    hostRepository: HostRepository,
+    onCancel: () -> Unit,
+    onDeleted: () -> Unit,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    AppScreenScaffold(
+        title = "Delete host",
+        supportingText = "Deleting a host removes only that saved host record. Linked reusable identities remain intact.",
+        modifier = Modifier.testTag("host_delete_confirmation"),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Delete ${host.label}?",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "Selection detail: ${host.username}@${host.address}:${host.port}",
+                modifier = Modifier.testTag("host_delete_detail"),
+            )
+            Text(
+                text = "Cancel keeps this host unchanged. Confirm removes only this host entry and leaves any linked identity reusable elsewhere.",
+                modifier = Modifier.testTag("host_delete_warning"),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(
+                    onClick = onCancel,
+                    modifier = Modifier.testTag("host_delete_cancel"),
+                ) {
+                    Text("Cancel")
+                }
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            hostRepository.deleteHost(host.id)
+                            onDeleted()
+                        }
+                    },
+                    modifier = Modifier.testTag("host_delete_confirm"),
+                ) {
+                    Text("Delete host")
+                }
+            }
+        }
+    }
+}
+
+private fun List<Host>.filteredBy(query: String): List<Host> {
+    val normalized = query.trim()
+    if (normalized.isBlank()) {
+        return this
+    }
+    return filter { host ->
+        host.label.contains(normalized, ignoreCase = true) ||
+            host.address.contains(normalized, ignoreCase = true) ||
+            host.username.contains(normalized, ignoreCase = true)
+    }
+}
+
+@Composable
+private fun HostAuthModeChip(
+    authMode: HostAuthMode,
+    selected: Boolean,
+    onSelected: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .clickable { onSelected() }
+            .testTag("host_auth_mode_${authMode.name.lowercase()}"),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = onSelected,
+            )
+            Text(text = authMode.label())
         }
     }
 }
