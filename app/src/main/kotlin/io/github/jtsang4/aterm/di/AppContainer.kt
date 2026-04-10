@@ -1,5 +1,6 @@
 package io.github.jtsang4.aterm.di
 
+import android.content.Context
 import io.github.jtsang4.aterm.core.data.DataModuleMarker
 import io.github.jtsang4.aterm.core.security.SecurityModuleMarker
 import io.github.jtsang4.aterm.core.ssh.SshModuleMarker
@@ -13,7 +14,9 @@ data class AppDependencySnapshot(
     val terminal: String,
 )
 
-class AppContainer {
+class AppContainer private constructor(
+    private val foundationGraphFactory: (() -> AppFoundationGraph)?,
+) {
     val topLevelDestinations: List<AppDestination> = AppDestination.topLevel
 
     val dependencySnapshot = AppDependencySnapshot(
@@ -22,4 +25,18 @@ class AppContainer {
         ssh = SshModuleMarker.description,
         terminal = TerminalModuleMarker.description,
     )
+
+    val foundationGraph: AppFoundationGraph by lazy {
+        checkNotNull(foundationGraphFactory) {
+            "AppFoundationGraph is only available from a context-backed container."
+        }.invoke()
+    }
+
+    companion object {
+        fun create(applicationContext: Context): AppContainer = AppContainer(
+            foundationGraphFactory = { buildAppFoundationGraph(applicationContext.applicationContext) },
+        )
+
+        fun preview(): AppContainer = AppContainer(foundationGraphFactory = null)
+    }
 }

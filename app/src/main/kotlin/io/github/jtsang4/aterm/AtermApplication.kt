@@ -4,5 +4,5 @@ import android.app.Application
 import io.github.jtsang4.aterm.di.AppContainer
 
 class AtermApplication : Application() {
-    val appContainer: AppContainer by lazy { AppContainer() }
+    val appContainer: AppContainer by lazy { AppContainer.create(this) }
 }

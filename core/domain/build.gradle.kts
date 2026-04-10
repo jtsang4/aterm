@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    id("java-test-fixtures")
 }
 
 kotlin {
@@ -7,5 +8,6 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit4)
 }

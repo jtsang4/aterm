@@ -30,7 +30,7 @@ import io.github.jtsang4.aterm.navigation.rememberAtermAppState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AtermApp(
-    appContainer: AppContainer = AppContainer(),
+    appContainer: AppContainer = AppContainer.preview(),
 ) {
     AtermTheme {
         CompositionLocalProvider(LocalAppContainer provides appContainer) {
