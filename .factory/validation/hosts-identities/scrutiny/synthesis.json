@@ -1,0 +1,83 @@
+{
+  "milestone": "hosts-identities",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew testDebugUnitTest --max-workers=4",
+      "exitCode": 0
+    },
+    "instrumentation": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew connectedDebugAndroidTest --max-workers=1",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew assembleDebug --max-workers=4",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew lintDebug --max-workers=4",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 0,
+    "failed": 5,
+    "failedFeatures": [
+      "identity-password-library-and-validation",
+      "identity-key-import-flows",
+      "identity-key-generation-and-repair-flows",
+      "keystore-secret-persistence-and-recovery",
+      "host-library-and-editor"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "identity-password-library-and-validation",
+      "severity": "blocking",
+      "description": "Host edit and repair flows auto-select the first available identity when the linked identity is missing or blocked, so saving unrelated changes can silently relink the host to the wrong identity. The same silent-relink failure was independently reported in `keystore-secret-persistence-and-recovery`."
+    },
+    {
+      "featureId": "identity-key-generation-and-repair-flows",
+      "severity": "blocking",
+      "description": "After deleting a linked identity, host repair infers auth mode from remaining identities instead of preserving the previous credential family, so a formerly key-based host can reopen in password mode and preselect an unrelated password identity."
+    },
+    {
+      "featureId": "identity-key-import-flows",
+      "severity": "blocking",
+      "description": "Imported-key passphrase state is inferred from whether the user typed text into the passphrase field rather than from the parsed key material, so replacing an unencrypted key can incorrectly persist `hasPassphrase=true` and store a bogus passphrase."
+    },
+    {
+      "featureId": "host-library-and-editor",
+      "severity": "blocking",
+      "description": "Canceling host delete confirmation rebuilds the editor from persisted data instead of the in-progress draft, discarding unsaved edits made before entering the confirmation flow."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented that imported-key flows accept OpenSSH and PEM private keys in `.factory/library/architecture.md`.",
+      "sourceFeature": "identity-key-import-flows"
+    },
+    {
+      "target": "library",
+      "description": "Documented the `SecretStorageState` lifecycle (`AVAILABLE`, `MISSING`, `BLOCKED`) and the requirement to gate auth flows on `Identity.isAuthenticationReady` in `.factory/library/architecture.md`.",
+      "sourceFeature": "keystore-secret-persistence-and-recovery"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add a host/identity repair invariant: when a linked identity is missing or blocked, repair flows must preserve the previous auth-family intent and require an explicit replacement choice; they must never auto-select another identity or infer a different auth mode from whatever identities remain.",
+      "evidence": "Three independent reviews (`identity-password-library-and-validation`, `identity-key-generation-and-repair-flows`, and `keystore-secret-persistence-and-recovery`) all found host edit/repair paths silently switching identity or auth mode when the original link was stale, deleted, or blocked.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

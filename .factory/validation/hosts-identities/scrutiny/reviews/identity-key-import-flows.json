@@ -1,0 +1,28 @@
+{
+  "featureId": "identity-key-import-flows",
+  "reviewedAt": "2026-04-10T12:17:24Z",
+  "commitId": "af7c878",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds the requested import UI, parser integration, host-selector wiring, and negative-path coverage, but there is a correctness bug in how imported-key passphrase state is derived and persisted.",
+    "issues": [
+      {
+        "file": "feature/identities/src/main/kotlin/io/github/jtsang4/aterm/feature/identities/ImportedKeyImportService.kt",
+        "line": 34,
+        "severity": "blocking",
+        "description": "`ImportedKeyImportService.parse()` marks an import as passphrase-protected whenever the caller supplied any non-blank passphrase (`hasPassphrase = !passphrase.isNullOrBlank()`), instead of determining whether the parsed key material is actually encrypted. In the editor, replacement imports pass through whatever the user typed in the passphrase field (`IdentitiesEntryPoint.kt:660-689,771-835`), so replacing an existing identity with a valid unencrypted key while that field contains text persists the identity as `hasPassphrase=true` and stores a bogus passphrase. That breaks the expected behavior that supported unencrypted keys import as unencrypted reusable identities and misstates the key's repair/authentication requirements thereafter."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The mission library still does not document the accepted imported-key formats even though this feature's preconditions say the chosen SSH stack and accepted key formats should already be documented. The worker had to research Apache MINA SSHD behavior directly to implement the feature.",
+      "evidence": "`features.json` for `identity-key-import-flows` lists documented accepted key formats as a precondition, but `.factory/library/` has no matching guidance (`Grep` for 'accepted key formats', 'supported key formats', or 'OpenSSH or PEM' returned no matches). The transcript skeleton for worker session `ec6d2624-fb73-495e-ba08-43d367e59795` shows repeated web/source lookups against Apache MINA SSHD docs and source before implementation."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the handoff, transcript skeleton, and commit `af7c878`. The core flows are present, but the implementation can persist an unencrypted replacement key as passphrase-protected because passphrase state is inferred from user input instead of the parsed key material."
+}

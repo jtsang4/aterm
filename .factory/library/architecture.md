@@ -32,10 +32,19 @@ Identities are reusable authentication objects. A host points at an identity ins
 - imported key identities
 - generated key identities
 
+Imported-key flows accept OpenSSH and PEM private keys.
+
 The identity layer is responsible for distinguishing same-named identities safely in pickers and repair flows.
 
 ### Security Boundary
 Secret material is stored through the approved security layer using **Keystore-wrapped encryption**. The app may persist non-secret metadata in Room/DataStore, but passwords, private keys, and passphrases must not bypass the security boundary.
+
+Identity secret availability is modeled explicitly with `SecretStorageState` values:
+- `AVAILABLE` — required secret material is present and usable
+- `MISSING` — required secret material is absent
+- `BLOCKED` — secret material exists but is temporarily unusable until the user repairs or re-enters it
+
+Auth surfaces must gate on `Identity.isAuthenticationReady` rather than only checking whether an identity once had secret material.
 
 ### SSH Boundary
 SSH transport, authentication, host-key trust, connection lifecycle, and channel/session ownership live behind a dedicated SSH client abstraction. This mission assumes **Apache MINA SSHD** unless the orchestrator updates the library docs.

@@ -1,0 +1,22 @@
+{
+  "featureId": "host-library-and-editor",
+  "reviewedAt": "2026-04-10T12:10:19Z",
+  "commitId": "d52bf75c134688be766569fbaac885c44c8af7f7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The host library/editor implementation covers the requested CRUD, search, identity recovery, and host/identity separation behaviors overall, but there is a blocking state-management bug in the delete-confirmation flow.",
+    "issues": [
+      {
+        "file": "feature/hosts/src/main/kotlin/io/github/jtsang4/aterm/feature/hosts/HostsEntryPoint.kt",
+        "line": 111,
+        "severity": "blocking",
+        "description": "Canceling the delete-confirmation screen rebuilds the editor from the persisted host via `HostEditorDraft.from(currentDestination.host, identities)` instead of restoring the in-progress draft. Any unsaved edits made before tapping Delete (for example changed label/address/username/auth mode) are discarded, which violates the expected cancellation behavior that edits apply only after save and cancellations preserve prior editor state."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the feature handoff, transcript skeleton, and commit `d52bf75c134688be766569fbaac885c44c8af7f7`. The implementation is broadly aligned with the feature goals, but canceling delete confirmation drops unsaved host-editor changes, which is a blocking correctness issue."
+}

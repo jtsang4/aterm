@@ -1,0 +1,28 @@
+{
+  "featureId": "identity-key-generation-and-repair-flows",
+  "reviewedAt": "2026-04-10T12:10:40.797261+00:00",
+  "commitId": "3db65564da65c0c9894881586c151614659190ba",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The generated-key creation/editing and public-key presentation flows are implemented, but the linked-host repair path is not reliable after deleting an in-use identity.",
+    "issues": [
+      {
+        "file": "feature/hosts/src/main/kotlin/io/github/jtsang4/aterm/feature/hosts/HostEditorModels.kt",
+        "line": 30,
+        "severity": "blocking",
+        "description": "When a linked identity is deleted, Room nulls `host.identityId`, and `HostEditorDraft.from` then guesses the repair auth mode from whatever ready identities still exist. In a mixed library this defaults to password mode whenever any password identity exists, even if the deleted identity was a key. The repair flow therefore opens with the wrong auth mode and preselects an unrelated password identity instead of surfacing replacement key identities directly, so users can silently save a formerly key-based host with the wrong credential type."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared architecture docs do not capture that host repair after identity deletion currently cannot recover the previous auth family, because hosts only retain an identity reference and the foreign key clears it on delete. That gap leaves workers to invent heuristics for repair flows.",
+      "evidence": ".factory/library/architecture.md:70 states that hosts link to exactly one primary identity, while core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/local/entity/HostEntity.kt:15 and feature/hosts/src/main/kotlin/io/github/jtsang4/aterm/feature/hosts/HostEditorModels.kt:30-41 show the link is nulled on delete and the repair mode is guessed from remaining identities."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: deleting an in-use identity does warn and keep the host, but the repair flow can reopen in the wrong auth mode and auto-select an unrelated password identity, so the direct relink behavior is not trustworthy for mixed password/key libraries."
+}
