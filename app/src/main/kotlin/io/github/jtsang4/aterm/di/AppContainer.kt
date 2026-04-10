@@ -3,6 +3,7 @@ package io.github.jtsang4.aterm.di
 import android.content.Context
 import io.github.jtsang4.aterm.core.data.DataModuleMarker
 import io.github.jtsang4.aterm.core.security.SecurityModuleMarker
+import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
 import io.github.jtsang4.aterm.core.ssh.SshModuleMarker
 import io.github.jtsang4.aterm.core.terminal.TerminalModuleMarker
 import io.github.jtsang4.aterm.navigation.AppDestination
@@ -30,6 +31,14 @@ class AppContainer private constructor(
         checkNotNull(foundationGraphFactory) {
             "AppFoundationGraph is only available from a context-backed container."
         }.invoke()
+    }
+
+    val sshSessionCoordinator: SshSessionCoordinator by lazy {
+        SshSessionCoordinator(
+            hostRepository = foundationGraph.hostRepository,
+            identityRepository = foundationGraph.identityRepository,
+            knownHostTrustRepository = foundationGraph.knownHostTrustRepository,
+        )
     }
 
     companion object {

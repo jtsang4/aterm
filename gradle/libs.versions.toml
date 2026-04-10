@@ -46,6 +46,7 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 mina-sshd-common = { group = "org.apache.sshd", name = "sshd-common", version.ref = "sshdCommon" }
+mina-sshd-core = { group = "org.apache.sshd", name = "sshd-core", version.ref = "sshdCommon" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

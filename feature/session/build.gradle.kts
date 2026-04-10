@@ -29,6 +29,12 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
     }
+
+    packaging {
+        resources {
+            excludes += "META-INF/DEPENDENCIES"
+        }
+    }
 }
 
 dependencies {
@@ -36,7 +42,11 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:ssh"))
     implementation(project(":core:terminal"))
+    implementation(project(":feature:hosts"))
+    implementation(project(":feature:identities"))
     implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.ui)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.ui.tooling.preview)

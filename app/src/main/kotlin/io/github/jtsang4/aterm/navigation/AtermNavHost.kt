@@ -6,7 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.hosts.HostsScreen
-import io.github.jtsang4.aterm.feature.session.SessionPlaceholder
+import io.github.jtsang4.aterm.feature.session.SessionsScreen
 import io.github.jtsang4.aterm.feature.settings.SettingsPlaceholder
 import io.github.jtsang4.aterm.feature.snippets.SnippetsPlaceholder
 
@@ -30,7 +30,12 @@ fun AtermNavHost(
             identitiesScreen()
         }
         composable(AppDestination.Session.route) {
-            SessionPlaceholder()
+            SessionsScreen(
+                hostRepository = appContainer.foundationGraph.hostRepository,
+                identityRepository = appContainer.foundationGraph.identityRepository,
+                knownHostTrustRepository = appContainer.foundationGraph.knownHostTrustRepository,
+                coordinator = appContainer.sshSessionCoordinator,
+            )
         }
         composable(AppDestination.Snippets.route) {
             SnippetsPlaceholder()
