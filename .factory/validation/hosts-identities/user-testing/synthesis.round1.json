@@ -1,0 +1,64 @@
+{
+  "milestone": "hosts-identities",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 22,
+    "passed": 16,
+    "failed": 0,
+    "blocked": 6
+  },
+  "passedAssertions": [
+    "VAL-HOST-001",
+    "VAL-HOST-002",
+    "VAL-HOST-007",
+    "VAL-HOST-008",
+    "VAL-HOST-011",
+    "VAL-HOST-012",
+    "VAL-IDENTITY-001",
+    "VAL-IDENTITY-002",
+    "VAL-IDENTITY-003",
+    "VAL-IDENTITY-004",
+    "VAL-IDENTITY-005",
+    "VAL-IDENTITY-006",
+    "VAL-IDENTITY-007",
+    "VAL-IDENTITY-009",
+    "VAL-IDENTITY-011",
+    "VAL-IDENTITY-012"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-HOST-003",
+      "blockedBy": "Current instrumentation only exercised key-compatible identity filtering in HostLibraryFlowsInstrumentedTest.key_host_shows_only_key_compatible_identities_in_key_mode; it did not save and reopen a key-auth host through the user surface."
+    },
+    {
+      "id": "VAL-HOST-004",
+      "blockedBy": "HostLibraryFlowsInstrumentedTest.empty_state_create_action_and_validation_errors_are_visible covered the empty create flow but did not directly exercise all required invalid states from the contract, especially invalid-port and missing-key-selection permutations."
+    },
+    {
+      "id": "VAL-HOST-005",
+      "blockedBy": "HostLibraryFlowsInstrumentedTest.edit_cancel_and_delete_confirmation_behave_predictably verified cancel/back preserves the old host, but it did not complete the explicit save path to prove edits apply only after save."
+    },
+    {
+      "id": "VAL-HOST-006",
+      "blockedBy": "The suite validated delete confirmation visibility and cancel behavior, but it did not confirm deletion from the UI and then verify that only the selected host was removed end to end."
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "blockedBy": "Editor behavior was partly exercised by metadata_edit_keeps_existing_password_secret and replacing_key_secret_updates_saved_public_key_and_secret_material, but the contract requires proving changed credentials on a real connection attempt; the app still routes session navigation to SessionPlaceholder, so no live connection surface exists in this milestone."
+    },
+    {
+      "id": "VAL-IDENTITY-010",
+      "blockedBy": "Identity persistence after relaunch was exercised, but the contract requires successful post-restart authentication. That cannot be validated yet because the session/SSH area is still a placeholder rather than a real terminal connection surface."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Android instrumentation flow-validator isolation guidance for the shared emulator and clarified to scope filtered runs to :app:connectedDebugAndroidTest when using app-only test classes.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

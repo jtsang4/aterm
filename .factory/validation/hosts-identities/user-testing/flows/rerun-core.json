@@ -1,0 +1,239 @@
+{
+  "groupId": "rerun-core",
+  "testedAt": "2026-04-10T15:50:43.698343Z",
+  "isolation": {
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774",
+    "surface": "Android instrumentation on shared emulator",
+    "emulator": "atermApi35",
+    "deviceSerial": "emulator-5554",
+    "sshTarget": "10.0.2.2:22",
+    "boundary": "single shared emulator isolation boundary"
+  },
+  "toolsUsed": [
+    "Gradle",
+    "Android instrumentation on emulator",
+    "adb",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    "/root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "/root/Android/Sdk/platform-tools/adb devices",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop sys.boot_completed",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop dev.bootcomplete",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HOST-003",
+      "title": "A key-auth host can be saved only with a valid linked identity",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the app-scoped connected Android tests on emulator-5554 with HostLibraryFlowsInstrumentedTest and IdentityPasswordFlowsInstrumentedTest filtered in",
+          "expected": "The assigned host and identity flows execute against the real Android surface and produce fresh connected-test artifacts",
+          "observed": "The filtered :app:connectedDebugAndroidTest run completed successfully with 28/28 tests passing on atermApi35(AVD) - 15."
+        },
+        {
+          "action": "Review HostLibraryFlowsInstrumentedTest.key_auth_host_can_be_saved_and_reopened_after_relaunch in the connected-test XML/HTML artifacts",
+          "expected": "A key-auth host is saved with a linked key identity, reopens in the editor with that identity, and persists across relaunch",
+          "observed": "The passing test covers create -> save -> reopen -> relaunch -> reopen for a key-auth host linked to the generated key identity \u201cDeploy key\u201d."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-core/host-library-instrumentation.html",
+          "hosts-identities/rerun-core/app-connected-debug-results.xml",
+          "hosts-identities/rerun-core/selected-testcases.json"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the connected test run reported no failures or crash traces.",
+        "network": "Not exercised for this CRUD assertion."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOST-004",
+      "title": "Host validation blocks incomplete or invalid connection settings",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Review the passing host validation tests in the connected-test artifacts",
+          "expected": "Current instrumentation should cover blank address, blank username, invalid ports, and missing credential-source permutations",
+          "observed": "The current suite proves invalid-port and missing-identity permutations through host_validation_blocks_invalid_port_and_missing_identity_permutations and key_auth_host_validation_requires_key_identity_before_save."
+        },
+        {
+          "action": "Compare the tested permutations with the validation contract wording for VAL-HOST-004",
+          "expected": "The rerun suite should fully satisfy every required invalid state from the contract",
+          "observed": "No current instrumentation method proves actionable blank-address and blank-username validation states end to end, so the contract is still not fully satisfied by the rerun surface."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-core/host-library-instrumentation.html",
+          "hosts-identities/rerun-core/app-connected-debug-results.xml",
+          "hosts-identities/rerun-core/selected-testcases.json"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the connected test run reported no failures or crash traces.",
+        "network": "Not exercised for this CRUD assertion."
+      },
+      "issues": "Current instrumentation coverage does not yet prove the blank-address and blank-username error states required by the contract."
+    },
+    {
+      "id": "VAL-HOST-005",
+      "title": "Host edits apply only after explicit save, and canceled edits leave the prior version intact",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the filtered app instrumentation suite on emulator-5554",
+          "expected": "Connected-test artifacts are regenerated from the live Android surface",
+          "observed": "The filtered run passed with 28/28 tests green."
+        },
+        {
+          "action": "Review HostLibraryFlowsInstrumentedTest.edit_cancel_keeps_original_values_and_save_persists_changes_after_explicit_save in the XML/HTML reports",
+          "expected": "Unsaved edits stay out of storage, cancel restores the original record, and explicit save persists the updated values across relaunch",
+          "observed": "The passing test asserts unchanged repository values before save, confirms cancel leaves the original host visible, then saves updated values and verifies they persist after relaunch."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-core/host-library-instrumentation.html",
+          "hosts-identities/rerun-core/app-connected-debug-results.xml",
+          "hosts-identities/rerun-core/selected-testcases.json"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the connected test run reported no failures or crash traces.",
+        "network": "Not exercised for this CRUD assertion."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOST-006",
+      "title": "Host deletion requires confirmation and removes only the selected host",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the filtered app instrumentation suite on emulator-5554",
+          "expected": "Connected-test artifacts are regenerated from the live Android surface",
+          "observed": "The filtered run passed with 28/28 tests green."
+        },
+        {
+          "action": "Review HostLibraryFlowsInstrumentedTest.delete_confirmation_removes_only_the_selected_host in the XML/HTML reports",
+          "expected": "Deletion first offers cancel, then confirmed deletion removes only the targeted host while leaving the other host intact",
+          "observed": "The passing test covers cancel -> verify both hosts remain -> confirm delete -> verify only host 1 is removed, host 2 remains, and the result persists after relaunch."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-core/host-library-instrumentation.html",
+          "hosts-identities/rerun-core/app-connected-debug-results.xml",
+          "hosts-identities/rerun-core/selected-testcases.json"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the connected test run reported no failures or crash traces.",
+        "network": "Not exercised for this CRUD assertion."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "title": "Editing an identity preserves or updates the real credential behavior correctly",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Review the passing identity edit tests in the connected-test artifacts",
+          "expected": "The rerun surface should prove both metadata-only edits and secret replacement against actual connection behavior",
+          "observed": "The current suite proves stored-secret preservation and replacement persistence through metadata_edit_keeps_existing_password_secret and replacing_key_secret_updates_saved_public_key_and_secret_material."
+        },
+        {
+          "action": "Inspect the live app navigation for the session destination after the rerun",
+          "expected": "A real session surface exists so edited credentials can be validated by an actual post-edit connection attempt",
+          "observed": "AtermNavHost still routes AppDestination.Session to SessionPlaceholder, so there is no real SSH session path available for the required user-surface authentication proof."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-core/identity-password-instrumentation.html",
+          "hosts-identities/rerun-core/app-connected-debug-results.xml",
+          "hosts-identities/rerun-core/selected-testcases.json",
+          "hosts-identities/rerun-core/session-placeholder-navigation.txt"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the connected test run reported no failures or crash traces.",
+        "network": "Blocked: no real session/network path exists because the session surface still renders SessionPlaceholder."
+      },
+      "issues": "The rerun suite still lacks a real SSH/session surface to prove changed credential behavior on the next connection attempt."
+    },
+    {
+      "id": "VAL-IDENTITY-010",
+      "title": "Keystore-protected secrets remain usable after normal app restart",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Review the relaunch-oriented identity persistence tests in the connected-test artifacts",
+          "expected": "The rerun surface should prove saved secrets remain usable for post-restart authentication",
+          "observed": "The current suite proves identity and secret persistence across relaunch at the data/UI-selection level, including saved_password_identity_remains_selectable_from_host_flows_after_relaunch."
+        },
+        {
+          "action": "Inspect the live app navigation for the session destination after the rerun",
+          "expected": "A real session surface exists so a post-restart connection can authenticate with the saved secret",
+          "observed": "AtermNavHost still routes AppDestination.Session to SessionPlaceholder, so the required post-restart authentication proof cannot be exercised on the real user surface yet."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-core/identity-password-instrumentation.html",
+          "hosts-identities/rerun-core/app-connected-debug-results.xml",
+          "hosts-identities/rerun-core/selected-testcases.json",
+          "hosts-identities/rerun-core/session-placeholder-navigation.txt"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the connected test run reported no failures or crash traces.",
+        "network": "Blocked: no real session/network path exists because the session surface still renders SessionPlaceholder."
+      },
+      "issues": "The app still lacks a real post-restart authentication path, so keystore-backed secret reusability cannot be proven end to end."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The connected Android rerun artifacts provide XML/HTML reports but no assertion-level screenshots, so evidence for these UI assertions relies on instrumentation reports rather than captured emulator images.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-HOST-003",
+        "VAL-HOST-004",
+        "VAL-HOST-005",
+        "VAL-HOST-006",
+        "VAL-IDENTITY-008",
+        "VAL-IDENTITY-010"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "The current host validation rerun still lacks blank-address and blank-username actionable-error coverage, so VAL-HOST-004 is not fully satisfied by instrumentation yet.",
+      "affectedAssertions": [
+        "VAL-HOST-004"
+      ],
+      "quickFixAttempted": "Reran the latest HostLibraryFlowsInstrumentedTest suite and compared the passing test coverage with the contract language; the missing permutations are still absent."
+    },
+    {
+      "description": "The app still routes session navigation to SessionPlaceholder instead of a real SSH session surface.",
+      "affectedAssertions": [
+        "VAL-IDENTITY-008",
+        "VAL-IDENTITY-010"
+      ],
+      "quickFixAttempted": "Confirmed emulator readiness, reran the relevant identity instrumentation suite, and inspected AtermNavHost.kt after the rerun."
+    }
+  ],
+  "evidenceFiles": [
+    "hosts-identities/rerun-core/app-connected-debug-summary.html",
+    "hosts-identities/rerun-core/host-library-instrumentation.html",
+    "hosts-identities/rerun-core/identity-password-instrumentation.html",
+    "hosts-identities/rerun-core/app-connected-debug-results.xml",
+    "hosts-identities/rerun-core/selected-testcases.json",
+    "hosts-identities/rerun-core/session-placeholder-navigation.txt"
+  ],
+  "summary": "Tested 6 assigned assertions on the shared atermApi35 emulator: 3 passed (VAL-HOST-003, VAL-HOST-005, VAL-HOST-006) and 3 were blocked (VAL-HOST-004, VAL-IDENTITY-008, VAL-IDENTITY-010). The remaining blockers are incomplete host-validation coverage for blank address/username and the app still routing session navigation to SessionPlaceholder instead of a real SSH surface."
+}
