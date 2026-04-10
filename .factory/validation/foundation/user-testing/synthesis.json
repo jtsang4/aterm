@@ -1,0 +1,20 @@
+{
+  "milestone": "foundation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "notes": [
+    "No completed foundation implementation feature declares validation-contract assertion IDs in its fulfills field, so there were no user-surface assertions to execute for this milestone.",
+    "Validation environment readiness was checked with ./.factory/init.sh --check and local SSH target health verification."
+  ],
+  "previousRound": null
+}
