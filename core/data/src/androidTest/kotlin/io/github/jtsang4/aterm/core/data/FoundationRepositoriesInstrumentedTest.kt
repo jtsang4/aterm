@@ -21,6 +21,7 @@ import io.github.jtsang4.aterm.core.domain.fixtures.sampleIdentity
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleKnownHostTrust
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSessionMetadata
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSnippet
+import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.ThemePreference
 import io.github.jtsang4.aterm.core.security.crypto.EncryptedPayload
@@ -119,6 +120,28 @@ class FoundationRepositoriesInstrumentedTest {
                 "correct horse battery staple".encodeToByteArray(),
             ),
         )
+    }
+
+    @Test
+    fun password_identity_round_trips_and_preserves_secret_when_only_metadata_changes() = runTest {
+        val created = identityRepository.upsert(
+            sampleIdentity()
+                .copy(id = 0, kind = IdentityKind.PASSWORD, hasPassphrase = false, username = null),
+            IdentitySecretMaterial(primarySecret = "initial-password"),
+        )
+
+        val updated = identityRepository.upsert(
+            created.copy(name = "Renamed password identity"),
+            secrets = null,
+        )
+
+        val persistedIdentity = identityRepository.getIdentity(updated.id)
+        val persistedSecrets = identityRepository.getSecretMaterial(updated.id)
+
+        assertEquals(IdentityKind.PASSWORD, persistedIdentity?.kind)
+        assertEquals("Renamed password identity", persistedIdentity?.name)
+        assertEquals("initial-password", persistedSecrets?.primarySecret)
+        assertEquals(null, persistedSecrets?.passphrase)
     }
 
     @Test

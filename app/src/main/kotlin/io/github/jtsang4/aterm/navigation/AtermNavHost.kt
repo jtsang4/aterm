@@ -4,8 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import io.github.jtsang4.aterm.feature.hosts.HostsPlaceholder
-import io.github.jtsang4.aterm.feature.identities.IdentitiesPlaceholder
+import io.github.jtsang4.aterm.di.AppContainer
+import io.github.jtsang4.aterm.feature.hosts.HostsScreen
+import io.github.jtsang4.aterm.feature.identities.IdentitiesScreen
 import io.github.jtsang4.aterm.feature.session.SessionPlaceholder
 import io.github.jtsang4.aterm.feature.settings.SettingsPlaceholder
 import io.github.jtsang4.aterm.feature.snippets.SnippetsPlaceholder
@@ -13,16 +14,20 @@ import io.github.jtsang4.aterm.feature.snippets.SnippetsPlaceholder
 @Composable
 fun AtermNavHost(
     navController: NavHostController,
+    appContainer: AppContainer,
 ) {
     NavHost(
         navController = navController,
         startDestination = AppDestination.Hosts.route,
     ) {
         composable(AppDestination.Hosts.route) {
-            HostsPlaceholder()
+            HostsScreen(
+                hostRepository = appContainer.foundationGraph.hostRepository,
+                identityRepository = appContainer.foundationGraph.identityRepository,
+            )
         }
         composable(AppDestination.Identities.route) {
-            IdentitiesPlaceholder()
+            IdentitiesScreen(identityRepository = appContainer.foundationGraph.identityRepository)
         }
         composable(AppDestination.Session.route) {
             SessionPlaceholder()

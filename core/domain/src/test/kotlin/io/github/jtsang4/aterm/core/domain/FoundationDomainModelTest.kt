@@ -5,6 +5,7 @@ import io.github.jtsang4.aterm.core.domain.fixtures.sampleIdentity
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleKnownHostTrust
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSessionMetadata
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSnippet
+import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import org.junit.Assert.assertEquals
@@ -30,6 +31,17 @@ class FoundationDomainModelTest {
     fun key_based_identity_reports_its_material_type() {
         assertTrue(sampleIdentity().usesKeyMaterial)
         assertFalse(sampleIdentity().copy(kind = IdentityKind.PASSWORD).usesKeyMaterial)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun password_identity_cannot_claim_a_passphrase() {
+        Identity(
+            id = 1,
+            name = "Password identity",
+            kind = IdentityKind.PASSWORD,
+            hasSecret = true,
+            hasPassphrase = true,
+        )
     }
 
     @Test

@@ -73,7 +73,10 @@ fun AtermApp(
                         currentDestination = currentDestination,
                         appContainer = appContainer,
                     )
-                    AtermNavHost(navController = appState.navController)
+                    AtermNavHost(
+                        navController = appState.navController,
+                        appContainer = appContainer,
+                    )
                 }
             }
         }
