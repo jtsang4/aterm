@@ -1,0 +1,21 @@
+{
+  "featureId": "imported-key-passphrase-state-truthfulness",
+  "reviewedAt": "2026-04-10T13:22:18Z",
+  "commitId": "7cb0f437363f32f85a1e584a16db7a74da8bf418",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix adequately resolves the prior blocking bug. Imported-key parsing now derives passphrase protection from the key material itself, replacement persistence clears stale passphrase ciphertext/state when the new key is unencrypted, and the added unit plus instrumentation coverage exercises the exact regression path without introducing an evident regression in encrypted-key retry behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The mission feature metadata still points workers at a nonexistent imported-key instrumentation class, so they must rediscover where the real imported-key UI coverage lives.",
+      "evidence": "`/root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774/features.json:728` references `io.github.jtsang4.aterm.IdentityImportFlowsInstrumentedTest`, but the repo only defines `io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest` (`/root/workspace/github/jtsang4/aterm/app/src/androidTest/kotlin/io/github/jtsang4/aterm/IdentityPasswordFlowsInstrumentedTest.kt:62`). The worker handoff for session `a6b397f3-6754-4f8e-98fc-d59b74f8374d` records this as a justified deviation."
+    }
+  ],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/hosts-identities/scrutiny/reviews/identity-key-import-flows.json",
+  "summary": "Pass. I reviewed the prior failing review, the fix transcript skeleton, the handoff, and commit `7cb0f437363f32f85a1e584a16db7a74da8bf418`. The fix closes the original truthfulness bug by tying `hasPassphrase` and stored passphrase data to parsed key material rather than stray UI text, and the added parser/repository/UI regression coverage matches the failure scenario without surfacing a new blocking issue."
+}

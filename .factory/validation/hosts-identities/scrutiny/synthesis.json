@@ -1,6 +1,6 @@
 {
   "milestone": "hosts-identities",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -25,59 +25,29 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 0,
-    "failed": 5,
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
     "failedFeatures": [
-      "identity-password-library-and-validation",
-      "identity-key-import-flows",
-      "identity-key-generation-and-repair-flows",
-      "keystore-secret-persistence-and-recovery",
-      "host-library-and-editor"
+      "host-editor-repair-state-safety"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "identity-password-library-and-validation",
+      "featureId": "host-editor-repair-state-safety",
       "severity": "blocking",
-      "description": "Host edit and repair flows auto-select the first available identity when the linked identity is missing or blocked, so saving unrelated changes can silently relink the host to the wrong identity. The same silent-relink failure was independently reported in `keystore-secret-persistence-and-recovery`."
-    },
-    {
-      "featureId": "identity-key-generation-and-repair-flows",
-      "severity": "blocking",
-      "description": "After deleting a linked identity, host repair infers auth mode from remaining identities instead of preserving the previous credential family, so a formerly key-based host can reopen in password mode and preselect an unrelated password identity."
-    },
-    {
-      "featureId": "identity-key-import-flows",
-      "severity": "blocking",
-      "description": "Imported-key passphrase state is inferred from whether the user typed text into the passphrase field rather than from the parsed key material, so replacing an unencrypted key can incorrectly persist `hasPassphrase=true` and store a bogus passphrase."
-    },
-    {
-      "featureId": "host-library-and-editor",
-      "severity": "blocking",
-      "description": "Canceling host delete confirmation rebuilds the editor from persisted data instead of the in-progress draft, discarding unsaved edits made before entering the confirmation flow."
+      "description": "`MIGRATION_3_4` backfills `hosts.authKind` from the currently linked identity kind and otherwise defaults to `PASSWORD`, so hosts whose key identity had already been deleted before upgrade still reopen repair in password mode. This means the rerun fix does not fully resolve the prior auth-family preservation failure for already-orphaned key-auth hosts."
     }
   ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Documented that imported-key flows accept OpenSSH and PEM private keys in `.factory/library/architecture.md`.",
-      "sourceFeature": "identity-key-import-flows"
-    },
-    {
-      "target": "library",
-      "description": "Documented the `SecretStorageState` lifecycle (`AVAILABLE`, `MISSING`, `BLOCKED`) and the requirement to gate auth flows on `Identity.isAuthenticationReady` in `.factory/library/architecture.md`.",
-      "sourceFeature": "keystore-secret-persistence-and-recovery"
-    }
-  ],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "AGENTS.md",
-      "suggestion": "Add a host/identity repair invariant: when a linked identity is missing or blocked, repair flows must preserve the previous auth-family intent and require an explicit replacement choice; they must never auto-select another identity or infer a different auth mode from whatever identities remain.",
-      "evidence": "Three independent reviews (`identity-password-library-and-validation`, `identity-key-generation-and-repair-flows`, and `keystore-secret-persistence-and-recovery`) all found host edit/repair paths silently switching identity or auth mode when the original link was stale, deleted, or blocked.",
-      "isSystemic": true
+      "target": "mission metadata",
+      "suggestion": "Update the `imported-key-passphrase-state-truthfulness` verification step to reference the real imported-key instrumentation coverage class.",
+      "evidence": "`features.json` still references `io.github.jtsang4.aterm.IdentityImportFlowsInstrumentedTest`, but the repo only defines imported-key UI coverage in `io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest`.",
+      "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/hosts-identities/scrutiny/synthesis.round1.json"
 }
