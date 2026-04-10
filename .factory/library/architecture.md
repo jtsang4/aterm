@@ -25,6 +25,7 @@ Compose navigation and top-level screen chrome live here. This layer routes betw
 
 ### Hosts Boundary
 Hosts store connection metadata such as label, hostname/address, port, username, favorite state, recents metadata, and a reference to an identity. Hosts are reusable records, not ephemeral connection forms.
+Hosts should also retain enough non-secret auth-family context to reopen repair flows in the original credential family if the linked identity becomes missing or blocked.
 
 ### Identities Boundary
 Identities are reusable authentication objects. A host points at an identity instead of owning duplicated secret material. Supported identity families in this mission are:
@@ -77,6 +78,7 @@ For this mission, snippet execution history should record a run as **successful*
 4. Saved host + identity metadata become the source of truth for connection attempts.
 
 Host records own endpoint metadata and username. Identity records own the reusable secret or key material plus display metadata. For v1, each host links to exactly **one primary identity** and there is no fallback auth chain; recovery after auth failure happens through explicit host or identity edits.
+If the primary identity link is missing or blocked, the host editor should preserve that last-known auth family and leave replacement unresolved until the user explicitly chooses a new compatible identity.
 
 ### Connection Flow
 1. User starts a connection from a saved host.
