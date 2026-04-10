@@ -19,6 +19,14 @@ class FoundationDomainModelTest {
     }
 
     @Test
+    fun host_can_enter_repair_state_without_losing_record_identity() {
+        val host = sampleHost().copy(identityId = null)
+
+        assertFalse(host.hasLinkedIdentity)
+        assertEquals(null, host.identityId)
+    }
+
+    @Test
     fun key_based_identity_reports_its_material_type() {
         assertTrue(sampleIdentity().usesKeyMaterial)
         assertFalse(sampleIdentity().copy(kind = IdentityKind.PASSWORD).usesKeyMaterial)

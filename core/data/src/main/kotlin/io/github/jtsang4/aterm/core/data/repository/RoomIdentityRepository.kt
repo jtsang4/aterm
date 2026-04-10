@@ -1,5 +1,7 @@
 package io.github.jtsang4.aterm.core.data.repository
 
+import androidx.room.withTransaction
+import io.github.jtsang4.aterm.core.data.local.AtermDatabase
 import io.github.jtsang4.aterm.core.data.local.dao.IdentityDao
 import io.github.jtsang4.aterm.core.data.local.mapper.toDomain
 import io.github.jtsang4.aterm.core.data.local.mapper.toEntity
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class RoomIdentityRepository(
+    private val database: AtermDatabase,
     private val identityDao: IdentityDao,
     private val fieldCipher: SecretFieldCipher,
 ) : IdentityRepository {
@@ -22,48 +25,51 @@ class RoomIdentityRepository(
     override suspend fun getIdentity(id: Long): Identity? = identityDao.getById(id)?.toDomain()
 
     override suspend fun upsert(identity: Identity, secrets: IdentitySecretMaterial?): Identity {
-        val existing = if (identity.id != 0L) {
-            identityDao.getById(identity.id)
-        } else {
-            null
-        }
-        val baseEntity = identity.toEntity(
-            primaryCipherText = existing?.primaryCipherText,
-            primaryIv = existing?.primaryIv,
-            passphraseCipherText = existing?.passphraseCipherText,
-            passphraseIv = existing?.passphraseIv,
-        ).copy(
-            hasSecret = secrets?.primarySecret != null || existing?.hasSecret == true || identity.hasSecret,
-            hasPassphrase = secrets?.passphrase != null || existing?.hasPassphrase == true || identity.hasPassphrase,
-        )
-
-        val id = if (identity.id == 0L) {
-            identityDao.insert(baseEntity.copy(id = 0))
-        } else {
-            identityDao.update(baseEntity)
-            identity.id
-        }
-
-        if (secrets != null && !secrets.isEmpty) {
-            val persisted = requireNotNull(identityDao.getById(id)) { "Identity $id was not persisted." }
-            val primaryPayload = secrets.primarySecret?.let {
-                encryptString(it, aadFor(id, "primary"))
+        val id = database.withTransaction {
+            val existing = if (identity.id != 0L) {
+                identityDao.getById(identity.id)
+            } else {
+                null
             }
-            val passphrasePayload = secrets.passphrase?.let {
-                encryptString(it, aadFor(id, "passphrase"))
-            }
-            identityDao.update(
-                persisted.copy(
-                    hasSecret = secrets.primarySecret != null || persisted.hasSecret,
-                    hasPassphrase = secrets.passphrase != null || persisted.hasPassphrase,
-                    primaryCipherText = primaryPayload?.cipherText ?: persisted.primaryCipherText,
-                    primaryIv = primaryPayload?.iv ?: persisted.primaryIv,
-                    passphraseCipherText = passphrasePayload?.cipherText ?: persisted.passphraseCipherText,
-                    passphraseIv = passphrasePayload?.iv ?: persisted.passphraseIv,
-                ),
+            val baseEntity = identity.toEntity(
+                primaryCipherText = existing?.primaryCipherText,
+                primaryIv = existing?.primaryIv,
+                passphraseCipherText = existing?.passphraseCipherText,
+                passphraseIv = existing?.passphraseIv,
+            ).copy(
+                hasSecret = secrets?.primarySecret != null || existing?.hasSecret == true || identity.hasSecret,
+                hasPassphrase = secrets?.passphrase != null || existing?.hasPassphrase == true || identity.hasPassphrase,
             )
-        }
 
+            val persistedId = if (identity.id == 0L) {
+                identityDao.insert(baseEntity.copy(id = 0))
+            } else {
+                identityDao.update(baseEntity)
+                identity.id
+            }
+
+            if (secrets != null && !secrets.isEmpty) {
+                val persisted = requireNotNull(identityDao.getById(persistedId)) { "Identity $persistedId was not persisted." }
+                val primaryPayload = secrets.primarySecret?.let {
+                    encryptString(it, aadFor(persistedId, "primary"))
+                }
+                val passphrasePayload = secrets.passphrase?.let {
+                    encryptString(it, aadFor(persistedId, "passphrase"))
+                }
+                identityDao.update(
+                    persisted.copy(
+                        hasSecret = secrets.primarySecret != null || persisted.hasSecret,
+                        hasPassphrase = secrets.passphrase != null || persisted.hasPassphrase,
+                        primaryCipherText = primaryPayload?.cipherText ?: persisted.primaryCipherText,
+                        primaryIv = primaryPayload?.iv ?: persisted.primaryIv,
+                        passphraseCipherText = passphrasePayload?.cipherText ?: persisted.passphraseCipherText,
+                        passphraseIv = passphrasePayload?.iv ?: persisted.passphraseIv,
+                    ),
+                )
+            }
+
+            persistedId
+        }
         return requireNotNull(getIdentity(id)) { "Identity $id was not persisted." }
     }
 

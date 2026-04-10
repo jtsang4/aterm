@@ -33,8 +33,8 @@ fun buildLocalDataFoundation(
     val database = AtermDatabase.build(context)
     return LocalDataFoundation(
         hostRepository = RoomHostRepository(database.hostDao()),
-        identityRepository = RoomIdentityRepository(database.identityDao(), fieldCipher),
-        snippetRepository = RoomSnippetRepository(database.snippetDao(), fieldCipher),
+        identityRepository = RoomIdentityRepository(database, database.identityDao(), fieldCipher),
+        snippetRepository = RoomSnippetRepository(database, database.snippetDao(), fieldCipher),
         sessionMetadataRepository = RoomSessionMetadataRepository(database.sessionMetadataDao()),
         knownHostTrustRepository = RoomKnownHostTrustRepository(database.knownHostTrustDao()),
         settingsRepository = PreferencesSettingsRepository(createUserPreferencesDataStore(context)),

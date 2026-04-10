@@ -8,7 +8,7 @@ data class Host(
     val address: String,
     val port: Int = 22,
     val username: String,
-    val identityId: Long,
+    val identityId: Long?,
     val isFavorite: Boolean = false,
     val lastUsedAt: Instant? = null,
     val createdAt: Instant = Instant.now(),
@@ -19,8 +19,10 @@ data class Host(
         require(address.isNotBlank()) { "Host address must not be blank." }
         require(port in 1..65_535) { "Host port must be in the valid TCP range." }
         require(username.isNotBlank()) { "Host username must not be blank." }
-        require(identityId > 0) { "Hosts must reference a saved identity." }
+        require(identityId == null || identityId > 0) { "Hosts must reference a saved identity when linked." }
+        require(id != 0L || identityId != null) { "New hosts must reference a saved identity." }
     }
 
     val endpoint: String = "$address:$port"
+    val hasLinkedIdentity: Boolean = identityId != null
 }

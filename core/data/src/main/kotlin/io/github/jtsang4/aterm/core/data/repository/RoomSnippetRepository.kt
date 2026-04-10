@@ -1,5 +1,7 @@
 package io.github.jtsang4.aterm.core.data.repository
 
+import androidx.room.withTransaction
+import io.github.jtsang4.aterm.core.data.local.AtermDatabase
 import io.github.jtsang4.aterm.core.data.local.dao.SnippetDao
 import io.github.jtsang4.aterm.core.data.local.mapper.toDomain
 import io.github.jtsang4.aterm.core.data.local.mapper.toEntity
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class RoomSnippetRepository(
+    private val database: AtermDatabase,
     private val snippetDao: SnippetDao,
     private val fieldCipher: SecretFieldCipher,
 ) : SnippetRepository {
@@ -22,29 +25,32 @@ class RoomSnippetRepository(
     override suspend fun getSnippet(id: Long): Snippet? = snippetDao.getById(id)?.toDomain()
 
     override suspend fun upsert(snippet: Snippet, body: String): Snippet {
-        val existing = if (snippet.id != 0L) {
-            snippetDao.getById(snippet.id)
-        } else {
-            null
+        val id = database.withTransaction {
+            val existing = if (snippet.id != 0L) {
+                snippetDao.getById(snippet.id)
+            } else {
+                null
+            }
+            val baseEntity = snippet.toEntity(
+                bodyCipherText = existing?.bodyCipherText,
+                bodyIv = existing?.bodyIv,
+            )
+            val persistedId = if (snippet.id == 0L) {
+                snippetDao.insert(baseEntity.copy(id = 0, bodyCipherText = null, bodyIv = null))
+            } else {
+                snippetDao.update(baseEntity)
+                snippet.id
+            }
+            val encrypted = fieldCipher.encrypt(body.encodeToByteArray(), associatedData = aadFor(persistedId))
+            val persisted = requireNotNull(snippetDao.getById(persistedId)) { "Snippet $persistedId was not persisted." }
+            snippetDao.update(
+                persisted.copy(
+                    bodyCipherText = encrypted.cipherText,
+                    bodyIv = encrypted.iv,
+                ),
+            )
+            persistedId
         }
-        val baseEntity = snippet.toEntity(
-            bodyCipherText = existing?.bodyCipherText,
-            bodyIv = existing?.bodyIv,
-        )
-        val id = if (snippet.id == 0L) {
-            snippetDao.insert(baseEntity.copy(id = 0, bodyCipherText = null, bodyIv = null))
-        } else {
-            snippetDao.update(baseEntity)
-            snippet.id
-        }
-        val encrypted = fieldCipher.encrypt(body.encodeToByteArray(), associatedData = aadFor(id))
-        val persisted = requireNotNull(snippetDao.getById(id)) { "Snippet $id was not persisted." }
-        snippetDao.update(
-            persisted.copy(
-                bodyCipherText = encrypted.cipherText,
-                bodyIv = encrypted.iv,
-            ),
-        )
         return requireNotNull(getSnippet(id)) { "Snippet $id was not persisted." }
     }
 
