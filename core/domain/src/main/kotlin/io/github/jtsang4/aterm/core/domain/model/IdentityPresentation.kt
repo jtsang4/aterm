@@ -6,20 +6,30 @@ fun Identity.kindLabel(): String = when (kind) {
     IdentityKind.GENERATED_KEY -> "Generated key identity"
 }
 
-fun Identity.secretStatusLabel(): String = if (hasSecret) {
-    if (kind == IdentityKind.PASSWORD) {
-        "Password stored securely"
-    } else {
-        "Private key stored securely"
+fun Identity.secretStatusLabel(): String = when (secretStorageState) {
+    SecretStorageState.AVAILABLE -> {
+        if (kind == IdentityKind.PASSWORD) {
+            "Password stored securely"
+        } else {
+            "Private key stored securely"
+        }
     }
-} else {
-    "Secret missing"
+
+    SecretStorageState.BLOCKED -> {
+        if (kind == IdentityKind.PASSWORD) {
+            "Password unavailable until repaired"
+        } else {
+            "Private key unavailable until repaired"
+        }
+    }
+
+    SecretStorageState.MISSING -> "Secret missing"
 }
 
-fun Identity.passphraseStatusLabel(): String = if (hasPassphrase) {
-    "Passphrase required for this key"
-} else {
-    "No key passphrase required"
+fun Identity.passphraseStatusLabel(): String = when {
+    !hasPassphrase -> "No key passphrase required"
+    passphraseStorageState == SecretStorageState.BLOCKED -> "Passphrase unavailable until repaired"
+    else -> "Passphrase required for this key"
 }
 
 fun Identity.distinguishingDetail(): String = buildString {

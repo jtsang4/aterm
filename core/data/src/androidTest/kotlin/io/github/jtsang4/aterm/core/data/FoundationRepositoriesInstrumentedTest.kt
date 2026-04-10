@@ -145,6 +145,30 @@ class FoundationRepositoriesInstrumentedTest {
     }
 
     @Test
+    fun identity_repository_marks_secret_blocked_when_keystore_access_is_lost() = runTest {
+        val identity = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, hasPassphrase = false),
+            IdentitySecretMaterial(primarySecret = "restart-safe-secret"),
+        )
+
+        cipher.deleteKey()
+
+        try {
+            identityRepository.getSecretMaterial(identity.id)
+            error("Expected blocked secret state")
+        } catch (expected: io.github.jtsang4.aterm.core.domain.model.SecretMaterialUnavailableException) {
+            assertEquals(
+                "Stored secret material is unavailable. Repair the identity to continue.",
+                expected.message,
+            )
+        }
+
+        val repairedState = identityRepository.getIdentity(identity.id)
+        assertEquals("BLOCKED", repairedState?.secretStorageState?.name)
+        assertTrue(repairedState?.hasSecret == true)
+    }
+
+    @Test
     fun identity_upsert_rolls_back_when_secret_encryption_fails() = runTest {
         val failingRepository = RoomIdentityRepository(
             database = database,
@@ -423,7 +447,7 @@ class FoundationRepositoriesInstrumentedTest {
         supportDb.close()
 
         val opened = Room.databaseBuilder(context, AtermDatabase::class.java, dbName)
-            .addMigrations(AtermDatabase.MIGRATION_1_2)
+            .addMigrations(AtermDatabase.MIGRATION_1_2, AtermDatabase.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
 

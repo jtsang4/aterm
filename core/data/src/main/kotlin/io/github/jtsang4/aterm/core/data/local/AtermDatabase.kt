@@ -25,7 +25,7 @@ import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
         SessionMetadataEntity::class,
         KnownHostTrustEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AtermDatabase : RoomDatabase() {
@@ -36,6 +36,41 @@ abstract class AtermDatabase : RoomDatabase() {
     abstract fun knownHostTrustDao(): KnownHostTrustDao
 
     companion object {
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    ALTER TABLE `identities`
+                    ADD COLUMN `secretStorageState` TEXT NOT NULL DEFAULT 'AVAILABLE'
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    ALTER TABLE `identities`
+                    ADD COLUMN `passphraseStorageState` TEXT NOT NULL DEFAULT 'AVAILABLE'
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    UPDATE `identities`
+                    SET `secretStorageState` = CASE
+                        WHEN `hasSecret` = 1 THEN 'AVAILABLE'
+                        ELSE 'MISSING'
+                    END
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    UPDATE `identities`
+                    SET `passphraseStorageState` = CASE
+                        WHEN `hasPassphrase` = 1 THEN 'AVAILABLE'
+                        ELSE 'MISSING'
+                    END
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -195,7 +230,7 @@ abstract class AtermDatabase : RoomDatabase() {
             context.applicationContext,
             AtermDatabase::class.java,
             "aterm.db",
-        ).addMigrations(MIGRATION_1_2)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 }

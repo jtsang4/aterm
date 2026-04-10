@@ -7,6 +7,7 @@ import io.github.jtsang4.aterm.core.domain.fixtures.sampleSessionMetadata
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSnippet
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
+import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -31,6 +32,16 @@ class FoundationDomainModelTest {
     fun key_based_identity_reports_its_material_type() {
         assertTrue(sampleIdentity().usesKeyMaterial)
         assertFalse(sampleIdentity().copy(kind = IdentityKind.PASSWORD).usesKeyMaterial)
+    }
+
+    @Test
+    fun blocked_secret_state_marks_identity_as_needing_repair() {
+        val blockedIdentity = sampleIdentity().copy(
+            secretStorageState = SecretStorageState.BLOCKED,
+        )
+
+        assertTrue(blockedIdentity.requiresSecretRepair)
+        assertFalse(blockedIdentity.isAuthenticationReady)
     }
 
     @Test(expected = IllegalArgumentException::class)

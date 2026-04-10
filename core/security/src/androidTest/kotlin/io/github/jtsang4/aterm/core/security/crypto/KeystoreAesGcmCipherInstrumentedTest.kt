@@ -59,4 +59,31 @@ class KeystoreAesGcmCipherInstrumentedTest {
             cipher.deleteKey()
         }
     }
+
+    @Test
+    fun deleting_keystore_alias_makes_existing_payload_unrecoverable() {
+        val cipher = KeystoreAesGcmCipher("test.key.${UUID.randomUUID()}")
+        try {
+            val payload = cipher.encrypt(
+                "restart-safe-secret".encodeToByteArray(),
+                associatedData = "identity:9:primary".encodeToByteArray(),
+            )
+
+            cipher.deleteKey()
+
+            var failed = false
+            try {
+                cipher.decrypt(
+                    payload,
+                    associatedData = "identity:9:primary".encodeToByteArray(),
+                )
+            } catch (_: Exception) {
+                failed = true
+            }
+
+            assertTrue(failed)
+        } finally {
+            cipher.deleteKey()
+        }
+    }
 }

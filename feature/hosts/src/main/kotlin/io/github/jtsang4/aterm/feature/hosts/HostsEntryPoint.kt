@@ -69,7 +69,7 @@ fun HostsScreen(
 
         is HostsDestination.Editor -> HostEditorScreen(
             host = currentDestination.host,
-            availableIdentities = identities.filter { it.hasSecret },
+            availableIdentities = identities.filter { it.isAuthenticationReady },
             onCancel = { destination = HostsDestination.Library },
             onSaved = { destination = HostsDestination.Library },
             hostRepository = hostRepository,
@@ -117,7 +117,7 @@ private fun HostsLibraryScreen(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = if (identities.any { it.hasSecret }) {
+                            text = if (identities.any { it.isAuthenticationReady }) {
                                 "Create a host and link one of your reusable saved identities."
                             } else {
                                 "Create an identity first, then come back here to link it from the host authentication section."
@@ -152,6 +152,7 @@ private fun HostRow(
     onEditHost: (Host) -> Unit,
     onRepairHost: (Host) -> Unit,
 ) {
+    val needsRepair = linkedIdentity == null || !linkedIdentity.isAuthenticationReady
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -168,12 +169,12 @@ private fun HostRow(
             Text(text = "${host.address}:${host.port}")
             Text(text = "Username: ${host.username}")
             Text(
-                text = linkedIdentity?.let {
+                text = linkedIdentity?.takeIf { it.isAuthenticationReady }?.let {
                     "${it.kindLabel()}: ${it.name}"
                 } ?: "Identity needs repair",
                 modifier = Modifier.testTag("host_identity_label_${host.id}"),
             )
-            linkedIdentity?.let {
+            linkedIdentity?.takeIf { it.isAuthenticationReady }?.let {
                 Text(
                     text = "Detail: ${it.distinguishingDetail()}",
                     modifier = Modifier.testTag("host_identity_detail_${host.id}"),
@@ -186,7 +187,7 @@ private fun HostRow(
                 ) {
                     Text("Edit")
                 }
-                if (linkedIdentity == null) {
+                if (needsRepair) {
                     TextButton(
                         onClick = { onRepairHost(host) },
                         modifier = Modifier.testTag("host_repair_${host.id}"),

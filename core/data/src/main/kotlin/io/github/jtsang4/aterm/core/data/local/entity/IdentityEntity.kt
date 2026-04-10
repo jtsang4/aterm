@@ -12,6 +12,8 @@ data class IdentityEntity(
     val publicKey: String?,
     val hasSecret: Boolean,
     val hasPassphrase: Boolean,
+    val secretStorageState: String,
+    val passphraseStorageState: String,
     val primaryCipherText: ByteArray?,
     val primaryIv: ByteArray?,
     val passphraseCipherText: ByteArray?,

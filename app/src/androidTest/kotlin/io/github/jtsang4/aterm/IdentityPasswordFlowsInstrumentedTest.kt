@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
@@ -31,6 +32,8 @@ import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
+import io.github.jtsang4.aterm.core.domain.model.SecretMaterialUnavailableException
+import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import java.io.ByteArrayOutputStream
@@ -142,6 +145,11 @@ class IdentityPasswordFlowsInstrumentedTest {
             appContainer = relaunchedContainer
         }
 
+        val relaunchedSecret = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(1)
+        }
+        assertEquals("local-only-secret", relaunchedSecret?.primarySecret)
+
         composeRule.onNodeWithTag("nav_hosts").performClick()
         composeRule.onNodeWithTag("host_create_action").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -194,8 +202,15 @@ class IdentityPasswordFlowsInstrumentedTest {
         val relaunchedIdentity = runBlocking {
             relaunchedContainer.foundationGraph.identityRepository.observeIdentities().first().first { it.kind == IdentityKind.IMPORTED_KEY }
         }
+        val relaunchedSecrets = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(importedIdentity.id)
+        }
         assertEquals(importedIdentity.id, relaunchedIdentity.id)
         assertEquals(true, relaunchedIdentity.hasSecret)
+        assertEquals(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nui-test-placeholder\n-----END OPENSSH PRIVATE KEY-----",
+            relaunchedSecrets?.primarySecret,
+        )
     }
 
     @Test
@@ -485,14 +500,88 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_identity_option_2").assertIsDisplayed()
         composeRule.onNodeWithText("Reusable generated key identity").assertIsDisplayed()
     }
+
+    @Test
+    fun blocked_password_identity_surfaces_recovery_and_repair_flow() {
+        val identity = Identity(
+            id = 5,
+            name = "Restart-safe password",
+            kind = IdentityKind.PASSWORD,
+            hasSecret = true,
+            secretStorageState = SecretStorageState.BLOCKED,
+        )
+        val repository = FakeIdentityRepository(
+            initialIdentities = listOf(identity),
+            secretFailureIds = setOf(5L),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(identityRepository = repository)
+        }
+
+        composeRule.onNodeWithTag("identity_repair_hint_5").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_edit_5").performClick()
+        composeRule.onNodeWithTag("identity_editor_save").performClick()
+        composeRule.onNodeWithText("Re-enter the password to repair this identity.").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("identity_password_field").performTextInput("repaired-secret")
+        composeRule.onNodeWithTag("identity_editor_save").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().secretStorageState == SecretStorageState.AVAILABLE
+        }
+
+        val repaired = repository.currentIdentities().first()
+        assertEquals(SecretStorageState.AVAILABLE, repaired.secretStorageState)
+        assertEquals("repaired-secret", runBlocking { repository.getSecretMaterial(5) }?.primarySecret)
+    }
+
+    @Test
+    fun blocked_identity_is_excluded_from_host_selection_and_shows_repair_cta() {
+        val blockedIdentity = Identity(
+            id = 9,
+            name = "Broken password",
+            kind = IdentityKind.PASSWORD,
+            hasSecret = true,
+            secretStorageState = SecretStorageState.BLOCKED,
+        )
+        val host = Host(
+            id = 1,
+            label = "Prod",
+            address = "10.0.2.2",
+            port = 22,
+            username = "root",
+            identityId = 9,
+        )
+        val identityRepository = FakeIdentityRepository(
+            initialIdentities = listOf(blockedIdentity),
+            secretFailureIds = setOf(9L),
+        )
+        val hostRepository = FakeHostRepository(initialHosts = listOf(host))
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+            )
+        }
+
+        composeRule.onNodeWithTag("host_identity_label_1").assertTextContains("Identity needs repair")
+        composeRule.onNodeWithTag("host_repair_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_repair_1").performClick()
+        composeRule.onNodeWithTag("host_no_password_identities").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("host_identity_option_9").assertCountEquals(0)
+    }
 }
 
 private class FakeIdentityRepository(
     initialIdentities: List<Identity> = emptyList(),
     initialSecrets: Map<Long, IdentitySecretMaterial> = emptyMap(),
+    secretFailureIds: Set<Long> = emptySet(),
 ) : IdentityRepository {
     private val identities = MutableStateFlow(initialIdentities)
     private val secrets = linkedMapOf<Long, IdentitySecretMaterial>().apply { putAll(initialSecrets) }
+    private val blockedSecrets = secretFailureIds.toMutableSet()
     private var nextId = ((initialIdentities.maxOfOrNull(Identity::id) ?: 0L) + 1L)
 
     override fun observeIdentities(): Flow<List<Identity>> = identities
@@ -506,8 +595,23 @@ private class FakeIdentityRepository(
             id = persistedId,
             hasSecret = identity.hasSecret || existing?.hasSecret == true || secrets?.primarySecret != null,
             hasPassphrase = identity.hasPassphrase || existing?.hasPassphrase == true || secrets?.passphrase != null,
+            secretStorageState = when {
+                secrets?.primarySecret != null -> SecretStorageState.AVAILABLE
+                identity.hasSecret -> identity.secretStorageState
+                existing != null -> existing.secretStorageState
+                else -> SecretStorageState.MISSING
+            },
+            passphraseStorageState = when {
+                secrets?.passphrase != null -> SecretStorageState.AVAILABLE
+                identity.hasPassphrase -> identity.passphraseStorageState
+                existing != null -> existing.passphraseStorageState
+                else -> SecretStorageState.MISSING
+            },
             updatedAt = Instant.now(),
         )
+        if (secrets?.primarySecret != null || secrets?.passphrase != null) {
+            blockedSecrets.remove(persistedId)
+        }
         this.secrets[persistedId] = secrets ?: this.secrets[persistedId] ?: IdentitySecretMaterial()
         identities.value = identities.value
             .filterNot { it.id == persistedId }
@@ -516,7 +620,19 @@ private class FakeIdentityRepository(
         return persisted
     }
 
-    override suspend fun getSecretMaterial(id: Long): IdentitySecretMaterial? = secrets[id]
+    override suspend fun getSecretMaterial(id: Long): IdentitySecretMaterial? {
+        if (blockedSecrets.contains(id)) {
+            identities.value = identities.value.map { identity ->
+                if (identity.id == id) {
+                    identity.copy(secretStorageState = SecretStorageState.BLOCKED)
+                } else {
+                    identity
+                }
+            }
+            throw SecretMaterialUnavailableException()
+        }
+        return secrets[id]
+    }
 
     override suspend fun deleteIdentity(id: Long) {
         identities.value = identities.value.filterNot { it.id == id }

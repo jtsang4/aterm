@@ -35,6 +35,8 @@ import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
+import io.github.jtsang4.aterm.core.domain.model.SecretMaterialUnavailableException
+import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.distinguishingDetail
 import io.github.jtsang4.aterm.core.domain.model.kindLabel
 import io.github.jtsang4.aterm.core.domain.model.passphraseStatusLabel
@@ -233,6 +235,13 @@ private fun IdentityRow(
             Text(
                 text = identity.secretStatusLabel(),
             )
+            if (identity.requiresSecretRepair) {
+                Text(
+                    text = "Repair needed: Keystore access changed or the saved secret was invalidated. Re-enter the secret to continue.",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("identity_repair_hint_${identity.id}"),
+                )
+            }
             if (identity.kind != IdentityKind.PASSWORD) {
                 Text(
                     text = identity.passphraseStatusLabel(),
@@ -276,6 +285,7 @@ private fun PasswordIdentityEditorScreen(
     onSaved: () -> Unit,
 ) {
     val isEditing = identity != null
+    val requiresRepair = identity?.requiresSecretRepair == true
     val coroutineScope = rememberCoroutineScope()
     var name by remember(identity?.id) { mutableStateOf(identity?.name.orEmpty()) }
     var password by remember(identity?.id) { mutableStateOf("") }
@@ -287,7 +297,11 @@ private fun PasswordIdentityEditorScreen(
     AppScreenScaffold(
         title = if (isEditing) "Edit password identity" else "Create password identity",
         supportingText = if (isEditing) {
-            "Update the identity name and optionally replace the stored password. Leaving the password blank keeps the current secret."
+            if (requiresRepair) {
+                "The stored password is unavailable. Re-enter it to repair this identity."
+            } else {
+                "Update the identity name and optionally replace the stored password. Leaving the password blank keeps the current secret."
+            }
         } else {
             "Password identities keep the secret masked by default and reusable from host authentication flows."
         },
@@ -367,10 +381,14 @@ private fun PasswordIdentityEditorScreen(
                 Button(
                     onClick = {
                         val trimmedName = name.trim()
-                        val requiresPassword = identity?.hasSecret != true
+                        val requiresPassword = identity?.hasAccessibleSecret != true
                         nameError = if (trimmedName.isBlank()) "Identity name is required." else null
                         passwordError = if (password.isBlank() && requiresPassword) {
-                            "Password is required."
+                            if (requiresRepair) {
+                                "Re-enter the password to repair this identity."
+                            } else {
+                                "Password is required."
+                            }
                         } else {
                             null
                         }
@@ -389,6 +407,12 @@ private fun PasswordIdentityEditorScreen(
                                         publicKey = null,
                                         hasSecret = identity?.hasSecret == true || password.isNotBlank(),
                                         hasPassphrase = false,
+                                        secretStorageState = when {
+                                            password.isNotBlank() -> SecretStorageState.AVAILABLE
+                                            identity != null -> identity.secretStorageState
+                                            else -> SecretStorageState.MISSING
+                                        },
+                                        passphraseStorageState = SecretStorageState.MISSING,
                                         createdAt = identity?.createdAt ?: Instant.now(),
                                         updatedAt = Instant.now(),
                                     ),
@@ -399,7 +423,11 @@ private fun PasswordIdentityEditorScreen(
                             }.onSuccess {
                                 onSaved()
                             }.onFailure { throwable ->
-                                saveError = throwable.message ?: "Unable to save the identity."
+                                saveError = when (throwable) {
+                                    is SecretMaterialUnavailableException ->
+                                        "Stored password is unavailable. Re-enter it to repair this identity."
+                                    else -> throwable.message ?: "Unable to save the identity."
+                                }
                             }
                         }
                     },
@@ -423,6 +451,7 @@ private fun KeyIdentityEditorScreen(
     onSaved: () -> Unit,
 ) {
     val isEditing = identity != null
+    val requiresRepair = identity?.requiresSecretRepair == true
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     var mode by remember(identity?.id) {
@@ -432,7 +461,7 @@ private fun KeyIdentityEditorScreen(
     var privateKeyMaterial by remember(identity?.id) { mutableStateOf("") }
     var publicKey by remember(identity?.id) { mutableStateOf(identity?.publicKey.orEmpty()) }
     var passphrase by remember(identity?.id) { mutableStateOf("") }
-    var replacePrivateKey by remember(identity?.id) { mutableStateOf(identity == null) }
+    var replacePrivateKey by remember(identity?.id) { mutableStateOf(identity == null || requiresRepair) }
     var passphraseRequested by remember(identity?.id) { mutableStateOf(false) }
     var showPassphrase by remember(identity?.id) { mutableStateOf(false) }
     var nameError by remember(identity?.id) { mutableStateOf<String?>(null) }
@@ -449,6 +478,7 @@ private fun KeyIdentityEditorScreen(
             else -> "Import key identity"
         },
         supportingText = when {
+            isEditing && requiresRepair -> "The saved private key or passphrase is unavailable. Replace the blocked secret material to repair this identity."
             isEditing -> "Update the identity name, keep the existing private key, or replace it with new imported or generated key material. Later authentication uses the latest saved secret."
             mode == KeyEditorMode.Generate -> "Generate a reusable key pair, then copy or review the public key so you can install it on a server."
             else -> "Import supported OpenSSH or PEM private keys. Encrypted keys prompt for a passphrase and keep your draft intact if the first attempt fails."
@@ -525,6 +555,7 @@ private fun KeyIdentityEditorScreen(
                             saveError = null
                         },
                         modifier = Modifier.testTag("identity_keep_existing_secret"),
+                        enabled = !requiresRepair,
                     ) {
                         Text("Keep existing secret")
                     }
@@ -747,6 +778,18 @@ private fun KeyIdentityEditorScreen(
                                                 publicKey = parsed.publicKey,
                                                 hasSecret = existing?.hasSecret == true || requiresKeyEditor,
                                                 hasPassphrase = if (requiresKeyEditor) parsed.hasPassphrase else existing?.hasPassphrase == true,
+                                                secretStorageState = when {
+                                                    requiresKeyEditor -> SecretStorageState.AVAILABLE
+                                                    existing != null -> existing.secretStorageState
+                                                    else -> SecretStorageState.MISSING
+                                                },
+                                                passphraseStorageState = when {
+                                                    !parsed.hasPassphrase && !requiresKeyEditor ->
+                                                        existing?.passphraseStorageState ?: SecretStorageState.MISSING
+                                                    parsed.hasPassphrase && passphrase.isNotBlank() -> SecretStorageState.AVAILABLE
+                                                    parsed.hasPassphrase -> SecretStorageState.BLOCKED
+                                                    else -> SecretStorageState.MISSING
+                                                },
                                                 createdAt = existing?.createdAt ?: Instant.now(),
                                                 updatedAt = Instant.now(),
                                             ),
@@ -762,7 +805,11 @@ private fun KeyIdentityEditorScreen(
                                     }.onSuccess {
                                         onSaved()
                                     }.onFailure { throwable ->
-                                        saveError = throwable.message ?: "Unable to save the key identity."
+                                        saveError = when (throwable) {
+                                            is SecretMaterialUnavailableException ->
+                                                "Stored secret material is unavailable. Replace it to repair this identity."
+                                            else -> throwable.message ?: "Unable to save the key identity."
+                                        }
                                     }
                                 }
                             }

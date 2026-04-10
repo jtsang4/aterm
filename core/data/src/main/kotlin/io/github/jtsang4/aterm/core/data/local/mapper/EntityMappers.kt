@@ -9,6 +9,7 @@ import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
+import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.domain.model.Snippet
@@ -48,6 +49,8 @@ internal fun IdentityEntity.toDomain(): Identity = Identity(
     publicKey = publicKey,
     hasSecret = hasSecret,
     hasPassphrase = hasPassphrase,
+    secretStorageState = SecretStorageState.valueOf(secretStorageState),
+    passphraseStorageState = SecretStorageState.valueOf(passphraseStorageState),
     createdAt = createdAtEpochMillis.toInstant(),
     updatedAt = updatedAtEpochMillis.toInstant(),
 )
@@ -65,6 +68,8 @@ internal fun Identity.toEntity(
     publicKey = publicKey,
     hasSecret = hasSecret,
     hasPassphrase = hasPassphrase,
+    secretStorageState = secretStorageState.name,
+    passphraseStorageState = passphraseStorageState.name,
     primaryCipherText = primaryCipherText,
     primaryIv = primaryIv,
     passphraseCipherText = passphraseCipherText,

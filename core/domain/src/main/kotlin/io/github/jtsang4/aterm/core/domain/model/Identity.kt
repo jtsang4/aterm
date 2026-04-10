@@ -8,6 +8,12 @@ enum class IdentityKind {
     GENERATED_KEY,
 }
 
+enum class SecretStorageState {
+    MISSING,
+    AVAILABLE,
+    BLOCKED,
+}
+
 data class Identity(
     val id: Long = 0,
     val name: String,
@@ -16,6 +22,16 @@ data class Identity(
     val publicKey: String? = null,
     val hasSecret: Boolean = false,
     val hasPassphrase: Boolean = false,
+    val secretStorageState: SecretStorageState = if (hasSecret) {
+        SecretStorageState.AVAILABLE
+    } else {
+        SecretStorageState.MISSING
+    },
+    val passphraseStorageState: SecretStorageState = if (hasPassphrase) {
+        SecretStorageState.AVAILABLE
+    } else {
+        SecretStorageState.MISSING
+    },
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = createdAt,
 ) {
@@ -27,6 +43,12 @@ data class Identity(
     }
 
     val usesKeyMaterial: Boolean = kind != IdentityKind.PASSWORD
+    val hasAccessibleSecret: Boolean = secretStorageState == SecretStorageState.AVAILABLE
+    val requiresSecretRepair: Boolean =
+        secretStorageState == SecretStorageState.BLOCKED ||
+            passphraseStorageState == SecretStorageState.BLOCKED
+    val isAuthenticationReady: Boolean =
+        hasAccessibleSecret && passphraseStorageState != SecretStorageState.BLOCKED
 }
 
 data class IdentitySecretMaterial(
@@ -35,3 +57,8 @@ data class IdentitySecretMaterial(
 ) {
     val isEmpty: Boolean = primarySecret.isNullOrEmpty() && passphrase.isNullOrEmpty()
 }
+
+class SecretMaterialUnavailableException(
+    message: String = "Stored secret material is unavailable. Repair the identity to continue.",
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
