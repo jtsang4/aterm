@@ -1,7 +1,7 @@
 {
   "milestone": "hosts-identities",
-  "round": 3,
-  "status": "pass",
+  "round": 2,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -25,14 +25,29 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "failed": 1,
+    "failedFeatures": [
+      "host-editor-repair-state-safety"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "host-editor-repair-state-safety",
+      "severity": "blocking",
+      "description": "`MIGRATION_3_4` backfills `hosts.authKind` from the currently linked identity kind and otherwise defaults to `PASSWORD`, so hosts whose key identity had already been deleted before upgrade still reopen repair in password mode. This means the rerun fix does not fully resolve the prior auth-family preservation failure for already-orphaned key-auth hosts."
+    }
+  ],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "mission metadata",
+      "suggestion": "Update the `imported-key-passphrase-state-truthfulness` verification step to reference the real imported-key instrumentation coverage class.",
+      "evidence": "`features.json` still references `io.github.jtsang4.aterm.IdentityImportFlowsInstrumentedTest`, but the repo only defines imported-key UI coverage in `io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest`.",
+      "isSystemic": false
+    }
+  ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/hosts-identities/scrutiny/synthesis.round2.json"
+  "previousRound": ".factory/validation/hosts-identities/scrutiny/synthesis.round1.json"
 }

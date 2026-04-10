@@ -1,22 +1,15 @@
 {
   "featureId": "host-editor-repair-state-safety",
-  "reviewedAt": "2026-04-10T13:25:36.724541Z",
-  "commitId": "c0a39a4dcf900f956c4fec0051bf08afb7dd79cf",
+  "reviewedAt": "2026-04-10T14:24:49.225743Z",
+  "commitId": "e686cbebeb1dc246e63e3527e5f97e45e60aa9e7",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
-  "status": "fail",
+  "status": "pass",
   "codeReview": {
-    "summary": "The fix correctly preserves unsaved editor drafts across delete-cancel and stops newly opened repair flows from auto-selecting replacement identities, but it still fails to preserve auth-family intent for already-broken hosts during database migration.",
-    "issues": [
-      {
-        "file": "core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/local/AtermDatabase.kt",
-        "line": 49,
-        "severity": "blocking",
-        "description": "`MIGRATION_3_4` backfills `hosts.authKind` only from the currently linked identity kind and otherwise falls back to `PASSWORD`. Any key-auth host whose `identityId` was already nulled by the old delete flow before upgrade is therefore migrated as password-auth, so reopening repair after this fix still drifts into the wrong credential family for exactly the previously broken records this rerun is meant to recover. `core/data/src/androidTest/kotlin/io/github/jtsang4/aterm/core/data/FoundationRepositoriesInstrumentedTest.kt:505-514` even codifies that orphaned hosts migrate to `PASSWORD`, confirming the prior key-repair failure remains unresolved for existing data."
-      }
-    ]
+    "summary": "The rerun resolves the prior migration/auth-family failure. `MIGRATION_3_4` no longer defaults already-orphaned hosts to password repair, the domain model can represent unresolved legacy auth family as `UNKNOWN`, and the host editor now blocks relink/save until the user explicitly chooses a credential family for those migrated orphaned hosts.",
+    "issues": []
   },
   "sharedStateObservations": [],
-  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/hosts-identities/scrutiny/reviews/identity-key-generation-and-repair-flows.json",
-  "summary": "Fail. I reviewed the mission docs, prior failed reviews, worker transcript skeleton, handoff, and commit `c0a39a4dcf900f956c4fec0051bf08afb7dd79cf`. The new code fixes draft preservation and explicit replacement selection for fresh repair flows, but the migration still converts already-orphaned hosts to password auth, so the original auth-family repair failure is not fully resolved for existing affected users."
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/hosts-identities/scrutiny/reviews/host-editor-repair-state-safety.json",
+  "summary": "Pass. I reviewed the mission guidance, prior failing review, latest worker handoff/transcript skeleton, and commit `e686cbebeb1dc246e63e3527e5f97e45e60aa9e7`. The new migration changes `hosts.authKind` to `UNKNOWN` for already-orphaned records instead of forcing `PASSWORD` (`core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/local/AtermDatabase.kt:44-64`), regression coverage now asserts that behavior (`core/data/src/androidTest/kotlin/io/github/jtsang4/aterm/core/data/FoundationRepositoriesInstrumentedTest.kt:501-519`), and repair UI leaves those hosts unresolved until the user explicitly picks an auth family (`feature/hosts/src/main/kotlin/io/github/jtsang4/aterm/feature/hosts/HostEditorModels.kt:19-59`, `feature/hosts/src/main/kotlin/io/github/jtsang4/aterm/feature/hosts/HostsEntryPoint.kt:536-652`). That directly addresses the previous failure where legacy orphaned key-auth hosts silently reopened in password repair mode."
 }
