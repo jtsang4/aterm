@@ -31,6 +31,14 @@ class FoundationDomainModelTest {
     }
 
     @Test
+    fun host_can_preserve_unresolved_auth_family_during_legacy_repair() {
+        val host = sampleHost().copy(identityId = null, authKind = HostAuthKind.UNKNOWN)
+
+        assertFalse(host.hasLinkedIdentity)
+        assertEquals(HostAuthKind.UNKNOWN, host.authKind)
+    }
+
+    @Test
     fun key_based_identity_reports_its_material_type() {
         assertTrue(sampleIdentity().usesKeyMaterial)
         assertFalse(sampleIdentity().copy(kind = IdentityKind.PASSWORD).usesKeyMaterial)

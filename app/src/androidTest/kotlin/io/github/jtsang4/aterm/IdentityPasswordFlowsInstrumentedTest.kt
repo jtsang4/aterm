@@ -711,6 +711,59 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_identity_label_1")
             .assertTextContains("Secondary key", substring = true)
     }
+
+    @Test
+    fun legacy_orphaned_host_requires_explicit_auth_family_before_repairing() {
+        val replacementPassword = Identity(
+            id = 2,
+            name = "Fallback password",
+            kind = IdentityKind.PASSWORD,
+            hasSecret = true,
+        )
+        val replacementKey = Identity(
+            id = 3,
+            name = "Secondary key",
+            kind = IdentityKind.GENERATED_KEY,
+            publicKey = "ssh-rsa AAAASecondaryKey delete@test",
+            hasSecret = true,
+        )
+        val identityRepository = FakeIdentityRepository(
+            initialIdentities = listOf(replacementPassword, replacementKey),
+            initialSecrets = mapOf(
+                2L to IdentitySecretMaterial(primarySecret = "fallback-password"),
+                3L to IdentitySecretMaterial(primarySecret = "replacement-key"),
+            ),
+        )
+        val hostRepository = FakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Legacy orphan",
+                    address = "10.0.2.2",
+                    port = 22,
+                    username = "root",
+                    identityId = null,
+                    authKind = HostAuthKind.UNKNOWN,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+            )
+        }
+
+        composeRule.onNodeWithTag("host_repair_1").performClick()
+        composeRule.onNodeWithTag("host_auth_mode_required").assertExists()
+        composeRule.onNodeWithTag("host_identity_waiting_for_auth_mode").assertExists()
+        composeRule.onAllNodesWithTag("host_identity_option_2").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("host_identity_option_3").assertCountEquals(0)
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_auth_mode_error")
+            .assertTextContains("Choose whether this host repairs", substring = true)
+    }
 }
 
 private class FakeIdentityRepository(

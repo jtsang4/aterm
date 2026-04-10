@@ -41,20 +41,27 @@ abstract class AtermDatabase : RoomDatabase() {
                 db.execSQL(
                     """
                     ALTER TABLE `hosts`
-                    ADD COLUMN `authKind` TEXT NOT NULL DEFAULT 'PASSWORD'
+                    ADD COLUMN `authKind` TEXT NOT NULL DEFAULT 'UNKNOWN'
                     """.trimIndent(),
                 )
                 db.execSQL(
                     """
                     UPDATE `hosts`
                     SET `authKind` = CASE
+                        WHEN `identityId` IS NULL THEN 'UNKNOWN'
                         WHEN `identityId` IS NOT NULL AND EXISTS(
                             SELECT 1
                             FROM `identities`
                             WHERE `identities`.`id` = `hosts`.`identityId`
                                 AND `identities`.`kind` != 'PASSWORD'
                         ) THEN 'KEY'
-                        ELSE 'PASSWORD'
+                        WHEN `identityId` IS NOT NULL AND EXISTS(
+                            SELECT 1
+                            FROM `identities`
+                            WHERE `identities`.`id` = `hosts`.`identityId`
+                                AND `identities`.`kind` = 'PASSWORD'
+                        ) THEN 'PASSWORD'
+                        ELSE 'UNKNOWN'
                     END
                     """.trimIndent(),
                 )

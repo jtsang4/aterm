@@ -16,7 +16,7 @@ internal data class HostEditorDraft(
     val address: String = "",
     val portText: String = "22",
     val username: String = "",
-    val authMode: HostAuthMode = HostAuthMode.PASSWORD,
+    val authMode: HostAuthMode? = HostAuthMode.PASSWORD,
     val selectedIdentityId: Long? = null,
 ) {
     val isEditing: Boolean = hostId != 0L
@@ -31,6 +31,7 @@ internal data class HostEditorDraft(
             val defaultMode = when {
                 host?.authKind == HostAuthKind.KEY -> HostAuthMode.KEY
                 host?.authKind == HostAuthKind.PASSWORD -> HostAuthMode.PASSWORD
+                host?.authKind == HostAuthKind.UNKNOWN -> null
                 linkedIdentity?.kind == IdentityKind.PASSWORD -> HostAuthMode.PASSWORD
                 linkedIdentity != null -> HostAuthMode.KEY
                 authenticationReadyIdentities.none { it.kind == IdentityKind.PASSWORD } &&
@@ -38,12 +39,14 @@ internal data class HostEditorDraft(
                 else -> HostAuthMode.PASSWORD
             }
             val selectedIdentityId = if (host == null) {
-                authenticationReadyIdentities.firstCompatibleIdOrNull(defaultMode)
+                defaultMode?.let { authenticationReadyIdentities.firstCompatibleIdOrNull(it) }
             } else {
                 host.identityId?.takeIf { existingId ->
+                    defaultMode?.let { mode ->
                     authenticationReadyIdentities
-                        .filter { it.isCompatibleWith(defaultMode) }
+                        .filter { it.isCompatibleWith(mode) }
                         .any { it.id == existingId }
+                    } == true
                 }
             }
 

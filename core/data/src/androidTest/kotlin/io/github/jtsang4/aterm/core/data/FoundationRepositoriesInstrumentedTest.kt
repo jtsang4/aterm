@@ -511,7 +511,7 @@ class FoundationRepositoriesInstrumentedTest {
         assertEquals(0, orphanedSessionCount)
         assertNull(orphanedSnippetHostId)
         assertEquals("KEY", linkedHostAuthKind)
-        assertEquals("PASSWORD", orphanedHostAuthKind)
+        assertEquals("UNKNOWN", orphanedHostAuthKind)
 
         opened.close()
         context.deleteDatabase(dbName)

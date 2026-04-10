@@ -9,6 +9,7 @@ import io.github.jtsang4.aterm.core.data.repository.RoomHostRepository
 import io.github.jtsang4.aterm.core.data.repository.RoomIdentityRepository
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleHost
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleIdentity
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.security.crypto.KeystoreAesGcmCipher
 import java.util.UUID
@@ -102,5 +103,6 @@ class HostRepositoryInstrumentedTest {
         assertEquals(secondIdentity.id, persistedSecondHost?.identityId)
         assertEquals("Primary host", persistedFirstHost?.label)
         assertEquals("Secondary host", persistedSecondHost?.label)
+        assertEquals(HostAuthKind.KEY, persistedFirstHost?.authKind)
     }
 }

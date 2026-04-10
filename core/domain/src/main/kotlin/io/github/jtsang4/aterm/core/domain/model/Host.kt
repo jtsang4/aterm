@@ -3,6 +3,7 @@ package io.github.jtsang4.aterm.core.domain.model
 import java.time.Instant
 
 enum class HostAuthKind {
+    UNKNOWN,
     PASSWORD,
     KEY,
 }

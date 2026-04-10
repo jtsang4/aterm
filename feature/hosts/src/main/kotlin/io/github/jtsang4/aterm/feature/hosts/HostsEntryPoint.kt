@@ -327,6 +327,7 @@ private fun HostEditorScreen(
     var username by remember(initialDraft) { mutableStateOf(initialDraft.username) }
     var authMode by remember(initialDraft) { mutableStateOf(initialDraft.authMode) }
     var selectedIdentityId by remember(initialDraft) { mutableStateOf(initialDraft.selectedIdentityId) }
+    var authModeError by remember(initialDraft) { mutableStateOf<String?>(null) }
     var labelError by remember(initialDraft) { mutableStateOf<String?>(null) }
     var addressError by remember(initialDraft) { mutableStateOf<String?>(null) }
     var portError by remember(initialDraft) { mutableStateOf<String?>(null) }
@@ -335,7 +336,7 @@ private fun HostEditorScreen(
     var saveError by remember(initialDraft) { mutableStateOf<String?>(null) }
 
     val authenticationReadyIdentities = identities.filter(Identity::isAuthenticationReady)
-    val compatibleIdentities = authenticationReadyIdentities.compatibleWith(authMode)
+    val compatibleIdentities = authMode?.let { authenticationReadyIdentities.compatibleWith(it) }.orEmpty()
     val hasSelectedCompatibleIdentity = compatibleIdentities.any { it.id == selectedIdentityId }
 
     AppScreenScaffold(
@@ -436,6 +437,7 @@ private fun HostEditorScreen(
             }
             HostAuthModeSection(
                 authMode = authMode,
+                error = authModeError,
                 onAuthModeSelected = { newMode ->
                     authMode = newMode
                     selectedIdentityId = selectedIdentityId?.takeIf { existingId ->
@@ -443,6 +445,7 @@ private fun HostEditorScreen(
                             .filter { it.isCompatibleWith(newMode) }
                             .any { it.id == existingId }
                     }
+                    authModeError = null
                     identityError = null
                     saveError = null
                 },
@@ -516,6 +519,7 @@ private fun HostEditorScreen(
                         val trimmedAddress = address.trim()
                         val trimmedUsername = username.trim()
                         val parsedPort = portText.toIntOrNull()
+                        val currentAuthMode = authMode
                         val persistedIdentityId = selectedIdentityId.takeIf {
                             compatibleIdentities.any { identity -> identity.id == it }
                         }
@@ -528,12 +532,18 @@ private fun HostEditorScreen(
                             null
                         }
                         usernameError = if (trimmedUsername.isBlank()) "Username is required." else null
-                        identityError = if (persistedIdentityId == null) {
-                            "Select a reusable ${authMode.identityRequirementLabel()} before saving."
+                        authModeError = if (currentAuthMode == null) {
+                            "Choose whether this host repairs with a password identity or SSH key before saving."
+                        } else {
+                            null
+                        }
+                        identityError = if (currentAuthMode != null && persistedIdentityId == null) {
+                            "Select a reusable ${currentAuthMode.identityRequirementLabel()} before saving."
                         } else {
                             null
                         }
                         if (
+                            authModeError != null ||
                             labelError != null ||
                             addressError != null ||
                             portError != null ||
@@ -553,7 +563,7 @@ private fun HostEditorScreen(
                                         port = requireNotNull(parsedPort),
                                         username = trimmedUsername,
                                         identityId = persistedIdentityId,
-                                        authKind = authMode.toDomain(),
+                                        authKind = requireNotNull(currentAuthMode).toDomain(),
                                         isFavorite = existingHost?.isFavorite ?: false,
                                         lastUsedAt = existingHost?.lastUsedAt,
                                         createdAt = existingHost?.createdAt ?: Instant.now(),
@@ -578,7 +588,8 @@ private fun HostEditorScreen(
 
 @Composable
 private fun HostAuthModeSection(
-    authMode: HostAuthMode,
+    authMode: HostAuthMode?,
+    error: String?,
     onAuthModeSelected: (HostAuthMode) -> Unit,
 ) {
     Column(
@@ -598,12 +609,25 @@ private fun HostAuthModeSection(
                 )
             }
         }
+        if (authMode == null) {
+            Text(
+                text = "This repaired host no longer has enough saved context to know whether it used a password identity or SSH key. Choose the credential family before relinking it.",
+                modifier = Modifier.testTag("host_auth_mode_required"),
+            )
+        }
+        error?.let { message ->
+            Text(
+                text = message,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("host_auth_mode_error"),
+            )
+        }
     }
 }
 
 @Composable
 private fun HostIdentitySelectionSection(
-    authMode: HostAuthMode,
+    authMode: HostAuthMode?,
     compatibleIdentities: List<Identity>,
     selectedIdentityId: Long?,
     error: String?,
@@ -618,7 +642,18 @@ private fun HostIdentitySelectionSection(
             text = "Authentication identity",
             style = MaterialTheme.typography.titleMedium,
         )
-        if (compatibleIdentities.isEmpty()) {
+        if (authMode == null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("host_identity_waiting_for_auth_mode"),
+            ) {
+                Text(
+                    text = "Choose whether this host should use a password identity or SSH key first, then pick or recover a compatible replacement identity.",
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        } else if (compatibleIdentities.isEmpty()) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
