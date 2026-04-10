@@ -22,10 +22,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.github.jtsang4.aterm.di.AppContainer
-import io.github.jtsang4.aterm.feature.hosts.HostsScreen
-import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
-import io.github.jtsang4.aterm.feature.identities.GeneratedKeyMaterial
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
@@ -34,6 +30,8 @@ import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
+import io.github.jtsang4.aterm.di.AppContainer
+import io.github.jtsang4.aterm.feature.hosts.HostsScreen
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
@@ -127,7 +125,9 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onAllNodesWithTag("host_row_${seededHost.id}").assertCountEquals(1)
         composeRule.onNodeWithTag("host_selection_detail_${seededHost.id}")
             .assertTextContains("root@10.0.2.2:22", substring = true)
-        val relaunchedHost = runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(seededHost.id) }
+        val relaunchedHost = runBlocking {
+            relaunchedContainer.foundationGraph.hostRepository.getHost(seededHost.id)
+        }
         assertEquals("Prod host", relaunchedHost?.label)
         assertEquals("10.0.2.2", relaunchedHost?.address)
         assertEquals("root", relaunchedHost?.username)
@@ -135,20 +135,22 @@ class HostLibraryFlowsInstrumentedTest {
     }
 
     @Test
-    fun key_host_shows_only_key_compatible_identities_in_key_mode() {
-        val keyIdentity = readyIdentity(
-            id = 2,
-            name = "Deploy key",
-            kind = IdentityKind.IMPORTED_KEY,
-            publicKey = "ssh-rsa AAAAValidKey key@test",
-        )
-        val identityRepository = HostTestFakeIdentityRepository(
-            initialIdentities = listOf(keyIdentity),
-            initialSecrets = mapOf(
-                2L to IdentitySecretMaterial(primarySecret = "key-material"),
-            ),
-        )
-        val hostRepository = HostTestFakeHostRepository()
+    fun key_auth_host_can_be_saved_and_reopened_after_relaunch() {
+        val firstContainer = AppContainer.create(context)
+        val seededIdentity: Identity
+        var hostRepository: HostRepository by mutableStateOf(firstContainer.foundationGraph.hostRepository)
+        var identityRepository: IdentityRepository by mutableStateOf(firstContainer.foundationGraph.identityRepository)
+        runBlocking {
+            seededIdentity = firstContainer.foundationGraph.identityRepository.upsert(
+                identity = readyIdentity(
+                    id = 0,
+                    name = "Deploy key",
+                    kind = IdentityKind.GENERATED_KEY,
+                    publicKey = "ssh-rsa AAAAValidKey key@test",
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = "generated-key-material"),
+            )
+        }
 
         composeRule.setContent {
             HostsScreen(
@@ -159,15 +161,205 @@ class HostLibraryFlowsInstrumentedTest {
 
         composeRule.onNodeWithTag("host_create_action").performClick()
         composeRule.onNodeWithTag("host_label_field").performTextInput("Key host")
-        composeRule.onNodeWithTag("host_address_field").performTextInput("server.example")
+        composeRule.onNodeWithTag("host_address_field").performTextInput("10.0.2.2")
         composeRule.onNodeWithTag("host_username_field").performTextInput("ubuntu")
-        composeRule.onAllNodesWithTag("host_identity_option_2").assertCountEquals(1)
-        composeRule.onAllNodesWithTag("host_identity_option_1").assertCountEquals(0)
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("host_auth_mode_key").performClick()
+        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performClick()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) } != null
+        }
+
+        val savedHost = runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) }
+        assertEquals(HostAuthKind.KEY, savedHost?.authKind)
+        assertEquals(seededIdentity.id, savedHost?.identityId)
+        composeRule.onNodeWithTag("host_row_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_identity_label_1")
+            .assertTextContains("Generated key identity: Deploy key")
+
+        composeRule.onNodeWithTag("host_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_label_field").assertTextContains("Key host")
+        composeRule.onNodeWithTag("host_address_field").assertTextContains("10.0.2.2")
+        composeRule.onNodeWithTag("host_username_field").assertTextContains("ubuntu")
+        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Deploy key").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
+
+        val relaunchedContainer = AppContainer.create(context)
+        composeRule.runOnIdle {
+            hostRepository = relaunchedContainer.foundationGraph.hostRepository
+            identityRepository = relaunchedContainer.foundationGraph.identityRepository
+        }
+
+        composeRule.onNodeWithTag("host_row_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_identity_label_1")
+            .assertTextContains("Generated key identity: Deploy key")
+        composeRule.onNodeWithTag("host_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_label_field").assertTextContains("Key host")
+        composeRule.onNodeWithTag("host_address_field").assertTextContains("10.0.2.2")
+        composeRule.onNodeWithTag("host_username_field").assertTextContains("ubuntu")
+        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performScrollTo().assertIsDisplayed()
+
+        val relaunchedHost = runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(1) }
+        assertEquals(HostAuthKind.KEY, relaunchedHost?.authKind)
+        assertEquals(seededIdentity.id, relaunchedHost?.identityId)
     }
 
     @Test
-    fun edit_cancel_and_delete_confirmation_behave_predictably() {
+    fun host_validation_blocks_invalid_port_and_missing_identity_permutations() {
+        val hostRepository = HostTestFakeHostRepository()
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = HostTestFakeIdentityRepository(),
+            )
+        }
+
+        composeRule.onNodeWithTag("host_create_action").performClick()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Validation host")
+        composeRule.onNodeWithTag("host_address_field").performTextInput("validation.example")
+        composeRule.onNodeWithTag("host_username_field").performTextInput("tester")
+        composeRule.onNodeWithTag("host_port_field").performTextClearance()
+        composeRule.onNodeWithTag("host_port_field").performTextInput("0")
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_port_error").assertTextContains("Enter a valid port.")
+        composeRule.onNodeWithTag("host_identity_error")
+            .assertTextContains("Select a reusable password identity before saving.")
+
+        composeRule.onNodeWithTag("host_port_field").performTextClearance()
+        composeRule.onNodeWithTag("host_port_field").performTextInput("70000")
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_port_error").assertTextContains("Enter a valid port.")
+        assertEquals(emptyList<Host>(), hostRepository.currentHosts())
+    }
+
+    @Test
+    fun key_auth_host_validation_requires_key_identity_before_save() {
+        val hostRepository = HostTestFakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Validation host",
+                    address = "validation.example",
+                    port = 22,
+                    username = "tester",
+                    identityId = null,
+                    authKind = HostAuthKind.KEY,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = HostTestFakeIdentityRepository(),
+            )
+        }
+
+        composeRule.onNodeWithTag("host_edit_1").performClick()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_identity_error")
+            .assertTextContains("Select a reusable key identity before saving.")
+        assertEquals(1, hostRepository.currentHosts().size)
+        assertEquals(HostAuthKind.KEY, hostRepository.currentHosts().first().authKind)
+    }
+
+    @Test
+    fun edit_cancel_keeps_original_values_and_save_persists_changes_after_explicit_save() {
+        val firstContainer = AppContainer.create(context)
+        val seededIdentity: Identity
+        var hostRepository: HostRepository by mutableStateOf(firstContainer.foundationGraph.hostRepository)
+        var identityRepository: IdentityRepository by mutableStateOf(firstContainer.foundationGraph.identityRepository)
+        runBlocking {
+            seededIdentity = firstContainer.foundationGraph.identityRepository.upsert(
+                identity = readyIdentity(
+                    id = 0,
+                    name = "Prod password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = "shared-secret"),
+            )
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    id = 0,
+                    label = "Prod",
+                    address = "old.example",
+                    port = 22,
+                    username = "root",
+                    identityId = seededIdentity.id,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            )
+        }
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_edit_1").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_label_field").performTextClearance()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Prod updated")
+        composeRule.onNodeWithTag("host_address_field").performTextClearance()
+        composeRule.onNodeWithTag("host_address_field").performTextInput("new.example")
+        closeKeyboardIfShown()
+
+        val unchangedHost = runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) }
+        assertEquals("Prod", unchangedHost?.label)
+        assertEquals("old.example", unchangedHost?.address)
+
+        composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_label_1").assertTextContains("Prod", substring = true)
+        composeRule.onNodeWithTag("host_selection_detail_1")
+            .assertTextContains("root@old.example:22", substring = true)
+
+        composeRule.onNodeWithTag("host_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_label_field").performTextClearance()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Prod updated")
+        composeRule.onNodeWithTag("host_address_field").performTextClearance()
+        composeRule.onNodeWithTag("host_address_field").performTextInput("new.example")
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) }?.label == "Prod updated"
+        }
+        composeRule.onNodeWithTag("host_label_1").assertTextContains("Prod updated", substring = true)
+        composeRule.onNodeWithTag("host_selection_detail_1")
+            .assertTextContains("root@new.example:22", substring = true)
+
+        val relaunchedContainer = AppContainer.create(context)
+        composeRule.runOnIdle {
+            hostRepository = relaunchedContainer.foundationGraph.hostRepository
+            identityRepository = relaunchedContainer.foundationGraph.identityRepository
+        }
+        composeRule.onNodeWithTag("host_label_1").assertTextContains("Prod updated", substring = true)
+        composeRule.onNodeWithTag("host_selection_detail_1")
+            .assertTextContains("root@new.example:22", substring = true)
+    }
+
+    @Test
+    fun edit_delete_cancel_preserves_draft_state() {
         val identity = readyIdentity(id = 5, name = "Prod password", kind = IdentityKind.PASSWORD)
         val identityRepository = HostTestFakeIdentityRepository(
             initialIdentities = listOf(identity),
@@ -206,17 +398,6 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_label_field").performTextInput("Prod updated")
         composeRule.onNodeWithTag("host_address_field").performTextClearance()
         composeRule.onNodeWithTag("host_address_field").performTextInput("new.example")
-        closeKeyboardIfShown()
-        composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
-
-        composeRule.onNodeWithTag("host_label_1").assertTextContains("Prod", substring = true)
-        composeRule.onNodeWithTag("host_selection_detail_1").assertTextContains("root@old.example:22", substring = true)
-
-        composeRule.onNodeWithTag("host_edit_1").performClick()
-        composeRule.onNodeWithTag("host_label_field").performTextClearance()
-        composeRule.onNodeWithTag("host_label_field").performTextInput("Prod updated")
-        composeRule.onNodeWithTag("host_address_field").performTextClearance()
-        composeRule.onNodeWithTag("host_address_field").performTextInput("new.example")
         composeRule.onNodeWithTag("host_editor_delete").performScrollTo().performClick()
         composeRule.onNodeWithTag("host_delete_confirmation").assertIsDisplayed()
         composeRule.onNodeWithTag("host_delete_cancel").performClick()
@@ -226,6 +407,97 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
         composeRule.onAllNodesWithTag("host_row_1").assertCountEquals(1)
         composeRule.onNodeWithTag("host_row_2").assertIsDisplayed()
+    }
+
+    @Test
+    fun delete_confirmation_removes_only_the_selected_host() {
+        val firstContainer = AppContainer.create(context)
+        val seededIdentity: Identity
+        var hostRepository: HostRepository by mutableStateOf(firstContainer.foundationGraph.hostRepository)
+        var identityRepository: IdentityRepository by mutableStateOf(firstContainer.foundationGraph.identityRepository)
+        runBlocking {
+            seededIdentity = firstContainer.foundationGraph.identityRepository.upsert(
+                identity = readyIdentity(
+                    id = 0,
+                    name = "Shared password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = "delete-secret"),
+            )
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    id = 0,
+                    label = "Prod",
+                    address = "prod.example",
+                    port = 22,
+                    username = "root",
+                    identityId = seededIdentity.id,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            )
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    id = 0,
+                    label = "Backup",
+                    address = "backup.example",
+                    port = 2222,
+                    username = "admin",
+                    identityId = seededIdentity.id,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            )
+        }
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_row_1").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_editor_delete").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_delete_confirmation").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_delete_cancel").performClick()
+        composeRule.onNodeWithTag("host_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
+        composeRule.onAllNodesWithTag("host_row_1").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("host_row_2").assertCountEquals(1)
+
+        composeRule.onNodeWithTag("host_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_delete_confirmation").fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithTag("host_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_editor_delete").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_delete_detail")
+            .assertTextContains("root@prod.example:22", substring = true)
+        composeRule.onNodeWithTag("host_delete_confirm").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) } == null
+        }
+
+        composeRule.onAllNodesWithTag("host_row_1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("host_row_2").assertCountEquals(1)
+        composeRule.onNodeWithTag("host_row_2").performScrollTo()
+        composeRule.onNodeWithTag("host_selection_detail_2")
+            .assertTextContains("admin@backup.example:2222", substring = true)
+        assertNotNull(runBlocking { firstContainer.foundationGraph.hostRepository.getHost(2) })
+
+        val relaunchedContainer = AppContainer.create(context)
+        composeRule.runOnIdle {
+            hostRepository = relaunchedContainer.foundationGraph.hostRepository
+            identityRepository = relaunchedContainer.foundationGraph.identityRepository
+        }
+        composeRule.onAllNodesWithTag("host_row_1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("host_row_2").assertCountEquals(1)
     }
 
     @Test
@@ -502,12 +774,6 @@ private fun readyIdentity(
     secretStorageState = SecretStorageState.AVAILABLE,
     passphraseStorageState = SecretStorageState.MISSING,
 )
-
-private class HostTestScriptedGeneratedKeyIdentityService(
-    private val generatedMaterial: GeneratedKeyMaterial,
-) : GeneratedKeyIdentityService() {
-    override fun generate(): GeneratedKeyMaterial = generatedMaterial
-}
 
 private fun closeKeyboardIfShown() {
     runCatching { closeSoftKeyboard() }
