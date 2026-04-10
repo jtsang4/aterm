@@ -31,6 +31,7 @@ import io.github.jtsang4.aterm.feature.identities.IdentitiesScreen
 import io.github.jtsang4.aterm.feature.identities.ImportedKeyImportService
 import io.github.jtsang4.aterm.feature.identities.ImportedKeyParseResult
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
@@ -466,6 +467,7 @@ class IdentityPasswordFlowsInstrumentedTest {
                     port = 22,
                     username = "root",
                     identityId = 1,
+                    authKind = HostAuthKind.KEY,
                 ),
             ),
         )
@@ -502,8 +504,12 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("host_identity_option_2").fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onAllNodesWithTag("host_identity_option_1").assertCountEquals(0)
         composeRule.onNodeWithTag("host_identity_option_2").assertIsDisplayed()
         composeRule.onNodeWithText("Reusable generated key identity").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_identity_error")
+            .assertTextContains("Select a reusable key identity before saving.", substring = true)
     }
 
     @Test
@@ -557,6 +563,7 @@ class IdentityPasswordFlowsInstrumentedTest {
             port = 22,
             username = "root",
             identityId = 9,
+            authKind = HostAuthKind.PASSWORD,
         )
         val identityRepository = FakeIdentityRepository(
             initialIdentities = listOf(blockedIdentity),
@@ -576,6 +583,75 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_repair_1").performClick()
         composeRule.onNodeWithTag("host_no_password_identities").assertIsDisplayed()
         composeRule.onAllNodesWithTag("host_identity_option_9").assertCountEquals(0)
+    }
+
+    @Test
+    fun deleting_key_identity_preserves_host_auth_family_for_repair_without_auto_selection() {
+        val deletedKeyIdentity = Identity(
+            id = 1,
+            name = "Primary key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAPrimaryKey delete@test",
+            hasSecret = true,
+        )
+        val replacementPassword = Identity(
+            id = 2,
+            name = "Fallback password",
+            kind = IdentityKind.PASSWORD,
+            hasSecret = true,
+        )
+        val replacementKey = Identity(
+            id = 3,
+            name = "Secondary key",
+            kind = IdentityKind.GENERATED_KEY,
+            publicKey = "ssh-rsa AAAASecondaryKey delete@test",
+            hasSecret = true,
+        )
+        val identityRepository = FakeIdentityRepository(
+            initialIdentities = listOf(deletedKeyIdentity, replacementPassword, replacementKey),
+            initialSecrets = mapOf(
+                1L to IdentitySecretMaterial(primarySecret = "deleted-key"),
+                2L to IdentitySecretMaterial(primarySecret = "fallback-password"),
+                3L to IdentitySecretMaterial(primarySecret = "replacement-key"),
+            ),
+        )
+        val hostRepository = FakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Prod key host",
+                    address = "10.0.2.2",
+                    port = 22,
+                    username = "root",
+                    identityId = 1,
+                    authKind = HostAuthKind.KEY,
+                ),
+            ),
+        )
+
+        runBlocking {
+            identityRepository.deleteIdentity(1)
+        }
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+            )
+        }
+
+        composeRule.onNodeWithTag("host_repair_1").performClick()
+        composeRule.onAllNodesWithTag("host_identity_option_2").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("host_identity_option_3").assertCountEquals(1)
+        composeRule.onNodeWithTag("host_identity_option_3").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_identity_error")
+            .assertTextContains("Select a reusable key identity before saving.", substring = true)
+        composeRule.onNodeWithTag("host_identity_option_3").performClick()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_row_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_identity_label_1")
+            .assertTextContains("Secondary key", substring = true)
     }
 }
 

@@ -1,6 +1,7 @@
 package io.github.jtsang4.aterm.feature.hosts
 
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 
@@ -28,17 +29,23 @@ internal data class HostEditorDraft(
             val linkedIdentity = identities.firstOrNull { it.id == host?.identityId }
             val authenticationReadyIdentities = identities.filter(Identity::isAuthenticationReady)
             val defaultMode = when {
+                host?.authKind == HostAuthKind.KEY -> HostAuthMode.KEY
+                host?.authKind == HostAuthKind.PASSWORD -> HostAuthMode.PASSWORD
                 linkedIdentity?.kind == IdentityKind.PASSWORD -> HostAuthMode.PASSWORD
                 linkedIdentity != null -> HostAuthMode.KEY
                 authenticationReadyIdentities.none { it.kind == IdentityKind.PASSWORD } &&
                     authenticationReadyIdentities.any { it.kind != IdentityKind.PASSWORD } -> HostAuthMode.KEY
                 else -> HostAuthMode.PASSWORD
             }
-            val selectedIdentityId = host?.identityId?.takeIf { existingId ->
-                authenticationReadyIdentities
-                    .filter { it.isCompatibleWith(defaultMode) }
-                    .any { it.id == existingId }
-            } ?: authenticationReadyIdentities.firstCompatibleIdOrNull(defaultMode)
+            val selectedIdentityId = if (host == null) {
+                authenticationReadyIdentities.firstCompatibleIdOrNull(defaultMode)
+            } else {
+                host.identityId?.takeIf { existingId ->
+                    authenticationReadyIdentities
+                        .filter { it.isCompatibleWith(defaultMode) }
+                        .any { it.id == existingId }
+                }
+            }
 
             return HostEditorDraft(
                 hostId = host?.id ?: 0,

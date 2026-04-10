@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.distinguishingDetail
 import io.github.jtsang4.aterm.core.domain.model.kindLabel
@@ -51,7 +52,10 @@ object HostsEntryPoint {
 private sealed interface HostsDestination {
     data object Library : HostsDestination
     data class Editor(val draft: HostEditorDraft) : HostsDestination
-    data class DeleteConfirmation(val host: Host) : HostsDestination
+    data class DeleteConfirmation(
+        val host: Host,
+        val returnDraft: HostEditorDraft,
+    ) : HostsDestination
     data class IdentityRecovery(
         val draft: HostEditorDraft,
         val launchDestination: IdentityLaunchDestination,
@@ -97,7 +101,9 @@ fun HostsScreen(
             hostRepository = hostRepository,
             onCancel = { destination = HostsDestination.Library },
             onSaved = { destination = HostsDestination.Library },
-            onDeleteRequested = { host -> destination = HostsDestination.DeleteConfirmation(host) },
+            onDeleteRequested = { host, draft ->
+                destination = HostsDestination.DeleteConfirmation(host, draft)
+            },
             onLaunchIdentityRecovery = { draft, launchDestination ->
                 destination = HostsDestination.IdentityRecovery(draft, launchDestination)
             },
@@ -107,9 +113,7 @@ fun HostsScreen(
             host = currentDestination.host,
             hostRepository = hostRepository,
             onCancel = {
-                destination = HostsDestination.Editor(
-                    HostEditorDraft.from(currentDestination.host, identities),
-                )
+                destination = HostsDestination.Editor(currentDestination.returnDraft)
             },
             onDeleted = { destination = HostsDestination.Library },
         )
@@ -313,7 +317,7 @@ private fun HostEditorScreen(
     hostRepository: HostRepository,
     onCancel: () -> Unit,
     onSaved: () -> Unit,
-    onDeleteRequested: (Host) -> Unit,
+    onDeleteRequested: (Host, HostEditorDraft) -> Unit,
     onLaunchIdentityRecovery: (HostEditorDraft, IdentityLaunchDestination) -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -434,7 +438,11 @@ private fun HostEditorScreen(
                 authMode = authMode,
                 onAuthModeSelected = { newMode ->
                     authMode = newMode
-                    selectedIdentityId = authenticationReadyIdentities.firstCompatibleIdOrNull(newMode)
+                    selectedIdentityId = selectedIdentityId?.takeIf { existingId ->
+                        authenticationReadyIdentities
+                            .filter { it.isCompatibleWith(newMode) }
+                            .any { it.id == existingId }
+                    }
                     identityError = null
                     saveError = null
                 },
@@ -483,7 +491,20 @@ private fun HostEditorScreen(
                 }
                 if (existingHost != null) {
                     TextButton(
-                        onClick = { onDeleteRequested(existingHost) },
+                        onClick = {
+                            onDeleteRequested(
+                                existingHost,
+                                HostEditorDraft(
+                                    hostId = initialDraft.hostId,
+                                    label = label,
+                                    address = address,
+                                    portText = portText,
+                                    username = username,
+                                    authMode = authMode,
+                                    selectedIdentityId = selectedIdentityId,
+                                ),
+                            )
+                        },
                         modifier = Modifier.testTag("host_editor_delete"),
                     ) {
                         Text("Delete")
@@ -532,6 +553,7 @@ private fun HostEditorScreen(
                                         port = requireNotNull(parsedPort),
                                         username = trimmedUsername,
                                         identityId = persistedIdentityId,
+                                        authKind = authMode.toDomain(),
                                         isFavorite = existingHost?.isFavorite ?: false,
                                         lastUsedAt = existingHost?.lastUsedAt,
                                         createdAt = existingHost?.createdAt ?: Instant.now(),
@@ -772,6 +794,11 @@ private fun List<Host>.filteredBy(query: String): List<Host> {
             host.address.contains(normalized, ignoreCase = true) ||
             host.username.contains(normalized, ignoreCase = true)
     }
+}
+
+private fun HostAuthMode.toDomain(): HostAuthKind = when (this) {
+    HostAuthMode.PASSWORD -> HostAuthKind.PASSWORD
+    HostAuthMode.KEY -> HostAuthKind.KEY
 }
 
 @Composable

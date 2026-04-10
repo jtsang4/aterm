@@ -27,6 +27,7 @@ data class HostEntity(
     val port: Int,
     val username: String,
     val identityId: Long?,
+    val authKind: String,
     val isFavorite: Boolean,
     val lastUsedAtEpochMillis: Long?,
     val createdAtEpochMillis: Long,

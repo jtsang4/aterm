@@ -6,6 +6,7 @@ import io.github.jtsang4.aterm.core.data.local.entity.KnownHostTrustEntity
 import io.github.jtsang4.aterm.core.data.local.entity.SessionMetadataEntity
 import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
@@ -22,6 +23,7 @@ internal fun HostEntity.toDomain(): Host = Host(
     port = port,
     username = username,
     identityId = identityId,
+    authKind = HostAuthKind.valueOf(authKind),
     isFavorite = isFavorite,
     lastUsedAt = lastUsedAtEpochMillis?.toInstant(),
     createdAt = createdAtEpochMillis.toInstant(),
@@ -35,6 +37,7 @@ internal fun Host.toEntity(): HostEntity = HostEntity(
     port = port,
     username = username,
     identityId = identityId,
+    authKind = authKind.name,
     isFavorite = isFavorite,
     lastUsedAtEpochMillis = lastUsedAt?.toEpochMilli(),
     createdAtEpochMillis = createdAt.toEpochMilli(),

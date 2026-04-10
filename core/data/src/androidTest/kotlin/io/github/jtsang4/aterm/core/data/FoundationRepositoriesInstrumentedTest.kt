@@ -21,6 +21,7 @@ import io.github.jtsang4.aterm.core.domain.fixtures.sampleIdentity
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleKnownHostTrust
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSessionMetadata
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSnippet
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.ThemePreference
@@ -281,6 +282,7 @@ class FoundationRepositoriesInstrumentedTest {
         assertNotNull(persistedHost)
         assertNull(persistedHost?.identityId)
         assertFalse(requireNotNull(persistedHost).hasLinkedIdentity)
+        assertEquals(HostAuthKind.KEY, persistedHost.authKind)
     }
 
     @Test
@@ -447,7 +449,7 @@ class FoundationRepositoriesInstrumentedTest {
         supportDb.close()
 
         val opened = Room.databaseBuilder(context, AtermDatabase::class.java, dbName)
-            .addMigrations(AtermDatabase.MIGRATION_1_2, AtermDatabase.MIGRATION_2_3)
+            .addMigrations(AtermDatabase.MIGRATION_1_2, AtermDatabase.MIGRATION_2_3, AtermDatabase.MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
 
@@ -461,10 +463,20 @@ class FoundationRepositoriesInstrumentedTest {
         val orphanedSnippetHostId = opened.query(SimpleSQLiteQuery("SELECT hostId FROM snippets WHERE id = 2")).use {
             if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
         }
+        val linkedHostAuthKind = opened.query(SimpleSQLiteQuery("SELECT authKind FROM hosts WHERE id = 1")).use {
+            it.moveToFirst()
+            it.getString(0)
+        }
+        val orphanedHostAuthKind = opened.query(SimpleSQLiteQuery("SELECT authKind FROM hosts WHERE id = 2")).use {
+            it.moveToFirst()
+            it.getString(0)
+        }
 
         assertNull(orphanedHostIdentity)
         assertEquals(0, orphanedSessionCount)
         assertNull(orphanedSnippetHostId)
+        assertEquals("KEY", linkedHostAuthKind)
+        assertEquals("PASSWORD", orphanedHostAuthKind)
 
         opened.close()
         context.deleteDatabase(dbName)

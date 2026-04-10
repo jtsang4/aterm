@@ -5,6 +5,7 @@ import io.github.jtsang4.aterm.core.domain.fixtures.sampleIdentity
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleKnownHostTrust
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSessionMetadata
 import io.github.jtsang4.aterm.core.domain.fixtures.sampleSnippet
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
@@ -26,6 +27,7 @@ class FoundationDomainModelTest {
 
         assertFalse(host.hasLinkedIdentity)
         assertEquals(null, host.identityId)
+        assertEquals(HostAuthKind.KEY, host.authKind)
     }
 
     @Test

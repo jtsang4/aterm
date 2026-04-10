@@ -2,6 +2,7 @@ package io.github.jtsang4.aterm.core.domain.fixtures
 
 import io.github.jtsang4.aterm.core.domain.FeatureArea
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
@@ -24,6 +25,7 @@ fun sampleHost(
     port = 22,
     username = "factory",
     identityId = identityId,
+    authKind = HostAuthKind.KEY,
     isFavorite = true,
     lastUsedAt = sampleInstant,
     createdAt = sampleInstant,

@@ -2,6 +2,11 @@ package io.github.jtsang4.aterm.core.domain.model
 
 import java.time.Instant
 
+enum class HostAuthKind {
+    PASSWORD,
+    KEY,
+}
+
 data class Host(
     val id: Long = 0,
     val label: String,
@@ -9,6 +14,7 @@ data class Host(
     val port: Int = 22,
     val username: String,
     val identityId: Long?,
+    val authKind: HostAuthKind = HostAuthKind.PASSWORD,
     val isFavorite: Boolean = false,
     val lastUsedAt: Instant? = null,
     val createdAt: Instant = Instant.now(),

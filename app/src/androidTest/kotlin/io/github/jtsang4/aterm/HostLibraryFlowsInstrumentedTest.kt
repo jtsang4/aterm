@@ -27,6 +27,7 @@ import io.github.jtsang4.aterm.feature.hosts.HostsScreen
 import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
 import io.github.jtsang4.aterm.feature.identities.GeneratedKeyMaterial
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
@@ -105,6 +106,7 @@ class HostLibraryFlowsInstrumentedTest {
                     port = 22,
                     username = "root",
                     identityId = seededIdentity.id,
+                    authKind = HostAuthKind.PASSWORD,
                 ),
             )
         }
@@ -211,10 +213,16 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_selection_detail_1").assertTextContains("root@old.example:22", substring = true)
 
         composeRule.onNodeWithTag("host_edit_1").performClick()
+        composeRule.onNodeWithTag("host_label_field").performTextClearance()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Prod updated")
+        composeRule.onNodeWithTag("host_address_field").performTextClearance()
+        composeRule.onNodeWithTag("host_address_field").performTextInput("new.example")
         composeRule.onNodeWithTag("host_editor_delete").performScrollTo().performClick()
         composeRule.onNodeWithTag("host_delete_confirmation").assertIsDisplayed()
         composeRule.onNodeWithTag("host_delete_cancel").performClick()
         composeRule.onNodeWithTag("host_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_label_field").assertTextContains("Prod updated")
+        composeRule.onNodeWithTag("host_address_field").assertTextContains("new.example")
         composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
         composeRule.onAllNodesWithTag("host_row_1").assertCountEquals(1)
         composeRule.onNodeWithTag("host_row_2").assertIsDisplayed()
@@ -229,9 +237,9 @@ class HostLibraryFlowsInstrumentedTest {
         )
         val hostRepository = HostTestFakeHostRepository(
             initialHosts = listOf(
-                Host(id = 1, label = "Production", address = "prod.example", port = 22, username = "root", identityId = 9),
-                Host(id = 2, label = "Staging", address = "qa.example", port = 22, username = "deploy", identityId = 9),
-                Host(id = 3, label = "Analytics", address = "metrics.example", port = 22, username = "reporter", identityId = 9),
+                Host(id = 1, label = "Production", address = "prod.example", port = 22, username = "root", identityId = 9, authKind = HostAuthKind.PASSWORD),
+                Host(id = 2, label = "Staging", address = "qa.example", port = 22, username = "deploy", identityId = 9, authKind = HostAuthKind.PASSWORD),
+                Host(id = 3, label = "Analytics", address = "metrics.example", port = 22, username = "reporter", identityId = 9, authKind = HostAuthKind.PASSWORD),
             ),
         )
 
@@ -267,8 +275,8 @@ class HostLibraryFlowsInstrumentedTest {
         )
         val hostRepository = HostTestFakeHostRepository(
             initialHosts = listOf(
-                Host(id = 1, label = "Prod", address = "one.example", port = 22, username = "root", identityId = 12),
-                Host(id = 2, label = "Prod", address = "two.example", port = 2222, username = "deploy", identityId = 12),
+                Host(id = 1, label = "Prod", address = "one.example", port = 22, username = "root", identityId = 12, authKind = HostAuthKind.PASSWORD),
+                Host(id = 2, label = "Prod", address = "two.example", port = 2222, username = "deploy", identityId = 12, authKind = HostAuthKind.PASSWORD),
             ),
         )
 
@@ -309,6 +317,7 @@ class HostLibraryFlowsInstrumentedTest {
                     port = 22,
                     username = "ubuntu",
                     identityId = blockedKeyIdentity.id,
+                    authKind = HostAuthKind.KEY,
                 ),
             ),
         )
@@ -359,8 +368,8 @@ class HostLibraryFlowsInstrumentedTest {
         )
         val hostRepository = HostTestFakeHostRepository(
             initialHosts = listOf(
-                Host(id = 1, label = "First host", address = "one.example", port = 22, username = "root", identityId = 20),
-                Host(id = 2, label = "Second host", address = "two.example", port = 22, username = "deploy", identityId = 20),
+                Host(id = 1, label = "First host", address = "one.example", port = 22, username = "root", identityId = 20, authKind = HostAuthKind.KEY),
+                Host(id = 2, label = "Second host", address = "two.example", port = 22, username = "deploy", identityId = 20, authKind = HostAuthKind.KEY),
             ),
         )
         var showIdentities by mutableStateOf(false)

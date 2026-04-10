@@ -25,7 +25,7 @@ import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
         SessionMetadataEntity::class,
         KnownHostTrustEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AtermDatabase : RoomDatabase() {
@@ -36,6 +36,31 @@ abstract class AtermDatabase : RoomDatabase() {
     abstract fun knownHostTrustDao(): KnownHostTrustDao
 
     companion object {
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    ALTER TABLE `hosts`
+                    ADD COLUMN `authKind` TEXT NOT NULL DEFAULT 'PASSWORD'
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    UPDATE `hosts`
+                    SET `authKind` = CASE
+                        WHEN `identityId` IS NOT NULL AND EXISTS(
+                            SELECT 1
+                            FROM `identities`
+                            WHERE `identities`.`id` = `hosts`.`identityId`
+                                AND `identities`.`kind` != 'PASSWORD'
+                        ) THEN 'KEY'
+                        ELSE 'PASSWORD'
+                    END
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val MIGRATION_2_3: Migration = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -230,7 +255,7 @@ abstract class AtermDatabase : RoomDatabase() {
             context.applicationContext,
             AtermDatabase::class.java,
             "aterm.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 }
