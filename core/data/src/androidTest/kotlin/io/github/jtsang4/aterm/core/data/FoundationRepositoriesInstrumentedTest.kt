@@ -24,6 +24,7 @@ import io.github.jtsang4.aterm.core.domain.fixtures.sampleSnippet
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
+import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.ThemePreference
 import io.github.jtsang4.aterm.core.security.crypto.EncryptedPayload
 import io.github.jtsang4.aterm.core.security.crypto.KeystoreAesGcmCipher
@@ -143,6 +144,40 @@ class FoundationRepositoriesInstrumentedTest {
         assertEquals("Renamed password identity", persistedIdentity?.name)
         assertEquals("initial-password", persistedSecrets?.primarySecret)
         assertEquals(null, persistedSecrets?.passphrase)
+    }
+
+    @Test
+    fun replacing_encrypted_key_with_unencrypted_material_clears_bogus_passphrase_state() = runTest {
+        val created = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, kind = IdentityKind.IMPORTED_KEY, hasPassphrase = true),
+            IdentitySecretMaterial(
+                primarySecret = "encrypted-private-key",
+                passphrase = "correct-passphrase",
+            ),
+        )
+
+        val updated = identityRepository.upsert(
+            created.copy(
+                publicKey = "ssh-rsa TEST_REPLACEMENT_PUBLIC_KEY",
+                hasPassphrase = false,
+                passphraseStorageState = SecretStorageState.MISSING,
+            ),
+            IdentitySecretMaterial(
+                primarySecret = "unencrypted-replacement-key",
+                passphrase = "stray-passphrase",
+            ),
+        )
+
+        val persistedIdentity = identityRepository.getIdentity(updated.id)
+        val persistedSecrets = identityRepository.getSecretMaterial(updated.id)
+        val rawEntity = database.identityDao().getById(updated.id)
+
+        assertEquals(false, persistedIdentity?.hasPassphrase)
+        assertEquals(SecretStorageState.MISSING, persistedIdentity?.passphraseStorageState)
+        assertEquals("unencrypted-replacement-key", persistedSecrets?.primarySecret)
+        assertEquals(null, persistedSecrets?.passphrase)
+        assertNull(rawEntity?.passphraseCipherText)
+        assertNull(rawEntity?.passphraseIv)
     }
 
     @Test

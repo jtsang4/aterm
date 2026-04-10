@@ -421,7 +421,7 @@ private class HostTestFakeIdentityRepository(
         val persisted = identity.copy(
             id = persistedId,
             hasSecret = identity.hasSecret || existing?.hasSecret == true || secrets?.primarySecret != null,
-            hasPassphrase = identity.hasPassphrase || existing?.hasPassphrase == true || secrets?.passphrase != null,
+            hasPassphrase = identity.hasPassphrase,
             secretStorageState = when {
                 secrets?.primarySecret != null -> SecretStorageState.AVAILABLE
                 identity.hasSecret -> identity.secretStorageState
@@ -429,6 +429,7 @@ private class HostTestFakeIdentityRepository(
                 else -> SecretStorageState.MISSING
             },
             passphraseStorageState = when {
+                !identity.hasPassphrase -> SecretStorageState.MISSING
                 secrets?.passphrase != null -> SecretStorageState.AVAILABLE
                 identity.hasPassphrase -> identity.passphraseStorageState
                 existing != null -> existing.passphraseStorageState
@@ -436,7 +437,14 @@ private class HostTestFakeIdentityRepository(
             },
             updatedAt = Instant.now(),
         )
-        this.secrets[persistedId] = secrets ?: this.secrets[persistedId] ?: IdentitySecretMaterial()
+        val sanitizedSecrets = when {
+            secrets == null -> this.secrets[persistedId] ?: IdentitySecretMaterial()
+            else -> IdentitySecretMaterial(
+                primarySecret = secrets.primarySecret ?: this.secrets[persistedId]?.primarySecret,
+                passphrase = secrets.passphrase?.takeIf { identity.hasPassphrase },
+            )
+        }
+        this.secrets[persistedId] = sanitizedSecrets
         identities.value = identities.value
             .filterNot { it.id == persistedId }
             .plus(persisted)

@@ -436,6 +436,64 @@ class IdentityPasswordFlowsInstrumentedTest {
     }
 
     @Test
+    fun replacing_encrypted_key_with_unencrypted_import_ignores_stray_passphrase_text() {
+        val originalIdentity = Identity(
+            id = 8,
+            name = "Encrypted key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAEncryptedKey encrypted@test",
+            hasSecret = true,
+            hasPassphrase = true,
+            passphraseStorageState = SecretStorageState.AVAILABLE,
+        )
+        val repository = FakeIdentityRepository(
+            initialIdentities = listOf(originalIdentity),
+            initialSecrets = mapOf(
+                8L to IdentitySecretMaterial(
+                    primarySecret = "old-encrypted-key",
+                    passphrase = "old-passphrase",
+                ),
+            ),
+        )
+        val replacementKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nREPLACED_UNENCRYPTED_KEY\n-----END OPENSSH PRIVATE KEY-----"
+        val scriptedImportService = ScriptedImportedKeyImportService(
+            listOf(
+                ImportedKeyParseResult.Success(
+                    publicKey = "ssh-rsa AAAAReplacementUnencryptedKey replacement@test",
+                    hasPassphrase = false,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = repository,
+                importedKeyImportService = scriptedImportService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_edit_8").performClick()
+        composeRule.onNodeWithTag("identity_replace_secret").performClick()
+        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(replacementKey)
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("stray-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().publicKey == "ssh-rsa AAAAReplacementUnencryptedKey replacement@test"
+        }
+
+        val updatedIdentity = repository.currentIdentities().first()
+        val updatedSecrets = runBlocking { repository.getSecretMaterial(8) }
+
+        assertFalse(updatedIdentity.hasPassphrase)
+        assertEquals(SecretStorageState.MISSING, updatedIdentity.passphraseStorageState)
+        assertEquals(replacementKey, updatedSecrets?.primarySecret)
+        assertEquals(null, updatedSecrets?.passphrase)
+        composeRule.onNodeWithTag("identity_row_8").assertIsDisplayed()
+        composeRule.onNodeWithText("No key passphrase required").assertIsDisplayed()
+    }
+
+    @Test
     fun deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details() {
         val identityOne = Identity(
             id = 1,
@@ -675,7 +733,7 @@ private class FakeIdentityRepository(
         val persisted = identity.copy(
             id = persistedId,
             hasSecret = identity.hasSecret || existing?.hasSecret == true || secrets?.primarySecret != null,
-            hasPassphrase = identity.hasPassphrase || existing?.hasPassphrase == true || secrets?.passphrase != null,
+            hasPassphrase = identity.hasPassphrase,
             secretStorageState = when {
                 secrets?.primarySecret != null -> SecretStorageState.AVAILABLE
                 identity.hasSecret -> identity.secretStorageState
@@ -683,6 +741,7 @@ private class FakeIdentityRepository(
                 else -> SecretStorageState.MISSING
             },
             passphraseStorageState = when {
+                !identity.hasPassphrase -> SecretStorageState.MISSING
                 secrets?.passphrase != null -> SecretStorageState.AVAILABLE
                 identity.hasPassphrase -> identity.passphraseStorageState
                 existing != null -> existing.passphraseStorageState
@@ -693,7 +752,14 @@ private class FakeIdentityRepository(
         if (secrets?.primarySecret != null || secrets?.passphrase != null) {
             blockedSecrets.remove(persistedId)
         }
-        this.secrets[persistedId] = secrets ?: this.secrets[persistedId] ?: IdentitySecretMaterial()
+        val sanitizedSecrets = when {
+            secrets == null -> this.secrets[persistedId] ?: IdentitySecretMaterial()
+            else -> IdentitySecretMaterial(
+                primarySecret = secrets.primarySecret ?: this.secrets[persistedId]?.primarySecret,
+                passphrase = secrets.passphrase?.takeIf { identity.hasPassphrase },
+            )
+        }
+        this.secrets[persistedId] = sanitizedSecrets
         identities.value = identities.value
             .filterNot { it.id == persistedId }
             .plus(persisted)

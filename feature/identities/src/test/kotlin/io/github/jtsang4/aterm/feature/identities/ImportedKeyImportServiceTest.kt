@@ -26,6 +26,19 @@ class ImportedKeyImportServiceTest {
     }
 
     @Test
+    fun unencrypted_private_key_ignores_stray_passphrase_text() {
+        val keyPair = SecurityUtils.getKeyPairGenerator("RSA").apply { initialize(2048) }.generateKeyPair()
+        val privateKey = writePrivateKey(keyPair, passphrase = null)
+
+        val result = service.parse(privateKey, passphrase = "stray-passphrase")
+
+        assertTrue(result is ImportedKeyParseResult.Success)
+        result as ImportedKeyParseResult.Success
+        assertTrue(result.publicKey.startsWith("ssh-rsa "))
+        assertEquals(false, result.hasPassphrase)
+    }
+
+    @Test
     fun encrypted_private_key_requires_passphrase_then_imports_with_correct_retry() {
         val keyPair = SecurityUtils.getKeyPairGenerator("RSA").apply { initialize(2048) }.generateKeyPair()
         val privateKey = writePrivateKey(keyPair, passphrase = "correct-passphrase")

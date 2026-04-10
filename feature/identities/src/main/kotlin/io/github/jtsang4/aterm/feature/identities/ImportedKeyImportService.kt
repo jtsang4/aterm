@@ -20,22 +20,38 @@ open class ImportedKeyImportService {
         }
 
         return try {
-            val keyPairs = ByteArrayInputStream(normalizedMaterial.encodeToByteArray()).use { input ->
-                SecurityUtils.loadKeyPairIdentities(
-                    null,
-                    IMPORT_RESOURCE,
-                    input,
-                    passphrase?.takeIf(String::isNotBlank)?.let(FilePasswordProvider::of) ?: FilePasswordProvider.EMPTY,
-                )
-            }?.toList().orEmpty()
+            val keyPairs = loadKeyPairs(normalizedMaterial, passphrase)
             val importedPair = keyPairs.firstOrNull() ?: return ImportedKeyParseResult.InvalidKeyMaterial
             ImportedKeyParseResult.Success(
                 publicKey = PublicKeyEntry.toString(importedPair.public, null),
-                hasPassphrase = !passphrase.isNullOrBlank(),
+                hasPassphrase = requiresPassphrase(normalizedMaterial),
             )
         } catch (throwable: Throwable) {
             classifyFailure(privateKeyMaterial = normalizedMaterial, passphrase = passphrase, throwable = throwable)
         }
+    }
+
+    private fun loadKeyPairs(
+        privateKeyMaterial: String,
+        passphrase: String?,
+    ): List<KeyPair> = ByteArrayInputStream(privateKeyMaterial.encodeToByteArray()).use { input ->
+        SecurityUtils.loadKeyPairIdentities(
+            null,
+            IMPORT_RESOURCE,
+            input,
+            passphrase?.takeIf(String::isNotBlank)?.let(FilePasswordProvider::of) ?: FilePasswordProvider.EMPTY,
+        )
+    }?.toList().orEmpty()
+
+    private fun requiresPassphrase(privateKeyMaterial: String): Boolean = try {
+        loadKeyPairs(privateKeyMaterial, passphrase = null)
+        false
+    } catch (throwable: Throwable) {
+        classifyFailure(
+            privateKeyMaterial = privateKeyMaterial,
+            passphrase = null,
+            throwable = throwable,
+        ) == ImportedKeyParseResult.PassphraseRequired
     }
 
     private fun classifyFailure(

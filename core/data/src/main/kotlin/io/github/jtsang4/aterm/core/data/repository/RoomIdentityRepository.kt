@@ -36,6 +36,7 @@ class RoomIdentityRepository(
             }
             val replacingPrimarySecret = secrets?.primarySecret != null
             val updatingSecrets = secrets != null
+            val passphraseWasExplicitlyProvided = secrets?.passphrase != null
             val finalHasSecret = when {
                 replacingPrimarySecret -> true
                 updatingSecrets -> identity.hasSecret
@@ -43,7 +44,7 @@ class RoomIdentityRepository(
             }
             val finalHasPassphrase = when {
                 updatingSecrets -> identity.hasPassphrase
-                else -> existing?.hasPassphrase == true || identity.hasPassphrase
+                else -> identity.hasPassphrase
             }
             val baseEntity = identity.toEntity(
                 primaryCipherText = existing?.primaryCipherText,
@@ -61,7 +62,7 @@ class RoomIdentityRepository(
                 passphraseStorageState = when {
                     !finalHasPassphrase -> SecretStorageState.MISSING.name
                     updatingSecrets -> {
-                        if (secrets?.passphrase != null) {
+                        if (passphraseWasExplicitlyProvided) {
                             SecretStorageState.AVAILABLE.name
                         } else if (identity.hasPassphrase) {
                             SecretStorageState.BLOCKED.name
@@ -100,7 +101,7 @@ class RoomIdentityRepository(
                         },
                         passphraseStorageState = when {
                             !finalHasPassphrase -> SecretStorageState.MISSING.name
-                            identity.hasPassphrase && passphrasePayload != null -> SecretStorageState.AVAILABLE.name
+                            finalHasPassphrase && passphrasePayload != null -> SecretStorageState.AVAILABLE.name
                             updatingSecrets && identity.hasPassphrase -> SecretStorageState.BLOCKED.name
                             else -> persisted.passphraseStorageState
                         },
@@ -115,12 +116,12 @@ class RoomIdentityRepository(
                             else -> persisted.primaryIv
                         },
                         passphraseCipherText = when {
-                            identity.hasPassphrase && passphrasePayload != null -> passphrasePayload.cipherText
+                            finalHasPassphrase && passphrasePayload != null -> passphrasePayload.cipherText
                             !finalHasPassphrase -> null
                             else -> persisted.passphraseCipherText
                         },
                         passphraseIv = when {
-                            identity.hasPassphrase && passphrasePayload != null -> passphrasePayload.iv
+                            finalHasPassphrase && passphrasePayload != null -> passphrasePayload.iv
                             !finalHasPassphrase -> null
                             else -> persisted.passphraseIv
                         },
