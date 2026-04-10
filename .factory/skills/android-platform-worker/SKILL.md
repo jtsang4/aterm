@@ -19,7 +19,7 @@ None.
 
 1. Read `mission.md`, `AGENTS.md`, `.factory/services.yaml`, and relevant `.factory/library/*.md` files before changing anything.
 2. Run `./.factory/init.sh` first. If bootstrap tooling is broken, fix only the repo-controlled setup needed for this feature; if the environment cannot be restored within mission boundaries, return to the orchestrator.
-3. For any code-bearing platform change, add or update the smallest failing test/smoke check first (red). For greenfield bootstrap, create the missing scaffold/test harness and demonstrate an initially failing or absent command before making it pass.
+3. For any code-bearing platform change, add or update the smallest failing test/smoke check first (red). For greenfield bootstrap, create the missing scaffold/test harness and demonstrate an initially failing or absent command before making it pass. If safely reproducing a bootstrap/toolchain failure would require destructive changes to the real SDK/AVD environment, it is acceptable to build an isolated smoke harness or temp-sandbox reproduction first, then apply the fix once the failure mode is proven.
 4. Implement the platform change in the minimal repo surface that future workers can build on. Keep generated boilerplate lean and aligned with mission boundaries.
 5. Run the fastest relevant validators during iteration. Before handoff, run the repo baseline validators from `.factory/services.yaml` that are meaningful for the current state (`test`, `lint`, `build`; if the app is runnable, add `instrumentation` or an equivalent smoke check).
 6. If you touched the app shell or navigation, manually boot the emulator and verify the affected surfaces render without crashes.
