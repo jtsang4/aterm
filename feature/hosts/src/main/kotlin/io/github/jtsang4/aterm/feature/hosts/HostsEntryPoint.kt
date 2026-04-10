@@ -66,7 +66,7 @@ fun HostsScreen(
 
         is HostsDestination.Editor -> HostEditorScreen(
             host = currentDestination.host,
-            availableIdentities = identities.filter { it.kind == IdentityKind.PASSWORD && it.hasSecret },
+            availableIdentities = identities.filter { it.hasSecret },
             onCancel = { destination = HostsDestination.Library },
             onSaved = { destination = HostsDestination.Library },
             hostRepository = hostRepository,
@@ -83,7 +83,7 @@ private fun HostsLibraryScreen(
 ) {
     AppScreenScaffold(
         title = "Hosts",
-        supportingText = "Saved hosts keep endpoint metadata separate from reusable password identities.",
+        supportingText = "Saved hosts keep endpoint metadata separate from reusable password and key identities.",
         modifier = Modifier.testTag("screen_hosts"),
     ) {
         Column(
@@ -113,10 +113,10 @@ private fun HostsLibraryScreen(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = if (identities.any { it.kind == IdentityKind.PASSWORD && it.hasSecret }) {
-                                "Create a host and link one of your reusable password identities."
+                            text = if (identities.any { it.hasSecret }) {
+                                "Create a host and link one of your reusable saved identities."
                             } else {
-                                "Create a password identity first, then come back here to link it from the host authentication section."
+                                "Create an identity first, then come back here to link it from the host authentication section."
                             },
                         )
                     }
@@ -162,7 +162,14 @@ private fun HostRow(
             Text(text = "${host.address}:${host.port}")
             Text(text = "Username: ${host.username}")
             Text(
-                text = linkedIdentity?.let { "Password identity: ${it.name}" } ?: "Identity needs repair",
+                text = linkedIdentity?.let {
+                    val identityLabel = when (it.kind) {
+                        IdentityKind.PASSWORD -> "Password identity"
+                        IdentityKind.IMPORTED_KEY -> "Imported key identity"
+                        IdentityKind.GENERATED_KEY -> "Generated key identity"
+                    }
+                    "$identityLabel: ${it.name}"
+                } ?: "Identity needs repair",
                 modifier = Modifier.testTag("host_identity_label_${host.id}"),
             )
             TextButton(
@@ -204,7 +211,7 @@ private fun HostEditorScreen(
 
     AppScreenScaffold(
         title = if (isEditing) "Edit host" else "Create host",
-        supportingText = "Choose one reusable password identity for this host. The host record keeps only the link, not a duplicated password blob.",
+        supportingText = "Choose one reusable identity for this host. The host record keeps only the link, not duplicated credential material.",
         modifier = Modifier.testTag("host_editor"),
     ) {
         Column(
@@ -369,7 +376,7 @@ private fun PasswordIdentitySelectionSection(
         modifier = Modifier.testTag("host_password_identity_section"),
     ) {
         Text(
-            text = "Password identity",
+            text = "Authentication identity",
             style = MaterialTheme.typography.titleMedium,
         )
         if (availableIdentities.isEmpty()) {
@@ -379,7 +386,7 @@ private fun PasswordIdentitySelectionSection(
                     .testTag("host_no_password_identities"),
             ) {
                 Text(
-                    text = "No reusable password identities are available yet. Create one from the Identities tab, then return here to select it.",
+                    text = "No reusable identities are available yet. Create one from the Identities tab, then return here to select it.",
                     modifier = Modifier.padding(16.dp),
                 )
             }
@@ -405,7 +412,13 @@ private fun PasswordIdentitySelectionSection(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Text(text = identity.name)
-                            Text(text = "Reusable password identity")
+                            Text(
+                                text = when (identity.kind) {
+                                    IdentityKind.PASSWORD -> "Reusable password identity"
+                                    IdentityKind.IMPORTED_KEY -> "Reusable imported key identity"
+                                    IdentityKind.GENERATED_KEY -> "Reusable generated key identity"
+                                },
+                            )
                         }
                     }
                 }

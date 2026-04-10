@@ -1,0 +1,123 @@
+package io.github.jtsang4.aterm.feature.identities
+
+import java.io.ByteArrayInputStream
+import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.KeyPair
+import org.apache.sshd.common.NamedResource
+import org.apache.sshd.common.config.keys.FilePasswordProvider
+import org.apache.sshd.common.config.keys.PublicKeyEntry
+import org.apache.sshd.common.util.security.SecurityUtils
+
+open class ImportedKeyImportService {
+    open fun parse(
+        privateKeyMaterial: String,
+        passphrase: String?,
+    ): ImportedKeyParseResult {
+        val normalizedMaterial = privateKeyMaterial.trim()
+        if (normalizedMaterial.isBlank()) {
+            return ImportedKeyParseResult.InvalidKeyMaterial
+        }
+
+        return try {
+            val keyPairs = ByteArrayInputStream(normalizedMaterial.encodeToByteArray()).use { input ->
+                SecurityUtils.loadKeyPairIdentities(
+                    null,
+                    IMPORT_RESOURCE,
+                    input,
+                    passphrase?.takeIf(String::isNotBlank)?.let(FilePasswordProvider::of) ?: FilePasswordProvider.EMPTY,
+                )
+            }?.toList().orEmpty()
+            val importedPair = keyPairs.firstOrNull() ?: return ImportedKeyParseResult.InvalidKeyMaterial
+            ImportedKeyParseResult.Success(
+                publicKey = PublicKeyEntry.toString(importedPair.public, null),
+                hasPassphrase = !passphrase.isNullOrBlank(),
+            )
+        } catch (throwable: Throwable) {
+            classifyFailure(privateKeyMaterial = normalizedMaterial, passphrase = passphrase, throwable = throwable)
+        }
+    }
+
+    private fun classifyFailure(
+        privateKeyMaterial: String,
+        passphrase: String?,
+        throwable: Throwable,
+    ): ImportedKeyParseResult {
+        val normalizedMessages = throwable.messageChain().map { it.lowercase() }
+        if (normalizedMessages.any { "encrypted resource" in it || "password data" in it }) {
+            return ImportedKeyParseResult.PassphraseRequired
+        }
+        if (
+            !passphrase.isNullOrBlank() &&
+            looksLikePrivateKey(privateKeyMaterial) &&
+            normalizedMessages.any { message ->
+                INCORRECT_PASSPHRASE_MARKERS.any(message::contains)
+            }
+        ) {
+            return ImportedKeyParseResult.IncorrectPassphrase
+        }
+        if (
+            !passphrase.isNullOrBlank() &&
+            looksLikePrivateKey(privateKeyMaterial) &&
+            normalizedMessages.none { message -> INVALID_KEY_MATERIAL_MARKERS.any(message::contains) } &&
+            throwable is GeneralSecurityException
+        ) {
+            return ImportedKeyParseResult.IncorrectPassphrase
+        }
+        return ImportedKeyParseResult.InvalidKeyMaterial
+    }
+
+    private fun Throwable.messageChain(): List<String> {
+        val messages = mutableListOf<String>()
+        var current: Throwable? = this
+        while (current != null) {
+            current.message?.takeIf(String::isNotBlank)?.let(messages::add)
+            current = current.cause
+        }
+        return messages
+    }
+
+    private fun looksLikePrivateKey(privateKeyMaterial: String): Boolean =
+        PRIVATE_KEY_HEADER_REGEX.containsMatchIn(privateKeyMaterial)
+
+    private fun Iterable<KeyPair>.toList(): List<KeyPair> = iterator().asSequence().toList()
+
+    private companion object {
+        val IMPORT_RESOURCE = NamedResource { "imported-private-key" }
+        val PRIVATE_KEY_HEADER_REGEX = Regex("-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+        val INCORRECT_PASSPHRASE_MARKERS = listOf(
+            "decrypt",
+            "password",
+            "checksum",
+            "mac",
+            "padding",
+            "integrity",
+            "bad decrypt",
+            "passphrase",
+            "mismatch",
+        )
+        val INVALID_KEY_MATERIAL_MARKERS = listOf(
+            "unsupported",
+            "invalid key",
+            "bad key",
+            "cannot retrieve decoder",
+            "format",
+            "malformed",
+            "no begin marker",
+            "not a private key",
+        )
+    }
+}
+
+sealed interface ImportedKeyParseResult {
+    data class Success(
+        val publicKey: String,
+        val hasPassphrase: Boolean,
+    ) : ImportedKeyParseResult
+
+    data object PassphraseRequired : ImportedKeyParseResult
+
+    data object IncorrectPassphrase : ImportedKeyParseResult
+
+    data object InvalidKeyMaterial : ImportedKeyParseResult
+}

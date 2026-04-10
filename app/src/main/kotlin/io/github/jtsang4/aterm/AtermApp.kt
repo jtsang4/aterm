@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import io.github.jtsang4.aterm.core.designsystem.AtermTheme
 import io.github.jtsang4.aterm.di.AppContainer
+import io.github.jtsang4.aterm.feature.identities.IdentitiesScreen
 import io.github.jtsang4.aterm.di.LocalAppContainer
 import io.github.jtsang4.aterm.navigation.AppDestination
 import io.github.jtsang4.aterm.navigation.AtermNavHost
@@ -31,6 +32,7 @@ import io.github.jtsang4.aterm.navigation.rememberAtermAppState
 @Composable
 fun AtermApp(
     appContainer: AppContainer = AppContainer.preview(),
+    identitiesScreen: @Composable (() -> Unit)? = null,
 ) {
     AtermTheme {
         CompositionLocalProvider(LocalAppContainer provides appContainer) {
@@ -76,6 +78,9 @@ fun AtermApp(
                     AtermNavHost(
                         navController = appState.navController,
                         appContainer = appContainer,
+                        identitiesScreen = identitiesScreen ?: {
+                            IdentitiesScreen(identityRepository = appContainer.foundationGraph.identityRepository)
+                        },
                     )
                 }
             }

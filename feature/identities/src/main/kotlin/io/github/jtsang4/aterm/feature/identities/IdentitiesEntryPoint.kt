@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,13 +41,14 @@ object IdentitiesEntryPoint {
 private sealed interface IdentityDestination {
     data object Library : IdentityDestination
     data class PasswordEditor(val identity: Identity?) : IdentityDestination
-    data object ImportKeyStub : IdentityDestination
+    data object ImportKeyEditor : IdentityDestination
     data object GenerateKeyStub : IdentityDestination
 }
 
 @Composable
 fun IdentitiesScreen(
     identityRepository: IdentityRepository,
+    importedKeyImportService: ImportedKeyImportService = ImportedKeyImportService(),
 ) {
     val identities by identityRepository.observeIdentities().collectAsState(initial = emptyList())
     var destination by remember { mutableStateOf<IdentityDestination>(IdentityDestination.Library) }
@@ -59,17 +61,17 @@ fun IdentitiesScreen(
             onBack = { destination = IdentityDestination.Library },
         )
 
-        IdentityDestination.ImportKeyStub -> IdentityStubScreen(
-            title = "Import key identity",
-            supportingText = "Private-key import will attach to this library flow in the next identity slice.",
-            modifier = Modifier.testTag("identity_import_stub"),
-            onBack = { destination = IdentityDestination.Library },
+        IdentityDestination.ImportKeyEditor -> ImportKeyIdentityEditorScreen(
+            identityRepository = identityRepository,
+            importService = importedKeyImportService,
+            onCancel = { destination = IdentityDestination.Library },
+            onSaved = { destination = IdentityDestination.Library },
         )
 
         IdentityDestination.Library -> IdentityLibraryScreen(
             identities = identities,
             onCreatePassword = { destination = IdentityDestination.PasswordEditor(identity = null) },
-            onImportKey = { destination = IdentityDestination.ImportKeyStub },
+            onImportKey = { destination = IdentityDestination.ImportKeyEditor },
             onGenerateKey = { destination = IdentityDestination.GenerateKeyStub },
             onEditPasswordIdentity = { destination = IdentityDestination.PasswordEditor(identity = it) },
         )
@@ -93,7 +95,7 @@ private fun IdentityLibraryScreen(
 ) {
     AppScreenScaffold(
         title = "Identities",
-        supportingText = "Reusable password identities are stored locally and can be linked from host authentication flows.",
+        supportingText = "Reusable password and key identities are stored locally and can be linked from host authentication flows.",
         modifier = Modifier.testTag("screen_identities"),
     ) {
         Column(
@@ -120,7 +122,7 @@ private fun IdentityLibraryScreen(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "Create a password identity now, or open the upcoming key import and key generation entry points from this first-run state.",
+                            text = "Create a password identity now, import a private key, or open the upcoming key-generation flow from this first-run state.",
                         )
                     }
                 }
@@ -206,11 +208,24 @@ private fun IdentityRow(
             )
             Text(
                 text = if (identity.hasSecret) {
-                    "Secret stored securely"
+                    if (identity.kind == IdentityKind.PASSWORD) {
+                        "Password stored securely"
+                    } else {
+                        "Private key stored securely"
+                    }
                 } else {
                     "Secret missing"
                 },
             )
+            if (identity.kind != IdentityKind.PASSWORD) {
+                Text(
+                    text = if (identity.hasPassphrase) {
+                        "Passphrase required for this key"
+                    } else {
+                        "No import passphrase required"
+                    },
+                )
+            }
             if (identity.kind == IdentityKind.PASSWORD) {
                 TextButton(
                     onClick = { onEditPasswordIdentity(identity) },
@@ -361,6 +376,179 @@ private fun PasswordIdentityEditorScreen(
                     modifier = Modifier.testTag("identity_editor_save"),
                 ) {
                     Text(if (isEditing) "Save changes" else "Save identity")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportKeyIdentityEditorScreen(
+    identityRepository: IdentityRepository,
+    importService: ImportedKeyImportService,
+    onCancel: () -> Unit,
+    onSaved: () -> Unit,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var privateKeyMaterial by remember { mutableStateOf("") }
+    var passphrase by remember { mutableStateOf("") }
+    var passphraseRequested by remember { mutableStateOf(false) }
+    var showPassphrase by remember { mutableStateOf(false) }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var keyMaterialError by remember { mutableStateOf<String?>(null) }
+    var passphraseError by remember { mutableStateOf<String?>(null) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+
+    AppScreenScaffold(
+        title = "Import key identity",
+        supportingText = "Import supported OpenSSH or PEM private keys. Encrypted keys prompt for a passphrase and keep your draft intact if the first attempt fails.",
+        modifier = Modifier.testTag("identity_import_editor"),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    nameError = null
+                    saveError = null
+                },
+                label = { Text("Identity name") },
+                isError = nameError != null,
+                supportingText = { Text(nameError ?: "Use a label that helps distinguish this imported key later.") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("identity_import_name_field"),
+            )
+            OutlinedTextField(
+                value = privateKeyMaterial,
+                onValueChange = {
+                    privateKeyMaterial = it
+                    keyMaterialError = null
+                    passphraseError = null
+                    saveError = null
+                },
+                label = { Text("Private key material") },
+                isError = keyMaterialError != null,
+                supportingText = {
+                    Text(
+                        keyMaterialError ?: "Paste the full private key block. Unsupported or malformed keys are rejected without saving a partial identity.",
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 160.dp)
+                    .testTag("identity_import_key_field"),
+            )
+            if (passphraseRequested) {
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = {
+                        passphrase = it
+                        passphraseError = null
+                        saveError = null
+                    },
+                    label = { Text("Passphrase") },
+                    isError = passphraseError != null,
+                    visualTransformation = if (showPassphrase) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    supportingText = {
+                        Text(passphraseError ?: "Enter the passphrase needed to unlock this private key.")
+                    },
+                    trailingIcon = {
+                        TextButton(
+                            onClick = { showPassphrase = !showPassphrase },
+                            modifier = Modifier.testTag("identity_import_passphrase_toggle"),
+                        ) {
+                            Text(if (showPassphrase) "Hide" else "Show")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("identity_import_passphrase_field"),
+                )
+            }
+            saveError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("identity_import_save_error"),
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                TextButton(
+                    onClick = onCancel,
+                    modifier = Modifier.testTag("identity_import_cancel"),
+                ) {
+                    Text("Cancel")
+                }
+                Button(
+                    onClick = {
+                        val trimmedName = name.trim()
+                        val normalizedKeyMaterial = privateKeyMaterial.trim()
+                        nameError = if (trimmedName.isBlank()) "Identity name is required." else null
+                        keyMaterialError = if (normalizedKeyMaterial.isBlank()) {
+                            "Private key material is required."
+                        } else {
+                            null
+                        }
+                        if (nameError != null || keyMaterialError != null) {
+                            return@Button
+                        }
+
+                        coroutineScope.launch {
+                            when (val parsed = importService.parse(normalizedKeyMaterial, passphrase.takeIf { passphraseRequested })) {
+                                ImportedKeyParseResult.PassphraseRequired -> {
+                                    passphraseRequested = true
+                                    passphraseError = "Passphrase is required to unlock this private key."
+                                }
+
+                                ImportedKeyParseResult.IncorrectPassphrase -> {
+                                    passphraseRequested = true
+                                    passphraseError = "Passphrase was incorrect. Try again."
+                                }
+
+                                ImportedKeyParseResult.InvalidKeyMaterial -> {
+                                    saveError = "Unsupported or malformed private key. Import a supported OpenSSH or PEM private key."
+                                }
+
+                                is ImportedKeyParseResult.Success -> {
+                                    runCatching {
+                                        identityRepository.upsert(
+                                            identity = Identity(
+                                                name = trimmedName,
+                                                kind = IdentityKind.IMPORTED_KEY,
+                                                publicKey = parsed.publicKey,
+                                                hasSecret = true,
+                                                hasPassphrase = parsed.hasPassphrase,
+                                                createdAt = Instant.now(),
+                                                updatedAt = Instant.now(),
+                                            ),
+                                            secrets = IdentitySecretMaterial(
+                                                primarySecret = normalizedKeyMaterial,
+                                                passphrase = passphrase.takeIf { parsed.hasPassphrase && it.isNotBlank() },
+                                            ),
+                                        )
+                                    }.onSuccess {
+                                        onSaved()
+                                    }.onFailure { throwable ->
+                                        saveError = throwable.message ?: "Unable to import the key identity."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag("identity_import_save"),
+                ) {
+                    Text("Import key")
                 }
             }
         }
