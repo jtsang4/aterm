@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "io.github.jtsang4.aterm.feature.snippets"
+    namespace = "io.github.jtsang4.aterm.core.designsystem"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
@@ -32,12 +32,12 @@ android {
 }
 
 dependencies {
-    implementation(project(":core:designsystem"))
-    implementation(project(":core:domain"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.ui.tooling.preview)
+
     testImplementation(libs.junit4)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

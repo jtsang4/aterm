@@ -45,7 +45,12 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:data"))
+    implementation(project(":core:designsystem"))
     implementation(project(":core:domain"))
+    implementation(project(":core:security"))
+    implementation(project(":core:ssh"))
+    implementation(project(":core:terminal"))
     implementation(project(":feature:hosts"))
     implementation(project(":feature:identities"))
     implementation(project(":feature:session"))
@@ -56,12 +61,14 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
     testImplementation(libs.junit4)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

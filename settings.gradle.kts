@@ -18,6 +18,7 @@ rootProject.name = "aterm"
 
 include(
     ":app",
+    ":core:designsystem",
     ":core:domain",
     ":core:data",
     ":core:security",
