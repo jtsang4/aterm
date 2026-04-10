@@ -214,6 +214,55 @@ class HostLibraryFlowsInstrumentedTest {
     }
 
     @Test
+    fun blank_address_and_blank_username_block_save_until_corrected_end_to_end() {
+        val firstContainer = AppContainer.create(context)
+        runBlocking {
+            firstContainer.foundationGraph.identityRepository.upsert(
+                identity = readyIdentity(
+                    id = 0,
+                    name = "Reusable password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = "validation-secret"),
+            )
+        }
+
+        composeRule.setContent {
+            AtermApp(appContainer = firstContainer)
+        }
+
+        composeRule.onNodeWithTag("host_create_action").performClick()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Needs endpoint")
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        composeRule.onNodeWithTag("host_address_error").assertTextContains("Address is required.")
+        composeRule.onNodeWithTag("host_username_error").assertTextContains("Username is required.")
+        assertEquals(null, runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) })
+
+        composeRule.onNodeWithTag("host_address_field").performTextInput("10.0.2.2")
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        composeRule.onAllNodesWithTag("host_address_error").assertCountEquals(0)
+        composeRule.onNodeWithTag("host_username_error").assertTextContains("Username is required.")
+        assertEquals(null, runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) })
+
+        composeRule.onNodeWithTag("host_username_field").performTextInput("root")
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { firstContainer.foundationGraph.hostRepository.getHost(1) } != null
+        }
+        composeRule.onAllNodesWithTag("host_address_error").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("host_username_error").assertCountEquals(0)
+        composeRule.onNodeWithTag("host_row_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_selection_detail_1")
+            .assertTextContains("root@10.0.2.2:22", substring = true)
+    }
+
+    @Test
     fun host_validation_blocks_invalid_port_and_missing_identity_permutations() {
         val hostRepository = HostTestFakeHostRepository()
 
