@@ -1,0 +1,74 @@
+{
+  "groupId": "rerun-host-validation",
+  "testedAt": "2026-04-10T16:12:08.862322Z",
+  "isolation": {
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774",
+    "surface": "Android instrumentation on shared emulator",
+    "emulator": "atermApi35",
+    "deviceSerial": "emulator-5554",
+    "boundary": "single shared emulator isolation boundary"
+  },
+  "toolsUsed": [
+    "Gradle",
+    "Android instrumentation on emulator",
+    "adb",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    "/root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "/root/Android/Sdk/platform-tools/adb devices",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop sys.boot_completed",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop dev.bootcomplete",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest#blank_address_and_blank_username_block_save_until_corrected_end_to_end,io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest#host_validation_blocks_invalid_port_and_missing_identity_permutations,io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest#key_auth_host_validation_requires_key_identity_before_save"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-HOST-004",
+      "title": "Host validation blocks incomplete or invalid connection settings",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Verify the shared emulator readiness and boot completion state",
+          "expected": "The assigned emulator is already running and ready for app-scoped instrumentation",
+          "observed": "adb reported emulator-5554 as connected and both sys.boot_completed and dev.bootcomplete returned 1."
+        },
+        {
+          "action": "Run the minimum focused connected Android tests for host validation on :app",
+          "expected": "Only the VAL-HOST-004-related validation methods execute and pass on the real Android user surface",
+          "observed": "The filtered :app:connectedDebugAndroidTest run executed 3 tests with 0 failures: blank address/username, invalid port with missing password identity, and missing key identity validation."
+        },
+        {
+          "action": "Inspect the rerun reports and the instrumented source assertions",
+          "expected": "Evidence should explicitly prove blank address, blank username, invalid ports, and missing credential-source states all block save with actionable errors",
+          "observed": "The reports show all 3 targeted tests passed, and the source excerpt confirms host_address_error, host_username_error, host_port_error, and host_identity_error assertions plus repository checks that no invalid host was saved until corrected."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "hosts-identities/rerun-host-validation/emulator-readiness.txt",
+          "hosts-identities/rerun-host-validation/connected-test-summary.html",
+          "hosts-identities/rerun-host-validation/host-library-instrumentation.html",
+          "hosts-identities/rerun-host-validation/connected-test-results.xml",
+          "hosts-identities/rerun-host-validation/host-validation-source-excerpt.txt"
+        ],
+        "consoleErrors": "Not applicable for Android instrumentation; the targeted connected-test run completed with 3/3 passing and no crash traces.",
+        "network": "Not exercised for this form-validation assertion."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The focused instrumentation rerun produced Gradle HTML/XML reports but no standalone emulator screenshots, so the evidence package relies on connected-test artifacts and source excerpts.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-HOST-004"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "VAL-HOST-004 passed. Focused HostLibraryFlowsInstrumentedTest coverage on emulator-5554 proved blank address, blank username, invalid port values, and missing password/key credential-source states each show actionable errors and prevent saving invalid hosts until corrected."
+}
