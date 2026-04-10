@@ -18,6 +18,7 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 - Environment: emulator `atermApi35` on `emulator-5554`
 - Real integration path: emulator reaches host SSH target at `10.0.2.2:22`
 - Use this surface for host/identity CRUD, trust prompts, real SSH connection, snippet execution, theme/font persistence, and repeat-use flows
+- When filtering to app-only instrumentation classes, prefer `./gradlew :app:connectedDebugAndroidTest` so other modules do not try to load `:app` test classes
 
 ### Surface 3: Manual terminal QA on emulator/device
 - Tools: manual QA plus screen capture/logs as evidence
@@ -50,6 +51,15 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 ### Manual QA surface
 - Max concurrent validators: **1**
 - Rationale: requires exclusive control of the emulator/device session and real SSH interaction
+
+## Flow Validator Guidance: Android instrumentation on emulator
+
+- Use only the shared `atermApi35` emulator on `emulator-5554`; do not start another emulator or run validators in parallel on this surface.
+- Treat the emulator as a single shared isolation boundary. Before running a flow, clear app state through the test setup already used by the instrumentation suites instead of inventing external seed files.
+- Reach the host SSH target through `10.0.2.2:22` only. Do not modify host `sshd`, host keys, firewall rules, or any system SSH configuration.
+- Keep evidence within the assigned mission evidence directory and avoid capturing plaintext passwords, private keys, or passphrases in logs or screenshots.
+- Prefer the existing instrumentation suites for hosts/identities flows because they already encode the expected user-visible behaviors and persistence/relaunch checks for this milestone.
+- If a flow needs manual app launch or package inspection, use package `io.github.jtsang4.aterm` and keep to a single emulator session at a time.
 
 ## Evidence Expectations
 

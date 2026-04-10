@@ -1,0 +1,445 @@
+{
+  "surface": "Android instrumentation on shared emulator emulator-5554 / AVD atermApi35 via :app:connectedDebugAndroidTest",
+  "assertionsTested": [
+    {
+      "id": "VAL-HOST-001",
+      "status": "pass",
+      "reason": "Validated by HostLibraryFlowsInstrumentedTest.empty_state_create_action_and_validation_errors_are_visible: the empty host library shows an explicit empty state and the visible create action opens the host editor.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.empty_state_create_action_and_validation_errors_are_visible"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-002",
+      "status": "pass",
+      "reason": "Validated by HostLibraryFlowsInstrumentedTest.password_host_can_be_saved_and_reopened_after_relaunch: a password-auth host persisted across relaunch and reopened with the same label/address/username and linked identity.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.password_host_can_be_saved_and_reopened_after_relaunch"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-003",
+      "status": "blocked",
+      "reason": "Current instrumentation only exercised key-compatible identity filtering in HostLibraryFlowsInstrumentedTest.key_host_shows_only_key_compatible_identities_in_key_mode; it did not save and reopen a key-auth host through the user surface.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.key_host_shows_only_key_compatible_identities_in_key_mode"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-004",
+      "status": "blocked",
+      "reason": "HostLibraryFlowsInstrumentedTest.empty_state_create_action_and_validation_errors_are_visible covered the empty create flow but did not directly exercise all required invalid states from the contract, especially invalid-port and missing-key-selection permutations.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.empty_state_create_action_and_validation_errors_are_visible"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-005",
+      "status": "blocked",
+      "reason": "HostLibraryFlowsInstrumentedTest.edit_cancel_and_delete_confirmation_behave_predictably verified cancel/back preserves the old host, but it did not complete the explicit save path to prove edits apply only after save.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.edit_cancel_and_delete_confirmation_behave_predictably"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-006",
+      "status": "blocked",
+      "reason": "The suite validated delete confirmation visibility and cancel behavior, but it did not confirm deletion from the UI and then verify that only the selected host was removed end to end.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.edit_cancel_and_delete_confirmation_behave_predictably",
+          "HostLibraryFlowsInstrumentedTest.deleting_host_does_not_delete_reusable_identity"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-007",
+      "status": "pass",
+      "reason": "Validated by HostLibraryFlowsInstrumentedTest.search_filters_by_visible_fields_and_clears_cleanly: host search matched label/address/username queries and clearing restored the full list.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.search_filters_by_visible_fields_and_clears_cleanly"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-008",
+      "status": "pass",
+      "reason": "Validated by HostLibraryFlowsInstrumentedTest.duplicate_labels_show_distinguishing_selection_details: duplicate host labels remained distinguishable by selection detail and the intended entry could be opened.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.duplicate_labels_show_distinguishing_selection_details"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-011",
+      "status": "pass",
+      "reason": "Validated by HostLibraryFlowsInstrumentedTest.auth_recovery_can_generate_or_create_identity_and_return_to_host_form: missing/blocked identity flows exposed direct generate/import/create recovery actions and returned to the host editor.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.auth_recovery_can_generate_or_create_identity_and_return_to_host_form"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-HOST-012",
+      "status": "pass",
+      "reason": "Validated by HostLibraryFlowsInstrumentedTest.deleting_host_does_not_delete_reusable_identity: after host removal, the shared linked identity still existed in the identity library and remained selectable for reuse.",
+      "evidence": {
+        "tests": [
+          "HostLibraryFlowsInstrumentedTest.deleting_host_does_not_delete_reusable_identity"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-001",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.empty_identity_library_exposes_password_import_and_generate_actions: the empty identity library exposed direct create, import, and generate entry points.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.empty_identity_library_exposes_password_import_and_generate_actions"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-002",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.saved_password_identity_remains_selectable_from_host_flows_after_relaunch: a password identity saved, persisted across relaunch, and appeared in the host authentication selector.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.saved_password_identity_remains_selectable_from_host_flows_after_relaunch"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-003",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.password_identity_validation_requires_name_and_masks_secret_by_default: blank names/passwords were rejected and the password field was masked on first render.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.password_identity_validation_requires_name_and_masks_secret_by_default"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-004",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.supported_private_key_imports_and_becomes_selectable_from_host_flows plus imported_key_identity_is_visible_in_host_selector: a supported unencrypted key imported successfully and the imported-key identity type appeared in host selection.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.supported_private_key_imports_and_becomes_selectable_from_host_flows",
+          "IdentityPasswordFlowsInstrumentedTest.imported_key_identity_is_visible_in_host_selector"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-005",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.encrypted_private_key_retries_after_wrong_passphrase_without_losing_draft: wrong passphrases failed clearly, the draft remained intact, and the corrected passphrase completed import.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.encrypted_private_key_retries_after_wrong_passphrase_without_losing_draft"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-006",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.malformed_private_key_is_rejected_without_creating_partial_identity: malformed key input showed an actionable error and created no identity record.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.malformed_private_key_is_rejected_without_creating_partial_identity"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-007",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.generated_key_identity_can_be_saved_and_public_key_copied: generated key creation saved one reusable identity, persisted across relaunch, and exposed a copyable public key.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.generated_key_identity_can_be_saved_and_public_key_copied"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "status": "blocked",
+      "reason": "Editor behavior was partly exercised by metadata_edit_keeps_existing_password_secret and replacing_key_secret_updates_saved_public_key_and_secret_material, but the contract requires proving changed credentials on a real connection attempt; the app still routes session navigation to SessionPlaceholder, so no live connection surface exists in this milestone.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.metadata_edit_keeps_existing_password_secret",
+          "IdentityPasswordFlowsInstrumentedTest.replacing_key_secret_updates_saved_public_key_and_secret_material"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-009",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details: deleting an in-use identity showed a warning and left the linked host in a visible repair state with relink options.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-010",
+      "status": "blocked",
+      "reason": "Identity persistence after relaunch was exercised, but the contract requires successful post-restart authentication. That cannot be validated yet because the session/SSH area is still a placeholder rather than a real terminal connection surface.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.saved_password_identity_remains_selectable_from_host_flows_after_relaunch",
+          "IdentityPasswordFlowsInstrumentedTest.supported_private_key_imports_and_becomes_selectable_from_host_flows"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-011",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.blocked_password_identity_surfaces_recovery_and_repair_flow and blocked_identity_is_excluded_from_host_selection_and_shows_repair_cta: blocked secrets surfaced recoverable repair messaging, prevented reuse, and did not expose plaintext fallback values.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.blocked_password_identity_surfaces_recovery_and_repair_flow",
+          "IdentityPasswordFlowsInstrumentedTest.blocked_identity_is_excluded_from_host_selection_and_shows_repair_cta"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    },
+    {
+      "id": "VAL-IDENTITY-012",
+      "status": "pass",
+      "reason": "Validated by IdentityPasswordFlowsInstrumentedTest.deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details: duplicate identity names stayed distinguishable through delete-warning detail and host repair selection surfaces.",
+      "evidence": {
+        "tests": [
+          "IdentityPasswordFlowsInstrumentedTest.deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details"
+        ],
+        "files": [
+          "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+          "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+        ]
+      }
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Running repo-wide connectedDebugAndroidTest with an app-only class filter also invoked :core:data:connectedDebugAndroidTest, which failed to load the app test classes.",
+      "resolved": true,
+      "resolution": "Reran the instrumentation scope as :app:connectedDebugAndroidTest with the same class filter.",
+      "affectedAssertions": [
+        "VAL-HOST-001",
+        "VAL-HOST-002",
+        "VAL-HOST-003",
+        "VAL-HOST-004",
+        "VAL-HOST-005",
+        "VAL-HOST-006",
+        "VAL-HOST-007",
+        "VAL-HOST-008",
+        "VAL-HOST-011",
+        "VAL-HOST-012",
+        "VAL-IDENTITY-001",
+        "VAL-IDENTITY-002",
+        "VAL-IDENTITY-003",
+        "VAL-IDENTITY-004",
+        "VAL-IDENTITY-005",
+        "VAL-IDENTITY-006",
+        "VAL-IDENTITY-007",
+        "VAL-IDENTITY-008",
+        "VAL-IDENTITY-009",
+        "VAL-IDENTITY-010",
+        "VAL-IDENTITY-011",
+        "VAL-IDENTITY-012"
+      ]
+    },
+    {
+      "description": "The existing instrumentation suites emit Gradle XML/HTML reports but no per-step screenshots, so evidence is limited to test report artifacts rather than UI image captures.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-HOST-001",
+        "VAL-HOST-002",
+        "VAL-HOST-007",
+        "VAL-HOST-008",
+        "VAL-HOST-011",
+        "VAL-HOST-012",
+        "VAL-IDENTITY-001",
+        "VAL-IDENTITY-002",
+        "VAL-IDENTITY-003",
+        "VAL-IDENTITY-004",
+        "VAL-IDENTITY-005",
+        "VAL-IDENTITY-006",
+        "VAL-IDENTITY-007",
+        "VAL-IDENTITY-009",
+        "VAL-IDENTITY-011",
+        "VAL-IDENTITY-012"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No current instrumentation flow saves and reopens a key-auth host end to end.",
+      "affectedAssertions": [
+        "VAL-HOST-003"
+      ],
+      "quickFixAttempted": "Reviewed HostLibraryFlowsInstrumentedTest coverage and reran the host suite; only key-identity filtering/repair flows are currently implemented in tests."
+    },
+    {
+      "description": "The current host validation test does not drive all invalid permutations required by the contract, especially invalid port values and missing key-selection cases.",
+      "affectedAssertions": [
+        "VAL-HOST-004"
+      ],
+      "quickFixAttempted": "Reviewed HostLibraryFlowsInstrumentedTest coverage and current HostsEntryPoint validation flow; full contract permutations are not exercised by instrumentation yet."
+    },
+    {
+      "description": "The current host edit/delete tests do not complete the explicit save-after-edit path or UI-confirmed deletion path end to end.",
+      "affectedAssertions": [
+        "VAL-HOST-005",
+        "VAL-HOST-006"
+      ],
+      "quickFixAttempted": "Reran the existing host flow suite and checked the current test cases; they cover cancel/confirmation visibility but not the remaining contract steps."
+    },
+    {
+      "description": "The app still routes the session area to SessionPlaceholder, so there is no live SSH connection surface to prove credential behavior after editing identities or after app restart.",
+      "affectedAssertions": [
+        "VAL-IDENTITY-008",
+        "VAL-IDENTITY-010"
+      ],
+      "quickFixAttempted": "Confirmed the gap by inspecting app/src/main/kotlin/io/github/jtsang4/aterm/navigation/AtermNavHost.kt after the instrumentation run."
+    }
+  ],
+  "toolsUsed": [
+    "Android instrumentation on emulator",
+    "Gradle",
+    "adb",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    "/root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "/root/Android/Sdk/platform-tools/adb devices",
+    "/root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest",
+    "/root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest"
+  ],
+  "evidenceFiles": [
+    "hosts-identities/hosts-identities-core/app-connected-debug-summary.html",
+    "hosts-identities/hosts-identities-core/host-library-instrumentation.html",
+    "hosts-identities/hosts-identities-core/identity-password-instrumentation.html",
+    "hosts-identities/hosts-identities-core/app-connected-debug-results.xml"
+  ],
+  "summary": "Ran the minimum app-scoped Android instrumentation on emulator-5554 and got 24/24 passing tests across HostLibraryFlowsInstrumentedTest and IdentityPasswordFlowsInstrumentedTest. Based on that surface, 16 assigned assertions are validated as pass and 6 remain blocked by current coverage or product gaps (VAL-HOST-003, VAL-HOST-004, VAL-HOST-005, VAL-HOST-006, VAL-IDENTITY-008, VAL-IDENTITY-010)."
+}
