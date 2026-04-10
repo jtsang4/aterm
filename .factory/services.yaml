@@ -1,0 +1,22 @@
+commands:
+  install: "./.factory/init.sh"
+  bootstrap-check: "./.factory/init.sh --check"
+  test: "if [ -x ./gradlew ]; then JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew testDebugUnitTest --max-workers=4; else echo 'gradlew not present yet'; fi"
+  lint: "if [ -x ./gradlew ]; then JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew lintDebug --max-workers=4; else echo 'gradlew not present yet'; fi"
+  build: "if [ -x ./gradlew ]; then JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew assembleDebug --max-workers=4; else echo 'gradlew not present yet'; fi"
+  instrumentation: "if [ -x ./gradlew ]; then JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew connectedDebugAndroidTest --max-workers=1; else echo 'gradlew not present yet'; fi"
+
+services:
+  ssh_target:
+    start: "true"
+    stop: "true"
+    healthcheck: "nc -z 127.0.0.1 22"
+    port: 22
+    depends_on: []
+
+  emulator:
+    start: "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH nohup /root/Android/Sdk/emulator/emulator @atermApi35 -no-window -no-snapshot -no-boot-anim -no-audio -gpu swiftshader_indirect -port 5554 >/tmp/aterm-emulator.log 2>&1 &"
+    stop: "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH adb -s emulator-5554 emu kill || true"
+    healthcheck: "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r' | grep -qx 1"
+    port: 5554
+    depends_on: []
