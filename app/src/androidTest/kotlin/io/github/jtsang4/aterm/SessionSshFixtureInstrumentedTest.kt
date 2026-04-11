@@ -488,6 +488,68 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun reconnect_from_visible_ui_after_cancel_is_not_dropped() {
+        val container = AppContainer.create(context)
+        runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            )
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            )
+        }
+        val coordinator = buildCoordinator(container)
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = container.foundationGraph.hostRepository,
+                identityRepository = container.foundationGraph.identityRepository,
+                knownHostTrustRepository = container.foundationGraph.knownHostTrustRepository,
+                coordinator = coordinator,
+            )
+        }
+
+        composeRule.onNodeWithTag("session_connect_1").performScrollTo()
+        composeRule.onNodeWithTag("session_connect_1").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("session_trust_prompt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_status_message")
+                    .assertTextContains("Connection canceled.", substring = true)
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("session_connect_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_connect_1").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("session_trust_prompt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("session_trust_accept").performClick()
+
+        val connected = waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        assertEquals(
+            1,
+            runBlocking { container.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
+        )
+    }
+
+    @Test
     fun remote_disconnect_marks_session_reconnect_required_and_preserves_history_as_non_live() {
         val container = AppContainer.create(context)
         val identityId = runBlocking {

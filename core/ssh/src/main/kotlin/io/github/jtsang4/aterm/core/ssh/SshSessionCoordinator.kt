@@ -110,7 +110,9 @@ class SshSessionCoordinator(
     override fun disconnect() {
         ioScope.launch {
             val cancelingConnect = stateMutex.withLock {
-                currentAttempt?.cancel()
+                val attempt = currentAttempt
+                currentAttempt = null
+                attempt?.cancel()
                 uiState.value.isConnecting
             }
             val host = uiState.value.activeHostId?.let { hostRepository.getHost(it) }
