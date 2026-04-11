@@ -53,3 +53,5 @@ Commands in `.factory/services.yaml` inline these values because each shell is i
 - Runtime state is generated under `tools/sshfixture/runtime/` and must stay uncommitted.
 - The fixture writes `tools/sshfixture/runtime/fixture-metadata.env` with the current endpoint, username, password export name, client-key paths, host public key, and host fingerprint for trust-flow validation.
 - Host-key identity stays stable across fixture restarts as long as the same runtime directory is preserved.
+
+- Repo-local fixture metadata must expose only secret references or retrieval hints, never plaintext password values.

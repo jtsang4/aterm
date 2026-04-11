@@ -21,9 +21,9 @@ None.
 2. Run `./.factory/init.sh` and confirm the real SSH validation target is reachable from the emulator (`10.0.2.2:22` unless the feature explicitly sets up a different fixture).
 3. Write failing tests first (red). Include the smallest credible unit/integration tests for session state plus instrumentation/manual checks for user-visible SSH or terminal behavior.
 4. Implement the change without faking success states. A terminal must never look live when the SSH session is dead, and host trust must never be reused for a different endpoint silently.
-5. For connection features, prove remote reality with target-specific command output rather than only UI chrome. For terminal features, include real interactive checks such as Ctrl+C, Tab, arrow history, or a representative full-screen terminal program when relevant.
+5. For connection features, prove remote reality with target-specific command output through the visible session UI rather than only coordinator-level state. For terminal features, do not hand off the work as complete while the UI is still transcript-backed instead of live PTY-driven; return partial progress to the orchestrator instead.
 6. Run the focused validators during iteration, then the repo baseline validators plus the affected instrumentation suite before handoff.
-7. Manually exercise lifecycle and terminal truthfulness whenever the feature touches connect/disconnect, resize, rotation, backgrounding, or snippet dispatch to a live session.
+7. Manually exercise lifecycle and terminal truthfulness whenever the feature touches connect/disconnect, resize, rotation, backgrounding, special keys, paste, or snippet dispatch to a live session. These observations must be recorded explicitly in `handoff.verification.interactiveChecks`; missing interactive evidence is a procedure deviation.
 8. Stop any emulator or SSH fixture processes you started and write a detailed handoff with explicit commands and interactive observations.
 
 ## Example Handoff
