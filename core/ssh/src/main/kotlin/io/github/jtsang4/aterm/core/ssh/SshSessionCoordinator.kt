@@ -21,8 +21,10 @@ import java.security.PublicKey
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +42,7 @@ import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.NamedResource
 import org.apache.sshd.common.channel.PtyChannelConfiguration
 import org.apache.sshd.common.config.keys.FilePasswordProvider
+import org.apache.sshd.common.future.Cancellable
 import org.apache.sshd.common.util.io.PathUtils
 import org.apache.sshd.common.util.security.SecurityUtils
 
@@ -53,6 +56,7 @@ class SshSessionCoordinator(
     private val stateMutex = Mutex()
     private val uiState = MutableStateFlow(SessionUiState())
     private var runtimeConnection: RuntimeConnection? = null
+    private var currentAttempt: ConnectAttempt? = null
     private var pendingDecisionAccepted: Boolean? = null
     private var pendingDecisionLatch: CountDownLatch? = null
 
@@ -60,17 +64,36 @@ class SshSessionCoordinator(
 
     override fun connect(hostId: Long) {
         ioScope.launch {
+            val attempt = stateMutex.withLock {
+                if (currentAttempt != null) {
+                    null
+                } else {
+                    ConnectAttempt(id = nextAttemptId.getAndIncrement()).also { currentAttempt = it }
+                }
+            } ?: return@launch
             connectMutex.withLock {
-                connectInternal(hostId)
+                try {
+                    connectInternal(hostId, attempt)
+                } finally {
+                    stateMutex.withLock {
+                        if (currentAttempt?.id == attempt.id) {
+                            currentAttempt = null
+                        }
+                    }
+                }
             }
         }
     }
 
     override fun disconnect() {
         ioScope.launch {
+            val cancelingConnect = stateMutex.withLock {
+                currentAttempt?.cancel()
+                uiState.value.isConnecting
+            }
             disconnectInternal(
                 state = SessionConnectionState.DISCONNECTED,
-                statusMessage = "Disconnected.",
+                statusMessage = if (cancelingConnect) "Connection canceled." else "Disconnected.",
                 lastError = null,
             )
         }
@@ -97,8 +120,9 @@ class SshSessionCoordinator(
         }
     }
 
-    private suspend fun connectInternal(hostId: Long) {
+    private suspend fun connectInternal(hostId: Long, attempt: ConnectAttempt) {
         val result = runCatching {
+            attempt.ensureActive()
             val host = requireNotNull(hostRepository.getHost(hostId)) {
                 "Host is missing."
             }
@@ -114,6 +138,7 @@ class SshSessionCoordinator(
             val secrets = identityRepository.getSecretMaterial(identity.id)
                 ?: error("Stored identity secret is unavailable.")
 
+            attempt.ensureActive()
             disconnectInternal(
                 state = SessionConnectionState.DISCONNECTED,
                 statusMessage = null,
@@ -130,20 +155,28 @@ class SshSessionCoordinator(
                 pendingTrustDecision = null,
             )
 
+            attempt.ensureActive()
             ensureAndroidFriendlySshdDefaults()
             val client = SshClient.setUpDefaultClient().apply {
-                serverKeyVerifier = BlockingTrustVerifier(host)
+                serverKeyVerifier = BlockingTrustVerifier(host, attempt)
                 start()
             }
-            val session = client.connect(host.username, host.address, host.port)
-                .verify(CONNECT_TIMEOUT_MILLIS)
+            attempt.registerCancelAction { runCatching { client.stop() } }
+            val connectFuture = client.connect(host.username, host.address, host.port)
+            attempt.register(connectFuture)
+            val session = connectFuture.verify(CONNECT_TIMEOUT_MILLIS)
                 .session
-            authenticate(session, identity, secrets)
+            attempt.ensureActive()
+            attempt.registerCancelAction { runCatching { session.close(false) } }
+            authenticate(session, identity, secrets, attempt)
 
             val channel = session.createShellChannel(PtyChannelConfiguration(), emptyMap<String, Any>()).apply {
                 setRedirectErrorStream(true)
-                open().verify(CHANNEL_OPEN_TIMEOUT_MILLIS)
+                val openFuture = open()
+                attempt.register(openFuture)
+                openFuture.verify(CHANNEL_OPEN_TIMEOUT_MILLIS)
             }
+            attempt.ensureActive()
             val connection = RuntimeConnection(
                 host = host,
                 client = client,
@@ -152,8 +185,15 @@ class SshSessionCoordinator(
                 stdin = requireNotNull(channel.invertedIn) { "SSH input stream is unavailable." },
                 stdout = requireNotNull(channel.invertedOut) { "SSH output stream is unavailable." },
             )
+            attempt.registerCancelAction {
+                connection.closing.set(true)
+                runCatching { connection.channel.close(false) }
+                runCatching { connection.session.close(false) }
+                runCatching { connection.client.stop() }
+            }
             runtimeConnection = connection
 
+            attempt.ensureActive()
             updateState(
                 host = host,
                 state = SessionConnectionState.CONNECTED,
@@ -168,6 +208,9 @@ class SshSessionCoordinator(
         }
 
         result.onFailure { throwable ->
+            if (throwable is ConnectCanceledException || attempt.isCanceled) {
+                return@onFailure
+            }
             val host = hostRepository.getHost(hostId)
             val message = throwable.toUserMessage(host)
             if (host != null) {
@@ -189,6 +232,7 @@ class SshSessionCoordinator(
         session: ClientSession,
         identity: Identity,
         secrets: IdentitySecretMaterial,
+        attempt: ConnectAttempt,
     ) {
         when (identity.kind) {
             IdentityKind.PASSWORD -> {
@@ -203,7 +247,10 @@ class SshSessionCoordinator(
                 session.addPublicKeyIdentity(loadKeyPair(privateKey, secrets.passphrase))
             }
         }
-        session.auth().verify(AUTH_TIMEOUT_MILLIS)
+        val authFuture = session.auth()
+        attempt.register(authFuture)
+        authFuture.verify(AUTH_TIMEOUT_MILLIS)
+        attempt.ensureActive()
     }
 
     private fun startReader(connection: RuntimeConnection) {
@@ -314,12 +361,14 @@ class SshSessionCoordinator(
 
     private inner class BlockingTrustVerifier(
         private val host: Host,
+        private val attempt: ConnectAttempt,
     ) : ServerKeyVerifier {
         override fun verifyServerKey(
             clientSession: ClientSession,
             remoteAddress: SocketAddress,
             serverKey: PublicKey,
         ): Boolean {
+            attempt.ensureActive()
             val encoded = serverKey.encoded ?: return false
             val hostKeyBase64 = Base64.getEncoder().encodeToString(encoded)
             val fingerprint = MessageDigest.getInstance("SHA-256").digest(encoded).let { digest ->
@@ -344,10 +393,12 @@ class SshSessionCoordinator(
                 )
                 pendingDecisionAccepted = null
                 pendingDecisionLatch = CountDownLatch(1)
+                attempt.registerCancelAction { pendingDecisionLatch?.countDown() }
                 pendingDecisionLatch?.await(TRUST_DECISION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-                val accepted = pendingDecisionAccepted == true
+                attempt.ensureActive()
+                val accepted = pendingDecisionAccepted
                 pendingDecisionLatch = null
-                if (accepted) {
+                if (accepted == true) {
                     runBlocking {
                         knownHostTrustRepository.upsert(
                             KnownHostTrust(
@@ -366,7 +417,7 @@ class SshSessionCoordinator(
                 } else {
                     throw IllegalStateException("Host trust rejected.")
                 }
-                return accepted
+                return accepted == true
             }
             if (trusted.hostKeyBase64 != hostKeyBase64) {
                 throw IllegalStateException("Host key changed for ${host.endpoint}.")
@@ -439,12 +490,54 @@ class SshSessionCoordinator(
         val closing: AtomicBoolean = AtomicBoolean(false),
     )
 
+    private class ConnectAttempt(
+        val id: Long,
+    ) {
+        private val canceled = AtomicBoolean(false)
+        private val cancelActions = CopyOnWriteArrayList<() -> Unit>()
+
+        val isCanceled: Boolean
+            get() = canceled.get()
+
+        fun register(cancellable: Cancellable) {
+            registerCancelAction { runCatching { cancellable.cancel() } }
+        }
+
+        fun registerCancelAction(action: () -> Unit) {
+            if (canceled.get()) {
+                action()
+                return
+            }
+            cancelActions += action
+            if (canceled.get() && cancelActions.remove(action)) {
+                action()
+            }
+        }
+
+        fun ensureActive() {
+            if (canceled.get()) {
+                throw ConnectCanceledException()
+            }
+        }
+
+        fun cancel() {
+            if (!canceled.compareAndSet(false, true)) {
+                return
+            }
+            cancelActions.forEach { action -> action() }
+            cancelActions.clear()
+        }
+    }
+
+    private class ConnectCanceledException : IllegalStateException("Connection canceled.")
+
     companion object {
         private val IMPORT_RESOURCE = NamedResource { "saved-private-key" }
         private const val CONNECT_TIMEOUT_MILLIS = 5_000L
         private const val AUTH_TIMEOUT_MILLIS = 5_000L
         private const val CHANNEL_OPEN_TIMEOUT_MILLIS = 5_000L
         private const val TRUST_DECISION_TIMEOUT_MILLIS = 30_000L
+        private val nextAttemptId = AtomicLong(1L)
         private val userHomeConfigured = AtomicBoolean(false)
     }
 }

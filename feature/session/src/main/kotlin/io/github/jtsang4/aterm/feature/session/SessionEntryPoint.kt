@@ -15,6 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -125,12 +126,13 @@ private fun SessionStatusCard(
                     modifier = Modifier.testTag("session_active_endpoint"),
                 )
             }
-            if (sessionState.isConnected) {
-                TextButton(
+            if (sessionState.isConnected || sessionState.isConnecting) {
+                val label = if (sessionState.isConnecting) "Cancel connection" else "Disconnect"
+                OutlinedButton(
                     onClick = onDisconnect,
                     modifier = Modifier.testTag("session_disconnect_button"),
                 ) {
-                    Text("Disconnect")
+                    Text(label)
                 }
             }
         }
@@ -246,8 +248,12 @@ private fun SessionHostList(
                                     modifier = Modifier.testTag("session_connect_${host.id}"),
                                 ) {
                                     Text(
-                                        if (sessionState.activeHostId == host.id && sessionState.isConnected) {
+                                        if (sessionState.activeHostId == host.id &&
+                                            (sessionState.isConnected || sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.FAILED || sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED)
+                                        ) {
                                             "Reconnect"
+                                        } else if (sessionState.activeHostId == host.id && sessionState.isConnecting) {
+                                            "Connecting…"
                                         } else {
                                             "Connect"
                                         },

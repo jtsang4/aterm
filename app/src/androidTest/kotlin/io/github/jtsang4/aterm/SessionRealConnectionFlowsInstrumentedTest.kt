@@ -3,15 +3,19 @@ package io.github.jtsang4.aterm
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
@@ -29,8 +33,12 @@ import io.github.jtsang4.aterm.feature.session.SessionsScreen
 import java.io.File
 import java.security.KeyPair
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.apache.sshd.common.util.security.SecurityUtils
 import org.junit.After
@@ -471,6 +479,175 @@ class SessionRealConnectionFlowsInstrumentedTest {
         }
     }
 
+    @Test
+    fun repeated_connect_taps_and_cancel_yield_one_truthful_final_state() {
+        passwordIdentityRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Session password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "secret-password")),
+        )
+        hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Slow host",
+                    address = "10.0.2.2",
+                    port = 3130,
+                    username = "tester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        knownHostTrustRepository = SessionTestKnownHostTrustRepository()
+        val releaseConnect = CountDownLatch(1)
+        val startedConnect = CountDownLatch(1)
+        val slowController = SlowScriptedSessionController(
+            hostRepository = hostRepository,
+            releaseConnect = releaseConnect,
+            startedConnect = startedConnect,
+            scripts = mapOf(
+                1L to ConnectScript.Success(
+                    endpoint = "10.0.2.2:3130",
+                    proof = "ATERM_REMOTE_PROOF:10.0.2.2:3130:slow-shell",
+                    trust = null,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = hostRepository,
+                identityRepository = passwordIdentityRepository,
+                knownHostTrustRepository = knownHostTrustRepository,
+                coordinator = slowController,
+            )
+        }
+
+        composeRule.onNodeWithTag("session_connect_1").performScrollTo()
+        composeRule.onNodeWithTag("session_connect_1").performClick()
+        check(startedConnect.await(5, TimeUnit.SECONDS)) { "Connect did not start" }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            slowController.observeUiState().value.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTING
+        }
+        composeRule.onNodeWithText("Connecting…").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_disconnect_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_connect_1").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        releaseConnect.countDown()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            slowController.observeUiState().value.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED
+        }
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connection canceled.", substring = true)
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+        assertEquals(1, slowController.connectCalls.get())
+        assertEquals(0, slowController.completedConnections.get())
+    }
+
+    @Test
+    fun activity_recreation_while_connecting_keeps_single_connecting_state() {
+        val releaseConnect = CountDownLatch(1)
+        val startedConnect = CountDownLatch(1)
+        val showSessionScreen = mutableStateOf(true)
+        passwordIdentityRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Session password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "secret-password")),
+        )
+        hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Slow host",
+                    address = "10.0.2.2",
+                    port = 3131,
+                    username = "tester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        knownHostTrustRepository = SessionTestKnownHostTrustRepository()
+        val slowController = SlowScriptedSessionController(
+            hostRepository = hostRepository,
+            releaseConnect = releaseConnect,
+            startedConnect = startedConnect,
+            scripts = mapOf(
+                1L to ConnectScript.Success(
+                    endpoint = "10.0.2.2:3131",
+                    proof = "ATERM_REMOTE_PROOF:10.0.2.2:3131:slow-shell",
+                    trust = null,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            if (showSessionScreen.value) {
+                SessionsScreen(
+                    hostRepository = hostRepository,
+                    identityRepository = passwordIdentityRepository,
+                    knownHostTrustRepository = knownHostTrustRepository,
+                    coordinator = slowController,
+                )
+            } else {
+                Text("Session screen hidden")
+            }
+        }
+
+        composeRule.onNodeWithTag("session_connect_1").performScrollTo()
+        composeRule.onNodeWithTag("session_connect_1").performClick()
+        check(startedConnect.await(5, TimeUnit.SECONDS)) { "Connect did not start" }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            slowController.observeUiState().value.connectionState ==
+                io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTING
+        }
+
+        composeRule.runOnUiThread {
+            showSessionScreen.value = false
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("session_status_card").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.runOnUiThread {
+            showSessionScreen.value = true
+        }
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_state_label")
+                    .assertTextContains("connecting", substring = true)
+            }.isSuccess
+        }
+        composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("session_connect_1").assertCountEquals(1)
+        assertEquals(1, slowController.connectCalls.get())
+
+        releaseConnect.countDown()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            slowController.observeUiState().value.connectionState ==
+                io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTED
+        }
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connected to 10.0.2.2:3131.", substring = true)
+        assertEquals(1, slowController.completedConnections.get())
+    }
+
     private fun connectAndTrust(hostId: Long) {
         composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
         composeRule.onNodeWithTag("session_connect_$hostId").performClick()
@@ -771,4 +948,70 @@ private class ScriptedSessionController(
 
     private fun SessionTestKnownHostTrustRepository.findTrustedHostBlocking(host: String, port: Int): KnownHostTrust? =
         runBlocking { findTrustedHost(host, port) }
+}
+
+private class SlowScriptedSessionController(
+    private val hostRepository: HostRepository,
+    private val releaseConnect: CountDownLatch,
+    private val startedConnect: CountDownLatch,
+    scripts: Map<Long, ConnectScript>,
+) : SessionController {
+    private val state = MutableStateFlow(SessionUiState())
+    private val scripts = scripts
+    val connectCalls = AtomicInteger(0)
+    val completedConnections = AtomicInteger(0)
+
+    override fun observeUiState(): StateFlow<SessionUiState> = state
+
+    override fun connect(hostId: Long) {
+        connectCalls.incrementAndGet()
+        val host = runBlocking { hostRepository.getHost(hostId) } ?: return
+        val script = scripts[hostId] ?: return
+        startedConnect.countDown()
+        state.value = state.value.copy(
+            activeHostId = host.id,
+            activeHostLabel = host.label,
+            endpoint = host.endpoint,
+            connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTING,
+            statusMessage = "Connecting to ${host.endpoint}…",
+            pendingTrustDecision = null,
+            lastError = null,
+            transcript = "",
+        )
+        Thread {
+            releaseConnect.await(10, TimeUnit.SECONDS)
+            if (state.value.connectionState != io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTING) {
+                return@Thread
+            }
+            when (script) {
+                is ConnectScript.Success -> {
+                    completedConnections.incrementAndGet()
+                    state.value = state.value.copy(
+                        activeHostId = host.id,
+                        activeHostLabel = host.label,
+                        endpoint = host.endpoint,
+                        connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTED,
+                        statusMessage = "Connected to ${script.endpoint}.",
+                        transcript = script.proof,
+                        pendingTrustDecision = null,
+                        lastError = null,
+                    )
+                }
+
+                else -> error("Slow controller only supports success scripts")
+            }
+        }.start()
+    }
+
+    override fun disconnect() {
+        state.value = state.value.copy(
+            connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED,
+            statusMessage = "Connection canceled.",
+            pendingTrustDecision = null,
+        )
+    }
+
+    override fun submitHostTrustDecision(accept: Boolean) = Unit
+
+    override fun sendInput(input: String) = Unit
 }

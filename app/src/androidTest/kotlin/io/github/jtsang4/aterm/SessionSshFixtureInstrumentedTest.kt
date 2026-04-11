@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -274,6 +275,58 @@ class SessionSshFixtureInstrumentedTest {
                 it.statusMessage?.contains("Host is unreachable") == true
         }
         assertEquals("Host is unreachable at $FIXTURE_HOST:65022.", networkFailed.statusMessage)
+    }
+
+    @Test
+    fun canceling_during_real_connect_prompt_leaves_one_clean_disconnected_state() {
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = buildCoordinator(container)
+
+        coordinator.connect(hostId)
+        val prompting = waitForState(coordinator) {
+            it.connectionState == SessionConnectionState.CONNECTING && it.pendingTrustDecision != null
+        }
+        assertEquals("$FIXTURE_HOST:$FIXTURE_PORT", prompting.pendingTrustDecision?.endpoint)
+
+        coordinator.connect(hostId)
+        coordinator.disconnect()
+
+        val canceled = waitForState(coordinator) {
+            it.connectionState == SessionConnectionState.DISCONNECTED && it.statusMessage == "Connection canceled."
+        }
+        assertNull(canceled.pendingTrustDecision)
+        assertEquals("", canceled.transcript)
+        assertEquals(
+            0,
+            runBlocking { container.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
+        )
+
+        runBlocking { delay(1_000) }
+        val settled = coordinator.observeUiState().value
+        assertEquals(SessionConnectionState.DISCONNECTED, settled.connectionState)
+        assertEquals("Connection canceled.", settled.statusMessage)
+        assertTrue(settled.transcript.isEmpty())
     }
 
     private fun buildCoordinator(container: AppContainer): SshSessionCoordinator = SshSessionCoordinator(
