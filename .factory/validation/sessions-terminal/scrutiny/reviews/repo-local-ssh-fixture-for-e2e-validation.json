@@ -1,0 +1,33 @@
+{
+  "featureId": "repo-local-ssh-fixture-for-e2e-validation",
+  "reviewedAt": "2026-04-11T07:30:39+00:00",
+  "commitId": "59bb13932550d7f1956000148692b569d9ba0916",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fixture module, service wiring, and stability checks are implemented coherently, but the feature does not fully satisfy the mission's secret-handling boundary: it writes the reusable fixture password directly into the generated metadata env file instead of exposing only a password export name/reference.",
+    "issues": [
+      {
+        "file": "tools/sshfixture/src/main/kotlin/io/github/jtsang4/aterm/tools/sshfixture/SshFixtureConfig.kt",
+        "line": 54,
+        "severity": "blocking",
+        "description": "`SshFixtureMetadata.toEnvFile()` writes `ATERM_SSH_FIXTURE_PASSWORD=<plaintext>` into `tools/sshfixture/runtime/fixture-metadata.env`. That makes the reusable fixture credential available to any process or evidence capture that reads the metadata file, which conflicts with the mission guardrail against handling plaintext SSH credentials and with `.factory/library/environment.md`, which documents this file as carrying the password export name rather than the password value itself. The fixture should expose a reference/name for the password export (or another non-plaintext handoff mechanism) instead of persisting the actual secret in the metadata file."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The user-testing guidance was not updated after the fixture landed. It still says to prefer the repo-local fixture 'once it exists' instead of directing validators to use the now-available emulator target on `10.0.2.2:3122`.",
+      "evidence": ".factory/library/user-testing.md:20 says 'prefer the repo-local fixture once it exists', while `.factory/library/environment.md:51-55` documents the fixture as already present on `127.0.0.1:3122` / `10.0.2.2:3122`."
+    },
+    {
+      "area": "conventions",
+      "observation": "Shared-state documentation is internally inconsistent about fixture secret handling: the environment doc says `fixture-metadata.env` contains the password export name, but the implementation writes the plaintext password into that file.",
+      "evidence": ".factory/library/environment.md:54 says the metadata file includes the 'password export name'; `tools/sshfixture/src/main/kotlin/io/github/jtsang4/aterm/tools/sshfixture/SshFixtureConfig.kt:54` writes `ATERM_SSH_FIXTURE_PASSWORD=$password`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The SSH fixture itself appears functionally sound and correctly wired to port 3122 with stable host-key reuse, but the committed implementation persists the fixture password in plaintext inside the generated metadata env file, which is a mission-boundary/security regression. Shared-state docs also need alignment now that the fixture exists and secret handoff semantics differ from what the docs claim."
+}

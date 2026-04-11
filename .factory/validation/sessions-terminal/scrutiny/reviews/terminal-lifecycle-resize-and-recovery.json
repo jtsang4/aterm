@@ -1,0 +1,34 @@
+{
+  "featureId": "terminal-lifecycle-resize-and-recovery",
+  "reviewedAt": "2026-04-11T07:29:44Z",
+  "commitId": "93410aa14f1cac573e7120fa0144f6bd94b655c1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail: the feature fixes the earlier transcript-backed architecture, but it still misrepresents terminal reality in two contract-critical paths: local input is injected into the terminal before the remote PTY echoes it, and resize events are computed from the whole terminal chrome instead of the actual terminal viewport.",
+    "issues": [
+      {
+        "file": "core/ssh/src/main/kotlin/io/github/jtsang4/aterm/core/ssh/SshSessionCoordinator.kt",
+        "line": 136,
+        "severity": "blocking",
+        "description": "`sendInput()` writes bytes to SSH stdin and then immediately calls `appendTranscript(input)`. That makes typed text, pasted content, and special-key payloads appear in the terminal even before the remote PTY has echoed or accepted them. It breaks the feature's authoritative live-terminal requirement, can duplicate echoed input, and will incorrectly reveal text entered into remote no-echo prompts (for example passwords) in local transcript/copy surfaces."
+      },
+      {
+        "file": "feature/session/src/main/kotlin/io/github/jtsang4/aterm/feature/session/SessionEntryPoint.kt",
+        "line": 322,
+        "severity": "blocking",
+        "description": "PTY size is derived from `onSizeChanged` on the whole `ComposeTerminalSurface`, but that composable's root layout also includes the scrollback buttons and status text (`core/terminal/src/main/kotlin/io/github/jtsang4/aterm/core/terminal/ComposeTerminalSurface.kt`, lines 71-129). As a result the reported row count includes non-terminal chrome instead of just the visible terminal viewport, so remote full-screen programs receive inflated dimensions and the resize propagation required by the feature is not truthful end to end."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The current review artifacts do not preserve the manual lifecycle/full-screen terminal observations that this feature contract requires, so scrutiny cannot independently confirm the claimed rotation/background/Ctrl+C/paste/full-screen checks.",
+      "evidence": "Mission feature verification requires manual checks in `/root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774/features.json:825-829`, and `ssh-terminal-worker/SKILL.md:24-27` requires interactive terminal and lifecycle observations, but handoff `2026-04-11T07-01-34-919Z__terminal-lifecycle-resize-and-recovery__dda6b8ed-5fd5-4d93-b267-ee03b1956a36.json` records only `verification.commandsRun` and no explicit interactive observations."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed commit 93410aa14f1cac573e7120fa0144f6bd94b655c1, the handoff, and the worker transcript skeleton. The feature still fails because local input is rendered optimistically instead of coming only from remote PTY output, and PTY resize uses the total terminal-card chrome rather than the actual terminal viewport, so disconnect/input truthfulness and representative full-screen behavior are still not fully correct."
+}

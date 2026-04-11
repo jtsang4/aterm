@@ -1,0 +1,34 @@
+{
+  "featureId": "terminal-core-rendering-and-input",
+  "reviewedAt": "2026-04-11T07:26:18Z",
+  "commitId": "558ef02",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail: the feature lands a transcript-backed text surface rather than integrating an authoritative live SSH/PTY terminal surface, so it does not satisfy the contract for real remote IO, special-key behavior, or representative full-screen terminal programs.",
+    "issues": [
+      {
+        "file": "feature/session/src/main/kotlin/io/github/jtsang4/aterm/feature/session/SessionEntryPoint.kt",
+        "line": 300,
+        "severity": "blocking",
+        "description": "The session UI rebuilds terminal state from `sessionState.transcript` via `terminalStateHolder.applyTranscript(...)` instead of binding the terminal surface to live SSH/PTY state. That means the new surface is still a transcript reconstruction layer, so copy/paste and special-key actions are not proven against authoritative remote terminal state and the feature does not meet the required end-to-end terminal behavior."
+      },
+      {
+        "file": "core/terminal/src/main/kotlin/io/github/jtsang4/aterm/core/terminal/ComposeTerminalSurface.kt",
+        "line": 98,
+        "severity": "blocking",
+        "description": "The chosen terminal rendering approach was supposed to wrap a dedicated terminal view/emulator, but this implementation renders a `LazyColumn` of plain text lines. Combined with the minimal escape-sequence handling in `TerminalBuffer`, this is not a real terminal surface and will not support representative full-screen terminal programs or broader ANSI/TUI behavior required by the feature contract."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `ssh-terminal-worker` skill does not currently tell workers how to handle a terminal feature that cannot yet be completed end-to-end without violating the architecture. In this run the worker knowingly landed a transcript-backed intermediate slice even though the skill requires real interactive terminal checks.",
+      "evidence": "Handoff `2026-04-11T06-17-52-513Z__terminal-core-rendering-and-input__ff6ece82-3462-43b3-87e2-a671ec94255f.json` reports `skillFeedback.followedProcedure=false`, says live SSH terminal checks were skipped because the surface was not driven by real SSH IO, and suggests clarifying how to report partial architectural progress."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed commit 558ef02 and the worker transcript skeleton. The feature fails review because it delivers a transcript-backed Compose text surface instead of the required live SSH/PTY-backed terminal integration, and it reimplements terminal rendering as plain Compose text rather than the documented dedicated terminal-emulator boundary."
+}

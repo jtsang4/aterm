@@ -1,0 +1,28 @@
+{
+  "featureId": "connection-lifecycle-and-session-guards",
+  "reviewedAt": "2026-04-11T07:31:05.370409Z",
+  "commitId": "556c83f302d22780607cef6357791563bd03a3bb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature commit delivers the main guardrails it set out to add: duplicate connect attempts are suppressed, in-flight connects can be canceled cleanly, and the session UI exposes reconnect/cancel flows without introducing obvious zombie-session regressions. I did find one small race around immediate reconnect after cancel, but no blocking correctness issue.",
+    "issues": [
+      {
+        "file": "core/ssh/src/main/kotlin/io/github/jtsang4/aterm/core/ssh/SshSessionCoordinator.kt",
+        "line": 67,
+        "severity": "non_blocking",
+        "description": "After `disconnect()` marks the UI as disconnected, `currentAttempt` is still kept until the original connect coroutine reaches its `finally` block, so an immediate reconnect tap in that window is dropped silently by the `currentAttempt != null` guard. The UI re-enables the host button as soon as `sessionState.isConnecting` becomes false (`feature/session/src/main/kotlin/io/github/jtsang4/aterm/feature/session/SessionEntryPoint.kt:247`), so users can hit a brief dead-tap period right after canceling a slow connect."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `ssh-terminal-worker` as fully followed, but the recorded lifecycle validation stopped at composable hide/show and fixture-level cancellation. For a feature explicitly targeting rotation/background interruption truthfulness, the transcript does not show the skill's required manual lifecycle exercise for rotation/background flows.",
+      "evidence": "/root/workspace/github/jtsang4/aterm/.factory/skills/ssh-terminal-worker/SKILL.md step 7 requires manual lifecycle exercise for connect/disconnect/rotation/backgrounding; /root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774/handoffs/2026-04-11T04-25-29-366Z__connection-lifecycle-and-session-guards__13986629-fb31-4335-8461-21a82155fb40.json records only unmount/remount and trust-prompt cancel checks."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass with one non-blocking issue: the connection-lifecycle guards are sound overall, but canceling a slow connect can leave a short window where the UI looks reconnect-ready before the coordinator will accept a new connect attempt."
+}

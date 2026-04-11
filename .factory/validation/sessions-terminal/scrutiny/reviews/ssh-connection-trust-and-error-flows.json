@@ -1,0 +1,34 @@
+{
+  "featureId": "ssh-connection-trust-and-error-flows",
+  "reviewedAt": "2026-04-11T07:26:40.620250Z",
+  "commitId": "62e5ad1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The production SSH coordinator changes are directionally correct for trust/error handling, but the new fixture-backed verification does not satisfy the feature contract for VAL-CONNECT-001, VAL-CONNECT-002, VAL-IDENTITY-008, or VAL-IDENTITY-010 because it never exercises the actual session UI or a real app restart flow.",
+    "issues": [
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 111,
+        "severity": "blocking",
+        "description": "The supposed relaunch proof for VAL-IDENTITY-010 only rebuilds AppContainer and a fresh SshSessionCoordinator in-process instead of restarting the app/UI surface. The validation contract requires an Android instrumented UI test with a real SSH target after normal app restart, but this test never launches an Activity or Compose screen and therefore does not prove keystore-backed secrets survive a real app restart path."
+      },
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 93,
+        "severity": "blocking",
+        "description": "The identity-edit coverage only renames the identity metadata and reconnects through a directly constructed coordinator. VAL-IDENTITY-008 requires proving real credential behavior through the real session surface before and after identity edits, but this test bypasses the app's editing UI and never verifies that the real session entry path still resolves and uses the edited identity correctly."
+      },
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 30,
+        "severity": "blocking",
+        "description": "All new fixture tests are coordinator-level Android tests, not Android instrumented UI tests. They assert SessionUiState directly and never render SessionsScreen or capture the real visible connecting/trust flow, so they do not satisfy the feature's required proof for VAL-CONNECT-001/002/005/006/012, which the contract defines in terms of the real session surface and visible UI behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the code changes improve SSH trust/error handling, but the new verification falls short of the feature contract because it tests the coordinator directly instead of the real session UI and does not perform a true app restart/relaunch proof for keystore-backed identity reuse."
+}
