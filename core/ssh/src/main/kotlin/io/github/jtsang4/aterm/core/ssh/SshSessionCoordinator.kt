@@ -14,6 +14,7 @@ import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
 import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
 import io.github.jtsang4.aterm.core.terminal.TerminalUiState
+import io.github.jtsang4.aterm.core.terminal.TerminalViewport
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
@@ -71,6 +72,8 @@ class SshSessionCoordinator(
     private var pendingDecisionLatch: CountDownLatch? = null
     private var latestTerminalColumns: Int = DEFAULT_TERMINAL_COLUMNS
     private var latestTerminalRows: Int = DEFAULT_TERMINAL_ROWS
+    private var latestTerminalWidthPx: Int = DEFAULT_TERMINAL_COLUMNS * CELL_WIDTH_PIXELS
+    private var latestTerminalHeightPx: Int = DEFAULT_TERMINAL_ROWS * CELL_HEIGHT_PIXELS
     private var currentSessionMetadataId: Long? = null
 
     init {
@@ -139,7 +142,6 @@ class SshSessionCoordinator(
             runCatching {
                 connection.stdin.write(input.encodeToByteArray())
                 connection.stdin.flush()
-                appendTranscript(input)
             }.onFailure { throwable ->
                 failConnection(
                     host = connection.host,
@@ -169,10 +171,36 @@ class SshSessionCoordinator(
         val safeRows = rows.coerceAtLeast(1)
         latestTerminalColumns = safeColumns
         latestTerminalRows = safeRows
+        latestTerminalWidthPx = safeColumns * CELL_WIDTH_PIXELS
+        latestTerminalHeightPx = safeRows * CELL_HEIGHT_PIXELS
         terminalBuffer.resize(safeColumns, safeRows)
         emitTerminalState(canSendInput = uiState.value.canSendInput)
         ioScope.launch {
-            runtimeConnection?.sendResize(safeColumns, safeRows)
+            runtimeConnection?.sendResize(
+                columns = safeColumns,
+                rows = safeRows,
+                widthPx = latestTerminalWidthPx,
+                heightPx = latestTerminalHeightPx,
+            )
+        }
+    }
+
+    override fun resize(viewport: TerminalViewport) {
+        val safeColumns = viewport.columns.coerceAtLeast(1)
+        val safeRows = viewport.rows.coerceAtLeast(1)
+        latestTerminalColumns = safeColumns
+        latestTerminalRows = safeRows
+        latestTerminalWidthPx = viewport.widthPx.coerceAtLeast(safeColumns)
+        latestTerminalHeightPx = viewport.heightPx.coerceAtLeast(safeRows)
+        terminalBuffer.resize(safeColumns, safeRows)
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+        ioScope.launch {
+            runtimeConnection?.sendResize(
+                columns = safeColumns,
+                rows = safeRows,
+                widthPx = latestTerminalWidthPx,
+                heightPx = latestTerminalHeightPx,
+            )
         }
     }
 
@@ -246,8 +274,8 @@ class SshSessionCoordinator(
                 PtyChannelConfiguration().apply {
                     ptyColumns = latestTerminalColumns
                     ptyLines = latestTerminalRows
-                    ptyWidth = latestTerminalColumns * CELL_WIDTH_PIXELS
-                    ptyHeight = latestTerminalRows * CELL_HEIGHT_PIXELS
+                    ptyWidth = latestTerminalWidthPx
+                    ptyHeight = latestTerminalHeightPx
                 },
                 emptyMap<String, Any>(),
             ).apply {
@@ -686,13 +714,18 @@ class SshSessionCoordinator(
         currentSessionMetadataId = persisted.id
     }
 
-    private suspend fun RuntimeConnection.sendResize(columns: Int, rows: Int) {
+    private suspend fun RuntimeConnection.sendResize(
+        columns: Int,
+        rows: Int,
+        widthPx: Int,
+        heightPx: Int,
+    ) {
         runCatching {
             channel.sendWindowChange(
                 columns,
                 rows,
-                columns * CELL_WIDTH_PIXELS,
-                rows * CELL_HEIGHT_PIXELS,
+                widthPx,
+                heightPx,
             )
         }.onFailure { throwable ->
             failConnection(

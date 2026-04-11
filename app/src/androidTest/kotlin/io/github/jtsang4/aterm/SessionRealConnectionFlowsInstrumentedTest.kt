@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.material3.Text
@@ -34,7 +33,9 @@ import io.github.jtsang4.aterm.core.ssh.SessionController
 import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
+import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
 import io.github.jtsang4.aterm.core.terminal.TerminalUiState
+import io.github.jtsang4.aterm.core.terminal.TerminalViewport
 import io.github.jtsang4.aterm.feature.session.SessionsScreen
 import java.io.File
 import java.security.KeyPair
@@ -351,6 +352,20 @@ class SessionRealConnectionFlowsInstrumentedTest {
                         "line24",
                         "line25",
                         "line26",
+                        "line27",
+                        "line28",
+                        "line29",
+                        "line30",
+                        "line31",
+                        "line32",
+                        "line33",
+                        "line34",
+                        "line35",
+                        "line36",
+                        "line37",
+                        "line38",
+                        "line39",
+                        "line40",
                     ).joinToString(separator = "\n"),
                     trust = SessionTrustPayload(
                         endpoint = "10.0.2.2:$port",
@@ -384,8 +399,12 @@ class SessionRealConnectionFlowsInstrumentedTest {
         composeRule.onNodeWithTag("session_paste_button").assertExists()
 
         composeRule.onNodeWithTag("session_scrollback_up").performClick()
-        composeRule.onNodeWithTag("session_terminal_status")
-            .assertTextContains("viewing history", substring = true)
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_terminal_status")
+                    .assertTextContains("viewing history", substring = true)
+            }.isSuccess
+        }
 
         composeRule.onNodeWithTag("session_jump_to_live").performClick()
         composeRule.onNodeWithTag("session_terminal_status")
@@ -887,9 +906,80 @@ class SessionRealConnectionFlowsInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             controller.resizeEvents.isNotEmpty()
         }
-        val (columns, rows) = controller.resizeEvents.last()
-        assert(columns >= 20)
-        assert(rows >= 12)
+        val viewport = controller.resizeEvents.last()
+        val bounds = composeRule.onNodeWithTag("session_terminal_surface").fetchSemanticsNode().boundsInRoot
+        assertEquals(bounds.width.toInt(), viewport.widthPx)
+        assertEquals(bounds.height.toInt(), viewport.heightPx)
+        assertEquals((viewport.widthPx / 9).coerceAtLeast(1), viewport.columns)
+        assertEquals((viewport.heightPx / 18).coerceAtLeast(1), viewport.rows)
+    }
+
+    @Test
+    fun send_paste_and_special_keys_do_not_locally_echo_before_remote_output() {
+        passwordIdentityRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Session password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "secret-password")),
+        )
+        hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Live host",
+                    address = "10.0.2.2",
+                    port = 3134,
+                    username = "tester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        knownHostTrustRepository = SessionTestKnownHostTrustRepository()
+        val controller = NoLocalEchoSessionController(hostRepository = hostRepository)
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = hostRepository,
+                identityRepository = passwordIdentityRepository,
+                knownHostTrustRepository = knownHostTrustRepository,
+                coordinator = controller,
+            )
+        }
+
+        composeRule.onNodeWithTag("session_special_key_CtrlC").assertExists()
+        composeRule.onNodeWithTag("session_special_key_Tab").assertExists()
+        composeRule.onNodeWithTag("session_special_key_ArrowUp").assertExists()
+        composeRule.onNodeWithTag("session_paste_button").assertExists()
+        composeRule.onNodeWithTag("session_send_button").assertExists()
+
+        composeRule.runOnIdle {
+            controller.sendSpecialKey(TerminalSpecialKey.CtrlC)
+            controller.sendSpecialKey(TerminalSpecialKey.Tab)
+            controller.sendSpecialKey(TerminalSpecialKey.ArrowUp)
+            controller.pasteText("printf 'from paste'\n")
+            controller.sendText("echo hello\n")
+        }
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(
+                    "CTRL_C",
+                    "TAB",
+                    "ARROW_UP",
+                    "printf 'from paste'\n",
+                    "echo hello\n",
+                ),
+                controller.sentInputs.map(::debugInput),
+            )
+        }
+        composeRule.onNodeWithTag("session_transcript").assertTextContains("No terminal transcript yet.", substring = true)
     }
 
     private fun connectAndTrust(hostId: Long) {
@@ -1292,7 +1382,7 @@ private class RecoveryStateSessionController(
 
 private class ResizeRecordingSessionController : SessionController {
     private val state = MutableStateFlow(SessionUiState())
-    val resizeEvents = mutableListOf<Pair<Int, Int>>()
+    val resizeEvents = mutableListOf<TerminalViewport>()
 
     override fun observeUiState(): StateFlow<SessionUiState> = state
 
@@ -1304,9 +1394,52 @@ private class ResizeRecordingSessionController : SessionController {
 
     override fun sendInput(input: String) = Unit
 
-    override fun resize(columns: Int, rows: Int) {
-        resizeEvents += columns to rows
+    override fun resize(viewport: TerminalViewport) {
+        resizeEvents += viewport
     }
+}
+
+private class NoLocalEchoSessionController(
+    hostRepository: HostRepository,
+) : SessionController {
+    private val connectedHost = runBlocking { hostRepository.getHost(1) } ?: error("Missing host")
+    val sentInputs = mutableListOf<String>()
+    private val state = MutableStateFlow(
+        SessionUiState(
+            activeHostId = connectedHost.id,
+            activeHostLabel = connectedHost.label,
+            endpoint = connectedHost.endpoint,
+            connectionState = SessionConnectionState.CONNECTED,
+            statusMessage = "Connected to ${connectedHost.endpoint}.",
+            liveTerminalState = TerminalUiState(
+                snapshot = TerminalBuffer().snapshot(),
+                canSendInput = true,
+            ),
+        ),
+    )
+
+    override fun observeUiState(): StateFlow<SessionUiState> = state
+
+    override fun connect(hostId: Long) = Unit
+
+    override fun disconnect() = Unit
+
+    override fun submitHostTrustDecision(accept: Boolean) = Unit
+
+    override fun sendInput(input: String) {
+        sentInputs += input
+    }
+}
+
+private fun debugInput(input: String): String = when (input) {
+    TerminalSpecialKey.CtrlC.encoded -> "CTRL_C"
+    TerminalSpecialKey.Tab.encoded -> "TAB"
+    TerminalSpecialKey.ArrowUp.encoded -> "ARROW_UP"
+    TerminalSpecialKey.ArrowDown.encoded -> "ARROW_DOWN"
+    TerminalSpecialKey.ArrowLeft.encoded -> "ARROW_LEFT"
+    TerminalSpecialKey.ArrowRight.encoded -> "ARROW_RIGHT"
+    TerminalSpecialKey.Esc.encoded -> "ESC"
+    else -> input
 }
 
 

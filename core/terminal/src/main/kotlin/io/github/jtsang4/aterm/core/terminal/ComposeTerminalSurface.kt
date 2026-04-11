@@ -20,6 +20,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ComposeTerminalSurface(
     controller: TerminalController,
+    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val terminalState = controller.observeTerminalUiState().collectAsState()
@@ -35,6 +37,7 @@ fun ComposeTerminalSurface(
         onScrollPageUp = controller::scrollPageUp,
         onScrollPageDown = controller::scrollPageDown,
         onJumpToBottom = controller::jumpToBottom,
+        onTerminalSurfaceSizeChanged = onTerminalSurfaceSizeChanged,
         modifier = modifier,
     )
 }
@@ -45,6 +48,7 @@ fun ComposeTerminalSurface(
     onScrollPageUp: () -> Unit,
     onScrollPageDown: () -> Unit,
     onJumpToBottom: () -> Unit,
+    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val state = remember(terminalState) {
@@ -55,6 +59,7 @@ fun ComposeTerminalSurface(
         onScrollPageUp = onScrollPageUp,
         onScrollPageDown = onScrollPageDown,
         onJumpToBottom = onJumpToBottom,
+        onTerminalSurfaceSizeChanged = onTerminalSurfaceSizeChanged,
         modifier = modifier,
     )
 }
@@ -65,6 +70,7 @@ fun ComposeTerminalSurface(
     onScrollPageUp: () -> Unit,
     onScrollPageDown: () -> Unit,
     onJumpToBottom: () -> Unit,
+    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val snapshot = terminalState.value.snapshot
@@ -101,6 +107,9 @@ fun ComposeTerminalSurface(
                 .heightIn(min = 180.dp, max = 280.dp)
                 .background(Color(0xFF101418))
                 .padding(12.dp)
+                .onSizeChanged { size ->
+                    onTerminalSurfaceSizeChanged?.invoke(size.width, size.height)
+                }
                 .testTag("session_terminal_surface"),
         ) {
             itemsIndexed(snapshot.visibleLines) { index, line ->

@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
@@ -42,6 +41,7 @@ import io.github.jtsang4.aterm.core.ssh.SessionController
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
 import io.github.jtsang4.aterm.core.terminal.ComposeTerminalSurface
+import io.github.jtsang4.aterm.core.terminal.calculateTerminalViewport
 import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKeyBar
 
 object SessionEntryPoint {
@@ -317,13 +317,17 @@ private fun SessionTerminal(
             )
             ComposeTerminalSurface(
                 controller = coordinator,
+                onTerminalSurfaceSizeChanged = { widthPx, heightPx ->
+                    val viewport = calculateTerminalViewport(
+                        contentWidthPx = widthPx,
+                        contentHeightPx = heightPx,
+                        cellWidthPx = CELL_WIDTH_PIXELS,
+                        cellHeightPx = CELL_HEIGHT_PIXELS,
+                    ) ?: return@ComposeTerminalSurface
+                    coordinator.resize(viewport)
+                },
                 modifier = Modifier
-                    .testTag("session_terminal_region")
-                    .onSizeChanged { size ->
-                        val columns = (size.width / CELL_WIDTH_PIXELS).coerceAtLeast(20)
-                        val rows = (size.height / CELL_HEIGHT_PIXELS).coerceAtLeast(DEFAULT_VISIBLE_ROWS)
-                        coordinator.resize(columns, rows)
-                    },
+                    .testTag("session_terminal_region"),
             )
             if (!sessionState.isTerminalLive) {
                 Text(
@@ -422,4 +426,3 @@ private fun SessionTerminal(
 
 private const val CELL_WIDTH_PIXELS = 9
 private const val CELL_HEIGHT_PIXELS = 18
-private const val DEFAULT_VISIBLE_ROWS = 12

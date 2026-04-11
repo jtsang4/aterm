@@ -10,8 +10,8 @@ import org.apache.sshd.common.keyprovider.KeyPairProvider
 import org.apache.sshd.server.SshServer
 import org.apache.sshd.server.auth.password.PasswordAuthenticator
 import org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator
+import org.apache.sshd.server.shell.InteractiveProcessShellFactory
 import org.apache.sshd.server.shell.ProcessShellCommandFactory
-import org.apache.sshd.server.shell.ProcessShellFactory
 
 class SshFixtureServer(
     private val preparedFixture: PreparedFixture,
@@ -26,7 +26,7 @@ class SshFixtureServer(
         }
         publickeyAuthenticator = buildPublicKeyAuthenticator(preparedFixture.authorizedKeysPath)
         commandFactory = ProcessShellCommandFactory.INSTANCE
-        shellFactory = ProcessShellFactory("/bin/sh", "-i")
+        shellFactory = InteractiveProcessShellFactory.INSTANCE
     }
     private val started = AtomicBoolean(false)
 

@@ -3,6 +3,7 @@ package io.github.jtsang4.aterm.core.ssh
 import io.github.jtsang4.aterm.core.terminal.TerminalController
 import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
+import io.github.jtsang4.aterm.core.terminal.TerminalViewport
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
 
@@ -40,4 +41,6 @@ interface SessionController : TerminalController {
     override fun jumpToBottom() = Unit
 
     override fun resize(columns: Int, rows: Int) = Unit
+
+    override fun resize(viewport: TerminalViewport) = resize(viewport.columns, viewport.rows)
 }

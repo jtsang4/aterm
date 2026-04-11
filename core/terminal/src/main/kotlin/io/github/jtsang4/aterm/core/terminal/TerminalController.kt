@@ -16,4 +16,5 @@ interface TerminalController {
     fun scrollPageDown()
     fun jumpToBottom()
     fun resize(columns: Int, rows: Int)
+    fun resize(viewport: TerminalViewport) = resize(viewport.columns, viewport.rows)
 }

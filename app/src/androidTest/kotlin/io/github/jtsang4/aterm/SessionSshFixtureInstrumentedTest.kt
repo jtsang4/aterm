@@ -104,7 +104,7 @@ class SessionSshFixtureInstrumentedTest {
         coordinator.submitHostTrustDecision(true)
         val connected = waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
-        assertProof(connected, FIXTURE_PORT)
+        assertProofEventually(coordinator, FIXTURE_PORT)
         assertEquals(
             1,
             runBlocking { firstContainer.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
@@ -127,7 +127,7 @@ class SessionSshFixtureInstrumentedTest {
         val reconnected = waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
         assertNull(reconnected.pendingTrustDecision)
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnected.statusMessage)
-        assertProof(reconnected, FIXTURE_PORT)
+        assertProofEventually(coordinator, FIXTURE_PORT)
 
         coordinator.disconnect()
         waitForState(coordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
@@ -145,7 +145,7 @@ class SessionSshFixtureInstrumentedTest {
         }
         assertNull(relaunchedConnected.pendingTrustDecision)
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", relaunchedConnected.statusMessage)
-        assertProof(relaunchedConnected, FIXTURE_PORT)
+        assertProofEventually(relaunchedCoordinator, FIXTURE_PORT)
         assertNotNull(
             runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId) },
         )
@@ -206,8 +206,7 @@ class SessionSshFixtureInstrumentedTest {
         connectFromUi(coordinator = firstCoordinator, hostId = 1, expectTrustPrompt = true)
         composeRule.onNodeWithTag("session_active_endpoint")
             .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
-        composeRule.onNodeWithTag("session_transcript")
-            .assertTextContains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:", substring = true)
+        waitForProofText(firstCoordinator, FIXTURE_PORT)
         composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
         assertEquals(
             1,
@@ -248,8 +247,7 @@ class SessionSshFixtureInstrumentedTest {
             }.isSuccess
         }
         connectFromUi(coordinator = firstCoordinator, hostId = 1, expectTrustPrompt = false)
-        composeRule.onNodeWithTag("session_transcript")
-            .assertTextContains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:", substring = true)
+        waitForProofText(firstCoordinator, FIXTURE_PORT)
         composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
 
         composeRule.onNodeWithTag("session_disconnect_button").performClick()
@@ -283,8 +281,7 @@ class SessionSshFixtureInstrumentedTest {
             }.isSuccess
         }
         connectFromUi(coordinator = relaunchedCoordinator, hostId = 1, expectTrustPrompt = false)
-        composeRule.onNodeWithTag("session_transcript")
-            .assertTextContains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:", substring = true)
+        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
         composeRule.onNodeWithTag("session_disconnect_button").assertIsDisplayed()
     }
 
@@ -520,7 +517,8 @@ class SessionSshFixtureInstrumentedTest {
         waitForState(coordinator) { it.pendingTrustDecision != null }
         coordinator.submitHostTrustDecision(true)
         val connected = waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
-        assertProof(connected, FIXTURE_PORT)
+        assertTrue(connected.canSendInput)
+        assertProofEventually(coordinator, FIXTURE_PORT)
 
         coordinator.disconnect()
         val disconnected = waitForState(coordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
@@ -536,7 +534,7 @@ class SessionSshFixtureInstrumentedTest {
 
     private fun waitForState(
         coordinator: SshSessionCoordinator,
-        timeoutMillis: Long = 20_000L,
+        timeoutMillis: Long = 30_000L,
         predicate: (SessionUiState) -> Boolean,
     ): SessionUiState = runBlocking {
         withTimeout(timeoutMillis) {
@@ -555,6 +553,29 @@ class SessionSshFixtureInstrumentedTest {
         val transcript = state.transcript
         check(transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:")) {
             "Transcript did not contain remote proof for $FIXTURE_HOST:$port: $transcript"
+        }
+    }
+
+    private fun assertProofEventually(
+        coordinator: SshSessionCoordinator,
+        port: Int,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = 30_000) {
+            it.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:")
+        }
+        assertProof(state, port)
+    }
+
+    private fun waitForProofText(
+        coordinator: SshSessionCoordinator,
+        port: Int,
+    ) {
+        assertProofEventually(coordinator, port)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_transcript")
+                    .assertTextContains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:", substring = true)
+            }.isSuccess
         }
     }
 
@@ -609,6 +630,7 @@ class SessionSshFixtureInstrumentedTest {
         }
         composeRule.onNodeWithTag("session_status_message")
             .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        assertProofEventually(coordinator, FIXTURE_PORT)
     }
 
     private companion object {
