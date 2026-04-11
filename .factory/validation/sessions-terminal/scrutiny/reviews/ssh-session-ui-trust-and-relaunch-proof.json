@@ -1,0 +1,34 @@
+{
+  "featureId": "ssh-session-ui-trust-and-relaunch-proof",
+  "reviewedAt": "2026-04-11T10:12:29.371659Z",
+  "commitId": "1ba8eed",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Compared with the original failed feature, this fix does move trust and identity-edit checks onto visible Compose screens, but it still does not satisfy the rerun requirement for real app navigation and relaunch proof because the test mounts screens directly and swaps containers in-process instead of exercising the shipped app shell and restart path.",
+    "issues": [
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 181,
+        "severity": "blocking",
+        "description": "The new proof test bypasses the real app shell by calling `composeRule.setContent` with a manual `when (displayedSurface.value)` that mounts `IdentitiesScreen`, `HostsScreen`, and `SessionsScreen` directly, then hops between them via `switchSurface(...)`. The feature contract requires session-focused instrumentation to use the real app navigation path, but this never launches `MainActivity`/`AtermApp`/`AtermNavHost`, so it does not prove that the visible connect/trust/edit flow works through the actual app shell users run."
+      },
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 261,
+        "severity": "blocking",
+        "description": "The supposed relaunch proof still recreates persistence in-process by building a fresh `AppContainer` and swapping `displayedContainer`/`displayedCoordinator` inside the existing Compose test root. No activity recreation, app relaunch, or process restart occurs, so this does not satisfy the feature's required 'real app navigation and restart path rather than in-process container reconstruction shortcuts' proof for keystore-backed identity reuse after relaunch."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`ssh-terminal-worker` currently pushes workers toward visible session UI proof, but it does not make it explicit that synthetic `setContent`-mounted screens and in-process `AppContainer` swaps are not acceptable substitutes for real app-shell navigation and relaunch validation. That ambiguity let this rerun be handed off as procedure-compliant even though it still bypasses the shipped app path.",
+      "evidence": "`/root/workspace/github/jtsang4/aterm/.factory/skills/ssh-terminal-worker/SKILL.md` step 5 requires visible session UI proof; handoff `/root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774/handoffs/2026-04-11T08-47-58-058Z__ssh-session-ui-trust-and-relaunch-proof__d96e6516-a33f-48e2-9f69-525372a592bf.json` says the test uses 'a single Compose root and surface switching' plus 'container relaunch persistence'; the implementation mounts screens directly at `app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:181-197` and swaps containers at `:261-265`."
+    }
+  ],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/ssh-connection-trust-and-error-flows.json",
+  "summary": "Fail: this rerun fixes the earlier coordinator-only gap by adding visible Compose-screen interaction, but it still does not adequately address the original failure because it bypasses real app-shell navigation and substitutes an in-process `AppContainer` swap for a true app relaunch/restart proof."
+}

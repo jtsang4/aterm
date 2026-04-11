@@ -1,0 +1,37 @@
+{
+  "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
+  "reviewedAt": "2026-04-11T10:11:51Z",
+  "commitId": "d44091eb517e1185b1440853f3b1f0895f774c16",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail: this fix removes optimistic local echo and makes PTY resize use the measured terminal viewport, but it still does not satisfy the milestone's remaining blocking requirement for a representative live terminal boundary. The terminal surface is still a Compose `LazyColumn` backed by the repo's minimal `TerminalBuffer`, and the new tests still do not prove special keys, paste, resize, and representative full-screen behavior end to end against the live fixture.",
+    "issues": [
+      {
+        "file": "core/terminal/src/main/kotlin/io/github/jtsang4/aterm/core/terminal/ComposeTerminalSurface.kt",
+        "line": 104,
+        "severity": "blocking",
+        "description": "The reviewed fix keeps the terminal renderer as a Compose `LazyColumn` of plain text lines instead of introducing the dedicated terminal-emulator/view boundary required by the architecture and by the original failed review. `ComposeTerminalSurface` still renders `snapshot.visibleLines` directly, while `TerminalBuffer` only understands a narrow subset of escape/control sequences (`core/terminal/src/main/kotlin/io/github/jtsang4/aterm/core/terminal/TerminalBuffer.kt:149-188`). That means representative full-screen/TUI behavior is still not trustworthy end to end, so the blocking `terminal-core-rendering-and-input` failure is not actually resolved."
+      },
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionRealConnectionFlowsInstrumentedTest.kt",
+        "line": 868,
+        "severity": "blocking",
+        "description": "The added validation does not prove the contract-critical terminal behaviors against the live fixture. Resize truthfulness is only checked with `ResizeRecordingSessionController` (`lines 868-913`), and the no-local-echo/special-key/paste assertions use `NoLocalEchoSessionController` plus direct controller calls (`lines 918-971`, `1402-1429`) rather than a live SSH/PTy-backed session. The live-fixture suite (`app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:155-284,491-545,553-667`) verifies trust/proof/reconnect/disconnect, but it still never exercises Ctrl+C, Tab/history navigation, clipboard paste, viewport-driven resize, or a representative full-screen program against the fixture as the feature description requires."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The current `ssh-terminal-worker` procedure still conflicts with exec-mode reality for terminal features: it requires manual lifecycle/terminal observations, but this worker could only provide automated UI evidence and marked `followedProcedure=false`. The skill should explicitly say whether automation is acceptable in exec mode and still require live-fixture evidence for special keys, paste, resize, and full-screen behavior when manual interaction is unavailable.",
+      "evidence": "Handoff `/root/.factory/missions/fc6a9d6d-b329-4b38-9f7c-ed2a18da2774/handoffs/2026-04-11T09-44-34-213Z__live-terminal-boundary-truthfulness-and-viewport-resize__221c79ec-317b-4fe1-8fb8-be6f05f2e746.json` sets `skillFeedback.followedProcedure=false` and says the worker substituted automated instrumentation for manual testing; `.factory/skills/ssh-terminal-worker/SKILL.md` still requires manual exercise plus explicit interactive terminal observations."
+    }
+  ],
+  "addressesFailureFrom": [
+    "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/terminal-core-rendering-and-input.json",
+    "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/terminal-lifecycle-resize-and-recovery.json"
+  ],
+  "summary": "Reviewed the fix handoff, transcript skeleton, prior failed reviews, and commit `d44091eb517e1185b1440853f3b1f0895f774c16`. The patch does fix the two concrete issues from `terminal-lifecycle-resize-and-recovery` by removing optimistic local echo and propagating measured viewport dimensions to PTY resize, but the overall rerun still fails because the terminal boundary remains a plain Compose/text approximation instead of a real terminal-emulator boundary, and the required live-fixture proof for special keys, paste, resize, and representative full-screen behavior is still missing."
+}

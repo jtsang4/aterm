@@ -1,6 +1,6 @@
 {
   "milestone": "sessions-terminal",
-  "round": 1,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -25,84 +25,51 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
+    "total": 3,
     "passed": 1,
-    "failed": 4,
+    "failed": 2,
     "failedFeatures": [
-      "repo-local-ssh-fixture-for-e2e-validation",
-      "ssh-connection-trust-and-error-flows",
-      "terminal-core-rendering-and-input",
-      "terminal-lifecycle-resize-and-recovery"
+      "ssh-session-ui-trust-and-relaunch-proof",
+      "live-terminal-boundary-truthfulness-and-viewport-resize"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "repo-local-ssh-fixture-for-e2e-validation",
+      "featureId": "ssh-session-ui-trust-and-relaunch-proof",
       "severity": "blocking",
-      "description": "The repo-local SSH fixture persists `ATERM_SSH_FIXTURE_PASSWORD=<plaintext>` in `tools/sshfixture/runtime/fixture-metadata.env`, violating the mission's secret-handling boundary and conflicting with the environment library's documented password-reference contract."
+      "description": "The rerun still bypasses the shipped app shell by mounting `IdentitiesScreen`, `HostsScreen`, and `SessionsScreen` directly with `composeRule.setContent(...)` instead of exercising `MainActivity`/`AtermNavHost`, so it does not prove visible connect/trust/edit behavior through the real navigation path."
     },
     {
-      "featureId": "ssh-connection-trust-and-error-flows",
+      "featureId": "ssh-session-ui-trust-and-relaunch-proof",
       "severity": "blocking",
-      "description": "The fixture-backed connection coverage is coordinator-level only and never renders the real session UI, so it does not satisfy the required Android instrumented UI proof for visible connect/trust flows."
+      "description": "The supposed relaunch proof still swaps a fresh `AppContainer` into the same in-process Compose root rather than performing a real activity/app relaunch or restart path, so keystore-backed identity reuse after relaunch remains unproven."
     },
     {
-      "featureId": "ssh-connection-trust-and-error-flows",
+      "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
       "severity": "blocking",
-      "description": "The identity-edit and relaunch checks bypass the app's editing and restart surfaces by directly rebuilding `AppContainer`/`SshSessionCoordinator` in-process, so VAL-IDENTITY-008 and VAL-IDENTITY-010 are not actually proven through the real app path."
+      "description": "The terminal boundary remains a Compose `LazyColumn` plus the repo's minimal `TerminalBuffer` instead of a dedicated terminal-emulator/view boundary, so representative full-screen/TUI behavior is still not trustworthy end to end."
     },
     {
-      "featureId": "terminal-core-rendering-and-input",
+      "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
       "severity": "blocking",
-      "description": "The session surface remains transcript-backed instead of binding to authoritative live SSH/PTY terminal state, so the feature does not meet the contract for end-to-end remote terminal behavior."
-    },
-    {
-      "featureId": "terminal-core-rendering-and-input",
-      "severity": "blocking",
-      "description": "The terminal renderer is a Compose `LazyColumn` text surface rather than a dedicated terminal emulator/view boundary, which is insufficient for representative full-screen terminal programs and broader ANSI/TUI behavior."
-    },
-    {
-      "featureId": "terminal-lifecycle-resize-and-recovery",
-      "severity": "blocking",
-      "description": "`SshSessionCoordinator.sendInput()` appends outgoing text directly into the transcript before the remote PTY echoes it, which can duplicate input, misrepresent failed input as live terminal output, and expose text entered into remote no-echo prompts."
-    },
-    {
-      "featureId": "terminal-lifecycle-resize-and-recovery",
-      "severity": "blocking",
-      "description": "PTY resize is computed from the whole terminal chrome rather than the actual terminal viewport, so remote full-screen programs receive inflated dimensions and resize propagation is not truthful end to end."
-    }
-  ],
-  "nonBlockingIssues": [
-    {
-      "featureId": "connection-lifecycle-and-session-guards",
-      "severity": "non_blocking",
-      "description": "After canceling a slow connect, the UI can briefly look reconnect-ready before `currentAttempt` clears, so an immediate reconnect tap may be dropped once."
+      "description": "The added tests still do not prove special keys, paste, viewport-driven resize, and representative full-screen behavior against the live SSH fixture; several assertions rely on fake controllers instead of a live SSH/PTY-backed session."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skill:ssh-terminal-worker",
-      "suggestion": "Require manual lifecycle, full-screen terminal, and special-key validations to be recorded explicitly in `handoff.verification.interactiveChecks`, and treat missing evidence as a procedure deviation rather than full compliance.",
-      "evidence": "The `connection-lifecycle-and-session-guards` and `terminal-lifecycle-resize-and-recovery` reviews both found that required manual rotation/background or full-screen terminal observations were not preserved in the handoff/transcript artifacts, despite the feature contracts and skill requiring them.",
+      "suggestion": "Explicitly forbid using `composeRule.setContent(...)` screen mounting and in-process `AppContainer` swapping as substitutes for real app-shell navigation and relaunch validation when a feature requires visible UI and restart proof.",
+      "evidence": "The rerun review for `ssh-session-ui-trust-and-relaunch-proof` found the worker interacted with visible Compose screens but still bypassed `MainActivity`/`AtermNavHost` and simulated relaunch by swapping containers in-process, yet the handoff treated this as sufficient proof.",
       "isSystemic": true
     },
     {
       "target": "skill:ssh-terminal-worker",
-      "suggestion": "Clarify that terminal features must not be handed off as complete when the UI is still transcript-backed rather than a live SSH/PTY-driven terminal boundary; workers should return partial progress to the orchestrator instead.",
-      "evidence": "The `terminal-core-rendering-and-input` review found that the worker landed a transcript-backed `LazyColumn` surface while the skill still expects real end-to-end interactive terminal validation.",
-      "isSystemic": false
+      "suggestion": "Clarify exec-mode expectations for terminal validation: automation may substitute for manual interaction only when it still exercises a live SSH fixture, and special keys, paste, resize, and representative full-screen behavior must be proven against that live fixture rather than fake session controllers.",
+      "evidence": "The rerun review for `live-terminal-boundary-truthfulness-and-viewport-resize` found the worker fixed local echo and viewport sizing but still relied on test controllers instead of the live fixture for critical terminal-behavior proof, while the skill's current manual-check language was treated as flexible.",
+      "isSystemic": true
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "Update `.factory/library/user-testing.md` to replace 'prefer the repo-local fixture once it exists' with direct guidance to use the live fixture at `10.0.2.2:3122`.",
-      "reason": "Rejected for now because it is factual library drift outside this validation feature's code scope, and the current blocking fixture/security defect should be fixed before documenting the fixture path as the preferred stable target."
-    },
-    {
-      "observation": "Update `.factory/library/environment.md` to document that `fixture-metadata.env` contains the plaintext fixture password.",
-      "reason": "Rejected because the underlying implementation is the bug: documenting plaintext password storage would codify incorrect behavior instead of fixing the secret-handling regression."
-    }
-  ],
-  "previousRound": null
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/sessions-terminal/scrutiny/synthesis.round1.json"
 }
