@@ -10,7 +10,7 @@ import org.junit.Test
 
 class SshFixtureConfigTest {
     @Test
-    fun runtimeFiles_are_written_with_password_authorized_key_and_stable_host_key() {
+    fun runtimeFiles_are_written_with_secret_reference_authorized_key_and_stable_host_key() {
         val runtimeDir = Files.createTempDirectory("ssh-fixture-runtime")
 
         val hostKey = TestKeyMaterial.generate("host@test")
@@ -27,14 +27,18 @@ class SshFixtureConfigTest {
         assertTrue(Files.exists(prepared.runtimeDir.resolve("client_key")))
         assertTrue(Files.exists(prepared.runtimeDir.resolve("client_key.pub")))
         assertTrue(Files.exists(prepared.runtimeDir.resolve("authorized_keys")))
+        assertTrue(Files.exists(prepared.runtimeDir.resolve("fixture-secrets.env")))
         assertTrue(Files.exists(prepared.runtimeDir.resolve("fixture-metadata.env")))
-        assertEquals(config.password, prepared.metadata.password)
+        assertEquals(config.password, prepared.password)
         assertEquals(config.username, prepared.metadata.username)
         assertEquals(config.port, prepared.metadata.port)
         assertTrue(prepared.authorizedKeysPath.readText().contains(clientKey.publicKey))
         assertEquals(hostKey.privateKey.trim(), prepared.hostKeyPath.readText().trim())
         assertTrue(prepared.metadata.hostPublicKey.startsWith("ssh-"))
         assertTrue(prepared.metadata.hostFingerprint.startsWith("SHA256:"))
+        assertEquals("ATERM_SSH_FIXTURE_PASSWORD", prepared.metadata.passwordEnvName)
+        assertEquals(prepared.secretEnvPath.toString(), prepared.metadata.secretEnvPath)
+        assertTrue(prepared.secretEnvPath.readText().contains("ATERM_SSH_FIXTURE_PASSWORD="))
         assertNotEquals(hostKey.publicKey.trim(), clientKey.publicKey.trim())
     }
 
@@ -82,10 +86,13 @@ class SshFixtureConfigTest {
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_EMULATOR_HOST=10.0.2.2"))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_PORT=3122"))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_USERNAME=atermtester"))
-        assertTrue(envFile.contains("ATERM_SSH_FIXTURE_PASSWORD=aterm-password-fixture"))
+        assertTrue(envFile.contains("ATERM_SSH_FIXTURE_PASSWORD_ENV=ATERM_SSH_FIXTURE_PASSWORD"))
+        assertTrue(envFile.contains("ATERM_SSH_FIXTURE_SECRET_ENV_PATH="))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_HOST_KEY_PATH="))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_HOST_FINGERPRINT="))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_CLIENT_PUBLIC_KEY="))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_CLIENT_PRIVATE_KEY_PATH="))
+        assertTrue(envFile.contains("ATERM_SSH_FIXTURE_CLIENT_PUBLIC_KEY_PATH="))
+        assertTrue(!envFile.contains("aterm-password-fixture"))
     }
 }

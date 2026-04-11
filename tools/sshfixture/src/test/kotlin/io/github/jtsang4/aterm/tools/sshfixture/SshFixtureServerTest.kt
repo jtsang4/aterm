@@ -33,7 +33,7 @@ class SshFixtureServerTest {
                 port = prepared.metadata.port,
                 username = prepared.metadata.username,
             ) { session ->
-                session.addPasswordIdentity(prepared.metadata.password)
+                session.addPasswordIdentity(prepared.password)
             }
             assertTrue(passwordOutput.contains("atermtester"))
 

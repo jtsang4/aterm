@@ -26,7 +26,9 @@ data class PreparedFixture(
     val clientKeyPath: Path,
     val clientPublicKeyPath: Path,
     val authorizedKeysPath: Path,
+    val secretEnvPath: Path,
     val metadataPath: Path,
+    val password: String,
     val metadata: SshFixtureMetadata,
 )
 
@@ -35,7 +37,8 @@ data class SshFixtureMetadata(
     val host: String,
     val port: Int,
     val username: String,
-    val password: String,
+    val passwordEnvName: String,
+    val secretEnvPath: String,
     val hostPublicKey: String,
     val hostFingerprint: String,
     val hostKeyPath: String,
@@ -51,25 +54,14 @@ data class SshFixtureMetadata(
         appendLine("ATERM_SSH_FIXTURE_ENDPOINT=$host:$port")
         appendLine("ATERM_SSH_FIXTURE_EMULATOR_ENDPOINT=10.0.2.2:$port")
         appendLine("ATERM_SSH_FIXTURE_USERNAME=$username")
-        appendLine("ATERM_SSH_FIXTURE_PASSWORD=$password")
+        appendLine("ATERM_SSH_FIXTURE_PASSWORD_ENV=$passwordEnvName")
+        appendLine("ATERM_SSH_FIXTURE_SECRET_ENV_PATH=${shellEscape(secretEnvPath)}")
         appendLine("ATERM_SSH_FIXTURE_HOST_KEY_PATH=${shellEscape(hostKeyPath)}")
         appendLine("ATERM_SSH_FIXTURE_HOST_PUBLIC_KEY=${shellEscape(hostPublicKey)}")
         appendLine("ATERM_SSH_FIXTURE_HOST_FINGERPRINT=$hostFingerprint")
         appendLine("ATERM_SSH_FIXTURE_CLIENT_PUBLIC_KEY=${shellEscape(clientPublicKey)}")
         appendLine("ATERM_SSH_FIXTURE_CLIENT_PRIVATE_KEY_PATH=${shellEscape(clientPrivateKeyPath)}")
         appendLine("ATERM_SSH_FIXTURE_CLIENT_PUBLIC_KEY_PATH=${shellEscape(clientPublicKeyPath)}")
-    }
-
-    private fun shellEscape(value: String): String = buildString {
-        append('\'')
-        value.forEach { char ->
-            if (char == '\'') {
-                append("'\"'\"'")
-            } else {
-                append(char)
-            }
-        }
-        append('\'')
     }
 }
 
@@ -84,20 +76,24 @@ fun SshFixtureConfig.prepareRuntime(
     val clientKeyPath = runtimeDir.resolve("client_key")
     val clientPublicKeyPath = runtimeDir.resolve("client_key.pub")
     val authorizedKeysPath = runtimeDir.resolve("authorized_keys")
+    val secretEnvPath = runtimeDir.resolve("fixture-secrets.env")
     val metadataPath = runtimeDir.resolve("fixture-metadata.env")
+    val passwordEnvName = "ATERM_SSH_FIXTURE_PASSWORD"
 
     hostKeyPath.writeSecureText(hostKeyMaterial.privateKey.trim() + "\n")
     hostPublicKeyPath.writeSecureText(hostKeyMaterial.publicKey.trim() + "\n")
     clientKeyPath.writeSecureText(clientKeyMaterial.privateKey.trim() + "\n")
     clientPublicKeyPath.writeSecureText(clientKeyMaterial.publicKey.trim() + "\n")
     authorizedKeysPath.writeSecureText(authorizedClientPublicKey.trim() + "\n")
+    secretEnvPath.writeSecureText("$passwordEnvName=${shellEscape(password)}\n")
 
     val metadata = SshFixtureMetadata(
         runtimeDir = runtimeDir.toString(),
         host = host,
         port = port,
         username = username,
-        password = password,
+        passwordEnvName = passwordEnvName,
+        secretEnvPath = secretEnvPath.toString(),
         hostPublicKey = hostKeyMaterial.publicKey.trim(),
         hostFingerprint = hostKeyMaterial.fingerprint,
         hostKeyPath = hostKeyPath.toString(),
@@ -114,7 +110,9 @@ fun SshFixtureConfig.prepareRuntime(
         clientKeyPath = clientKeyPath,
         clientPublicKeyPath = clientPublicKeyPath,
         authorizedKeysPath = authorizedKeysPath,
+        secretEnvPath = secretEnvPath,
         metadataPath = metadataPath,
+        password = password,
         metadata = metadata,
     )
 }
@@ -193,4 +191,16 @@ private fun Path.writeSecureText(content: String) {
         )
         Files.setPosixFilePermissions(this, permissions)
     }
+}
+
+private fun shellEscape(value: String): String = buildString {
+    append('\'')
+    value.forEach { char ->
+        if (char == '\'') {
+            append("'\"'\"'")
+        } else {
+            append(char)
+        }
+    }
+    append('\'')
 }

@@ -22,7 +22,7 @@ class SshFixtureServer(
         keyPairProvider = KeyPairProvider.wrap(loadHostKey(preparedFixture.hostKeyPath))
         passwordAuthenticator = PasswordAuthenticator { username, password, _ ->
             username == preparedFixture.metadata.username &&
-                password == preparedFixture.metadata.password
+                password == preparedFixture.password
         }
         publickeyAuthenticator = buildPublicKeyAuthenticator(preparedFixture.authorizedKeysPath)
         commandFactory = ProcessShellCommandFactory.INSTANCE
