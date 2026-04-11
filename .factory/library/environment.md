@@ -45,3 +45,11 @@ Commands in `.factory/services.yaml` inline these values because each shell is i
 
 - The host SSH service at `127.0.0.1:22` is reachable from the emulator as `10.0.2.2:22`, but it is currently publickey-only and not automatable for Android app end-to-end auth proof with the credentials available in this mission.
 - If sessions-terminal work needs true emulator-to-SSH authentication proof, implement and use a repo-local SSH fixture on an allowed helper port instead of modifying system `sshd`.
+
+## Repo-local SSH Fixture
+
+- The repo now provides a disposable SSH fixture service on host `127.0.0.1:3122`, reachable from the emulator as `10.0.2.2:3122`.
+- Start and stop it only through the `ssh_fixture` service entry in `.factory/services.yaml`.
+- Runtime state is generated under `tools/sshfixture/runtime/` and must stay uncommitted.
+- The fixture writes `tools/sshfixture/runtime/fixture-metadata.env` with the current endpoint, username, password export name, client-key paths, host public key, and host fingerprint for trust-flow validation.
+- Host-key identity stays stable across fixture restarts as long as the same runtime directory is preserved.

@@ -29,4 +29,5 @@ include(
     ":feature:session",
     ":feature:snippets",
     ":feature:settings",
+    ":tools:sshfixture",
 )
