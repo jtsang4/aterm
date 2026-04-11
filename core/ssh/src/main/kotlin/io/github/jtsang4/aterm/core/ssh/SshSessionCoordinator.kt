@@ -9,6 +9,11 @@ import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import io.github.jtsang4.aterm.core.domain.repository.KnownHostTrustRepository
+import io.github.jtsang4.aterm.core.domain.repository.SessionMetadataRepository
+import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
+import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
+import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
+import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
@@ -31,6 +36,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -50,15 +57,27 @@ class SshSessionCoordinator(
     private val hostRepository: HostRepository,
     private val identityRepository: IdentityRepository,
     private val knownHostTrustRepository: KnownHostTrustRepository,
+    private val sessionMetadataRepository: SessionMetadataRepository? = null,
     private val ioScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : SessionController {
     private val connectMutex = Mutex()
     private val stateMutex = Mutex()
     private val uiState = MutableStateFlow(SessionUiState())
+    private val terminalUiState = MutableStateFlow(TerminalUiState())
+    private val terminalBuffer = TerminalBuffer()
     private var runtimeConnection: RuntimeConnection? = null
     private var currentAttempt: ConnectAttempt? = null
     private var pendingDecisionAccepted: Boolean? = null
     private var pendingDecisionLatch: CountDownLatch? = null
+    private var latestTerminalColumns: Int = DEFAULT_TERMINAL_COLUMNS
+    private var latestTerminalRows: Int = DEFAULT_TERMINAL_ROWS
+    private var currentSessionMetadataId: Long? = null
+
+    init {
+        terminalBuffer.resize(latestTerminalColumns, latestTerminalRows)
+        emitTerminalState(canSendInput = false)
+        restorePersistedSessionTruth()
+    }
 
     override fun observeUiState(): StateFlow<SessionUiState> = uiState.asStateFlow()
 
@@ -91,11 +110,21 @@ class SshSessionCoordinator(
                 currentAttempt?.cancel()
                 uiState.value.isConnecting
             }
+            val host = uiState.value.activeHostId?.let { hostRepository.getHost(it) }
             disconnectInternal(
                 state = SessionConnectionState.DISCONNECTED,
                 statusMessage = if (cancelingConnect) "Connection canceled." else "Disconnected.",
                 lastError = null,
             )
+            if (host != null) {
+                persistSessionState(
+                    host = host,
+                    state = SessionConnectionState.DISCONNECTED,
+                    reconnectRequired = false,
+                    lastError = null,
+                    disconnectedAt = Instant.now(),
+                )
+            }
         }
     }
 
@@ -119,6 +148,39 @@ class SshSessionCoordinator(
             }
         }
     }
+
+    override fun scrollPageUp() {
+        terminalBuffer.scrollPageUp()
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+    }
+
+    override fun scrollPageDown() {
+        terminalBuffer.scrollPageDown()
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+    }
+
+    override fun jumpToBottom() {
+        terminalBuffer.jumpToBottom()
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+    }
+
+    override fun resize(columns: Int, rows: Int) {
+        val safeColumns = columns.coerceAtLeast(1)
+        val safeRows = rows.coerceAtLeast(1)
+        latestTerminalColumns = safeColumns
+        latestTerminalRows = safeRows
+        terminalBuffer.resize(safeColumns, safeRows)
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+        ioScope.launch {
+            runtimeConnection?.sendResize(safeColumns, safeRows)
+        }
+    }
+
+    override fun sendText(text: String) = sendInput(text)
+
+    override fun sendSpecialKey(key: TerminalSpecialKey) = sendInput(key.encoded)
+
+    override fun pasteText(text: String) = sendInput(text)
 
     private suspend fun connectInternal(hostId: Long, attempt: ConnectAttempt) {
         val result = runCatching {
@@ -153,6 +215,16 @@ class SshSessionCoordinator(
                 transcript = "",
                 lastError = null,
                 pendingTrustDecision = null,
+                reconnectRequired = false,
+                disconnectReason = null,
+            )
+            replaceTerminalContent("")
+            persistSessionState(
+                host = host,
+                state = SessionConnectionState.CONNECTING,
+                reconnectRequired = false,
+                lastError = null,
+                disconnectedAt = null,
             )
 
             attempt.ensureActive()
@@ -170,7 +242,15 @@ class SshSessionCoordinator(
             attempt.registerCancelAction { runCatching { session.close(false) } }
             authenticate(session, identity, secrets, attempt)
 
-            val channel = session.createShellChannel(PtyChannelConfiguration(), emptyMap<String, Any>()).apply {
+            val channel = session.createShellChannel(
+                PtyChannelConfiguration().apply {
+                    ptyColumns = latestTerminalColumns
+                    ptyLines = latestTerminalRows
+                    ptyWidth = latestTerminalColumns * CELL_WIDTH_PIXELS
+                    ptyHeight = latestTerminalRows * CELL_HEIGHT_PIXELS
+                },
+                emptyMap<String, Any>(),
+            ).apply {
                 setRedirectErrorStream(true)
                 val openFuture = open()
                 attempt.register(openFuture)
@@ -201,6 +281,17 @@ class SshSessionCoordinator(
                 pendingTrustDecision = null,
                 lastError = null,
                 transcript = "",
+                reconnectRequired = false,
+                disconnectReason = null,
+            )
+            emitTerminalState(canSendInput = true)
+            persistSessionState(
+                host = host,
+                state = SessionConnectionState.CONNECTED,
+                reconnectRequired = false,
+                lastError = null,
+                connectedAt = Instant.now(),
+                disconnectedAt = null,
             )
             hostRepository.markUsed(host.id, Instant.now())
             startReader(connection)
@@ -277,17 +368,21 @@ class SshSessionCoordinator(
                 failConnection(
                     host = connection.host,
                     message = "Session ended: ${failure.message ?: "Remote shell closed."}",
+                    reconnectRequired = true,
                 )
             } else {
                 failConnection(
                     host = connection.host,
                     message = "Remote shell closed for ${connection.host.endpoint}.",
+                    reconnectRequired = true,
                 )
             }
         }
     }
 
     private suspend fun appendTranscript(text: String) {
+        terminalBuffer.append(text)
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
         stateMutex.withLock {
             uiState.value = uiState.value.copy(
                 transcript = uiState.value.transcript + text,
@@ -300,6 +395,8 @@ class SshSessionCoordinator(
         statusMessage: String?,
         lastError: String?,
         clearTranscript: Boolean = false,
+        reconnectRequired: Boolean = false,
+        disconnectReason: String? = statusMessage,
     ) {
         stateMutex.withLock {
             pendingDecisionLatch?.countDown()
@@ -318,8 +415,11 @@ class SshSessionCoordinator(
                 lastError = lastError,
                 pendingTrustDecision = null,
                 transcript = if (clearTranscript) "" else uiState.value.transcript,
+                reconnectRequired = reconnectRequired,
+                disconnectReason = disconnectReason,
             )
         }
+        emitTerminalState(canSendInput = false)
     }
 
     private suspend fun updateState(
@@ -329,6 +429,8 @@ class SshSessionCoordinator(
         transcript: String = uiState.value.transcript,
         lastError: String? = uiState.value.lastError,
         pendingTrustDecision: PendingTrustDecision? = uiState.value.pendingTrustDecision,
+        reconnectRequired: Boolean = uiState.value.reconnectRequired,
+        disconnectReason: String? = uiState.value.disconnectReason,
     ) {
         stateMutex.withLock {
             uiState.value = uiState.value.copy(
@@ -340,22 +442,44 @@ class SshSessionCoordinator(
                 transcript = transcript,
                 lastError = lastError,
                 pendingTrustDecision = pendingTrustDecision,
+                reconnectRequired = reconnectRequired,
+                disconnectReason = disconnectReason,
             )
         }
     }
 
-    private suspend fun failConnection(host: Host, message: String) {
+    private suspend fun failConnection(
+        host: Host,
+        message: String,
+        reconnectRequired: Boolean = false,
+    ) {
+        val failureState = if (reconnectRequired) {
+            SessionConnectionState.RECONNECT_REQUIRED
+        } else {
+            SessionConnectionState.FAILED
+        }
         disconnectInternal(
-            state = SessionConnectionState.FAILED,
+            state = failureState,
             statusMessage = message,
             lastError = message,
             clearTranscript = false,
+            reconnectRequired = reconnectRequired,
+            disconnectReason = message,
         )
         updateState(
             host = host,
-            state = SessionConnectionState.FAILED,
+            state = failureState,
             statusMessage = message,
             lastError = message,
+            reconnectRequired = reconnectRequired,
+            disconnectReason = message,
+        )
+        persistSessionState(
+            host = host,
+            state = failureState,
+            reconnectRequired = reconnectRequired,
+            lastError = message,
+            disconnectedAt = Instant.now(),
         )
     }
 
@@ -480,6 +604,105 @@ class SshSessionCoordinator(
     private fun proofCommand(host: Host): String =
         "printf 'ATERM_REMOTE_PROOF:${host.address}:${host.port}:'; hostname"
 
+    private fun emitTerminalState(canSendInput: Boolean) {
+        val state = TerminalUiState(
+            snapshot = terminalBuffer.snapshot(),
+            canSendInput = canSendInput,
+        )
+        terminalUiState.value = state
+        uiState.update { current ->
+            current.copy(liveTerminalState = state)
+        }
+    }
+
+    private fun replaceTerminalContent(transcript: String) {
+        terminalBuffer.clear()
+        terminalBuffer.resize(latestTerminalColumns, latestTerminalRows)
+        if (transcript.isNotEmpty()) {
+            terminalBuffer.append(transcript)
+        }
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+    }
+
+    private fun restorePersistedSessionTruth() {
+        val repository = sessionMetadataRepository ?: return
+        ioScope.launch {
+            val lastSession = repository.observeSessions().first().lastOrNull()
+                ?: return@launch
+            val host = hostRepository.getHost(lastSession.hostId) ?: return@launch
+            if (lastSession.state == SessionConnectionState.CONNECTED) {
+                currentSessionMetadataId = lastSession.id
+                updateState(
+                    host = host,
+                    state = SessionConnectionState.RECONNECT_REQUIRED,
+                    statusMessage = "Previous live session for ${host.endpoint} needs reconnect after app recovery.",
+                    lastError = lastSession.lastError,
+                    reconnectRequired = true,
+                    disconnectReason = "App was recreated; reconnect required.",
+                )
+                persistSessionState(
+                    host = host,
+                    state = SessionConnectionState.RECONNECT_REQUIRED,
+                    reconnectRequired = true,
+                    lastError = lastSession.lastError ?: "App was recreated; reconnect required.",
+                    connectedAt = lastSession.connectedAt,
+                    disconnectedAt = Instant.now(),
+                )
+            } else {
+                currentSessionMetadataId = lastSession.id
+                updateState(
+                    host = host,
+                    state = lastSession.state,
+                    statusMessage = lastSession.lastError ?: uiState.value.statusMessage,
+                    lastError = lastSession.lastError,
+                    reconnectRequired = lastSession.reconnectRequired,
+                    disconnectReason = lastSession.lastError,
+                )
+            }
+        }
+    }
+
+    private suspend fun persistSessionState(
+        host: Host,
+        state: SessionConnectionState,
+        reconnectRequired: Boolean,
+        lastError: String?,
+        connectedAt: Instant? = null,
+        disconnectedAt: Instant? = null,
+    ) {
+        val repository = sessionMetadataRepository ?: return
+        val persisted = repository.upsert(
+            SessionMetadata(
+                id = currentSessionMetadataId ?: 0,
+                hostId = host.id,
+                state = state,
+                title = host.label,
+                connectedAt = connectedAt,
+                disconnectedAt = disconnectedAt,
+                reconnectRequired = reconnectRequired,
+                lastError = lastError,
+            ),
+        )
+        currentSessionMetadataId = persisted.id
+    }
+
+    private suspend fun RuntimeConnection.sendResize(columns: Int, rows: Int) {
+        runCatching {
+            channel.sendWindowChange(
+                columns,
+                rows,
+                columns * CELL_WIDTH_PIXELS,
+                rows * CELL_HEIGHT_PIXELS,
+            )
+        }.onFailure { throwable ->
+            failConnection(
+                host = host,
+                message = "Session ended: ${throwable.message ?: "PTY resize failed."}",
+                reconnectRequired = true,
+            )
+        }
+    }
+
     private data class RuntimeConnection(
         val host: Host,
         val client: SshClient,
@@ -537,6 +760,10 @@ class SshSessionCoordinator(
         private const val AUTH_TIMEOUT_MILLIS = 5_000L
         private const val CHANNEL_OPEN_TIMEOUT_MILLIS = 5_000L
         private const val TRUST_DECISION_TIMEOUT_MILLIS = 30_000L
+        private const val DEFAULT_TERMINAL_COLUMNS = 80
+        private const val DEFAULT_TERMINAL_ROWS = 24
+        private const val CELL_WIDTH_PIXELS = 9
+        private const val CELL_HEIGHT_PIXELS = 18
         private val nextAttemptId = AtomicLong(1L)
         private val userHomeConfigured = AtomicBoolean(false)
     }

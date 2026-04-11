@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
@@ -41,9 +42,7 @@ import io.github.jtsang4.aterm.core.ssh.SessionController
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
 import io.github.jtsang4.aterm.core.terminal.ComposeTerminalSurface
-import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
 import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKeyBar
-import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 
 object SessionEntryPoint {
     const val route = "session"
@@ -98,7 +97,7 @@ fun SessionsScreen(
             )
             SessionTerminal(
                 sessionState = sessionState,
-                onSendInput = coordinator::sendInput,
+                coordinator = coordinator,
             )
         }
     }
@@ -127,6 +126,13 @@ private fun SessionStatusCard(
                 text = sessionState.statusMessage ?: "Choose a saved host to start a real SSH session.",
                 modifier = Modifier.testTag("session_status_message"),
             )
+            if (sessionState.reconnectRequired || sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.RECONNECT_REQUIRED) {
+                Text(
+                    text = sessionState.disconnectReason ?: "Session is no longer live. Reconnect to resume terminal interaction.",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("session_reconnect_required"),
+                )
+            }
             sessionState.endpoint?.let { endpoint ->
                 Text(
                     text = "Target: $endpoint",
@@ -256,7 +262,10 @@ private fun SessionHostList(
                                 ) {
                                     Text(
                                         if (sessionState.activeHostId == host.id &&
-                                            (sessionState.isConnected || sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.FAILED || sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED)
+                                            (sessionState.isConnected ||
+                                                sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.FAILED ||
+                                                sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED ||
+                                                sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.RECONNECT_REQUIRED)
                                         ) {
                                             "Reconnect"
                                         } else if (sessionState.activeHostId == host.id && sessionState.isConnecting) {
@@ -278,10 +287,9 @@ private fun SessionHostList(
 @Composable
 private fun SessionTerminal(
     sessionState: SessionUiState,
-    onSendInput: (String) -> Unit,
+    coordinator: SessionController,
 ) {
     var input by remember { mutableStateOf("") }
-    val terminalStateHolder = remember(sessionState.activeHostId) { SessionTerminalStateHolder() }
     val context = LocalContext.current
     val clipboardManager = remember(context) {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -292,15 +300,6 @@ private fun SessionTerminal(
         if (!sessionState.canSendInput) {
             clipboardStatus = null
         }
-    }
-    LaunchedEffect(sessionState.activeHostId) {
-        terminalStateHolder.reset(canSendInput = sessionState.canSendInput)
-    }
-    LaunchedEffect(sessionState.transcript, sessionState.canSendInput) {
-        terminalStateHolder.applyTranscript(
-            transcript = sessionState.transcript,
-            canSendInput = sessionState.canSendInput,
-        )
     }
 
     Card(
@@ -313,19 +312,35 @@ private fun SessionTerminal(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Terminal surface",
+                text = if (sessionState.isTerminalLive) "Terminal surface" else "Terminal history",
                 style = MaterialTheme.typography.titleMedium,
             )
             ComposeTerminalSurface(
-                terminalState = terminalStateHolder.uiState,
-                onScrollPageUp = terminalStateHolder::scrollPageUp,
-                onScrollPageDown = terminalStateHolder::scrollPageDown,
-                onJumpToBottom = terminalStateHolder::jumpToBottom,
-                modifier = Modifier.testTag("session_terminal_region"),
+                controller = coordinator,
+                modifier = Modifier
+                    .testTag("session_terminal_region")
+                    .onSizeChanged { size ->
+                        val columns = (size.width / CELL_WIDTH_PIXELS).coerceAtLeast(20)
+                        val rows = (size.height / CELL_HEIGHT_PIXELS).coerceAtLeast(DEFAULT_VISIBLE_ROWS)
+                        coordinator.resize(columns, rows)
+                    },
             )
+            if (!sessionState.isTerminalLive) {
+                Text(
+                    text = sessionState.disconnectReason
+                        ?: if (sessionState.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED) {
+                            "Terminal is disconnected. Transcript below is historical only."
+                        } else {
+                            "Terminal is not currently live. Reconnect to send input."
+                        },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("session_terminal_truth_banner"),
+                )
+            }
             TerminalSpecialKeyBar(
-                enabled = sessionState.canSendInput,
-                onSpecialKey = { key -> onSendInput(key.encoded) },
+                enabled = sessionState.isTerminalLive,
+                onSpecialKey = coordinator::sendSpecialKey,
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -335,7 +350,7 @@ private fun SessionTerminal(
                     value = input,
                     onValueChange = { input = it },
                     label = { Text("Send input") },
-                    enabled = sessionState.canSendInput,
+                    enabled = sessionState.isTerminalLive,
                     modifier = Modifier
                         .weight(1f)
                         .testTag("session_input_field"),
@@ -343,11 +358,11 @@ private fun SessionTerminal(
                 Button(
                     onClick = {
                         if (input.isNotBlank()) {
-                            onSendInput("$input\n")
+                            coordinator.sendText("$input\n")
                             input = ""
                         }
                     },
-                    enabled = sessionState.canSendInput,
+                    enabled = sessionState.isTerminalLive,
                     modifier = Modifier.testTag("session_send_button"),
                 ) {
                     Text("Send")
@@ -359,7 +374,7 @@ private fun SessionTerminal(
             ) {
                 OutlinedButton(
                     onClick = {
-                        val text = terminalStateHolder.copyableText()
+                        val text = sessionState.liveTerminalState.snapshot.completeText
                             .ifBlank { sessionState.transcript }
                             .ifBlank { return@OutlinedButton }
                         clipboardManager.setPrimaryClip(ClipData.newPlainText("aterm-terminal", text))
@@ -378,10 +393,10 @@ private fun SessionTerminal(
                             ?.toString()
                             ?.takeIf { it.isNotBlank() }
                             ?: return@OutlinedButton
-                        onSendInput(text)
+                        coordinator.pasteText(text)
                         clipboardStatus = "Pasted from clipboard"
                     },
-                    enabled = sessionState.canSendInput,
+                    enabled = sessionState.isTerminalLive,
                     modifier = Modifier.testTag("session_paste_button"),
                 ) {
                     Text("Paste")
@@ -395,7 +410,9 @@ private fun SessionTerminal(
                 )
             }
             Text(
-                text = terminalStateHolder.copyableText().ifBlank { "No terminal transcript yet." },
+                text = sessionState.liveTerminalState.snapshot.completeText
+                    .ifBlank { sessionState.transcript }
+                    .ifBlank { "No terminal transcript yet." },
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.testTag("session_transcript"),
             )
@@ -403,67 +420,6 @@ private fun SessionTerminal(
     }
 }
 
-private class SessionTerminalStateHolder {
-    private val terminalBuffer = TerminalBuffer()
-    private var lastTranscript: String = ""
-
-    var uiState: TerminalUiState by mutableStateOf(TerminalUiState(snapshot = terminalBuffer.snapshot()))
-        private set
-
-    fun reset(canSendInput: Boolean) {
-        terminalBuffer.clear()
-        lastTranscript = ""
-        uiState = TerminalUiState(
-            snapshot = terminalBuffer.snapshot(),
-            canSendInput = canSendInput,
-        )
-    }
-
-    fun applyTranscript(
-        transcript: String,
-        canSendInput: Boolean,
-    ) {
-        when {
-            transcript == lastTranscript -> {
-                uiState = uiState.copy(canSendInput = canSendInput)
-                return
-            }
-
-            transcript.startsWith(lastTranscript) -> {
-                val delta = transcript.removePrefix(lastTranscript)
-                if (delta.isNotEmpty()) {
-                    terminalBuffer.append(delta)
-                }
-            }
-
-            else -> {
-                terminalBuffer.clear()
-                if (transcript.isNotEmpty()) {
-                    terminalBuffer.append(transcript)
-                }
-            }
-        }
-        lastTranscript = transcript
-        uiState = TerminalUiState(
-            snapshot = terminalBuffer.snapshot(),
-            canSendInput = canSendInput,
-        )
-    }
-
-    fun scrollPageUp() {
-        terminalBuffer.scrollPageUp()
-        uiState = uiState.copy(snapshot = terminalBuffer.snapshot())
-    }
-
-    fun scrollPageDown() {
-        terminalBuffer.scrollPageDown()
-        uiState = uiState.copy(snapshot = terminalBuffer.snapshot())
-    }
-
-    fun jumpToBottom() {
-        terminalBuffer.jumpToBottom()
-        uiState = uiState.copy(snapshot = terminalBuffer.snapshot())
-    }
-
-    fun copyableText(): String = uiState.snapshot.completeText
-}
+private const val CELL_WIDTH_PIXELS = 9
+private const val CELL_HEIGHT_PIXELS = 18
+private const val DEFAULT_VISIBLE_ROWS = 12

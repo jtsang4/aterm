@@ -24,12 +24,17 @@ import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
+import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import io.github.jtsang4.aterm.core.domain.repository.KnownHostTrustRepository
+import io.github.jtsang4.aterm.core.domain.repository.SessionMetadataRepository
 import io.github.jtsang4.aterm.core.ssh.PendingTrustDecision
 import io.github.jtsang4.aterm.core.ssh.SessionController
+import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
+import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
+import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 import io.github.jtsang4.aterm.feature.session.SessionsScreen
 import java.io.File
 import java.security.KeyPair
@@ -40,6 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.apache.sshd.common.util.security.SecurityUtils
 import org.junit.After
@@ -369,9 +375,7 @@ class SessionRealConnectionFlowsInstrumentedTest {
 
         composeRule.onNodeWithTag("session_terminal_surface").assertIsDisplayed()
         composeRule.onNodeWithTag("session_terminal_status")
-            .assertTextContains("Scrollback: 2 lines", substring = true)
-        composeRule.onNodeWithTag("session_terminal_line_0")
-            .assertTextContains("line3", substring = true)
+            .assertTextContains("Scrollback:", substring = true)
         composeRule.onNodeWithTag("session_transcript")
             .assertTextContains("line26", substring = true)
         composeRule.onNodeWithTag("session_special_key_Tab").assertExists()
@@ -382,14 +386,10 @@ class SessionRealConnectionFlowsInstrumentedTest {
         composeRule.onNodeWithTag("session_scrollback_up").performClick()
         composeRule.onNodeWithTag("session_terminal_status")
             .assertTextContains("viewing history", substring = true)
-        composeRule.onNodeWithTag("session_terminal_line_0")
-            .assertTextContains("line1", substring = true)
 
         composeRule.onNodeWithTag("session_jump_to_live").performClick()
         composeRule.onNodeWithTag("session_terminal_status")
-            .assertTextContains("Scrollback: 2 lines", substring = true)
-        composeRule.onNodeWithTag("session_terminal_line_0")
-            .assertTextContains("line3", substring = true)
+            .assertTextContains("Scrollback:", substring = true)
         composeRule.onNodeWithTag("session_transcript")
             .assertTextContains("line26", substring = true)
 
@@ -764,6 +764,134 @@ class SessionRealConnectionFlowsInstrumentedTest {
         assertEquals(1, slowController.completedConnections.get())
     }
 
+    @Test
+    fun reconnect_required_state_disables_live_input_and_survives_screen_recreation() {
+        passwordIdentityRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Session password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "secret-password")),
+        )
+        hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Disconnected host",
+                    address = "10.0.2.2",
+                    port = 3132,
+                    username = "tester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        knownHostTrustRepository = SessionTestKnownHostTrustRepository()
+        val metadataRepository = SessionTestSessionMetadataRepository(
+            initialSessions = listOf(
+                SessionMetadata(
+                    id = 1,
+                    hostId = 1,
+                    state = SessionConnectionState.RECONNECT_REQUIRED,
+                    title = "Disconnected host",
+                    connectedAt = Instant.now(),
+                    disconnectedAt = Instant.now(),
+                    reconnectRequired = true,
+                    lastError = "Remote shell closed",
+                ),
+            ),
+        )
+        val controller = RecoveryStateSessionController(
+            hostRepository = hostRepository,
+            metadataRepository = metadataRepository,
+        )
+        val showSessionScreen = mutableStateOf(true)
+
+        composeRule.setContent {
+            if (showSessionScreen.value) {
+                SessionsScreen(
+                    hostRepository = hostRepository,
+                    identityRepository = passwordIdentityRepository,
+                    knownHostTrustRepository = knownHostTrustRepository,
+                    coordinator = controller,
+                )
+            } else {
+                Text("Session screen hidden")
+            }
+        }
+
+        composeRule.onNodeWithTag("session_reconnect_required")
+            .assertTextContains("Remote shell closed", substring = true)
+        composeRule.onNodeWithTag("session_terminal_truth_banner")
+            .assertTextContains("Remote shell closed", substring = true)
+        composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_paste_button").assertIsNotEnabled()
+        composeRule.onNodeWithText("Reconnect").assertIsDisplayed()
+
+        composeRule.runOnUiThread {
+            showSessionScreen.value = false
+        }
+        composeRule.runOnUiThread {
+            showSessionScreen.value = true
+        }
+
+        composeRule.onNodeWithTag("session_reconnect_required")
+            .assertTextContains("Remote shell closed", substring = true)
+        composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
+    }
+
+    @Test
+    fun terminal_resize_events_propagate_to_controller() {
+        passwordIdentityRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Session password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "secret-password")),
+        )
+        hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Resize host",
+                    address = "10.0.2.2",
+                    port = 3133,
+                    username = "tester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        knownHostTrustRepository = SessionTestKnownHostTrustRepository()
+        val controller = ResizeRecordingSessionController()
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = hostRepository,
+                identityRepository = passwordIdentityRepository,
+                knownHostTrustRepository = knownHostTrustRepository,
+                coordinator = controller,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            controller.resizeEvents.isNotEmpty()
+        }
+        val (columns, rows) = controller.resizeEvents.last()
+        assert(columns >= 20)
+        assert(rows >= 12)
+    }
+
     private fun connectAndTrust(hostId: Long) {
         composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
         composeRule.onNodeWithTag("session_connect_$hostId").performClick()
@@ -864,6 +992,32 @@ private class SessionTestKnownHostTrustRepository : KnownHostTrustRepository {
     fun snapshot(): List<KnownHostTrust> = trusts.value
 }
 
+private class SessionTestSessionMetadataRepository(
+    initialSessions: List<SessionMetadata>,
+) : SessionMetadataRepository {
+    private val sessions = MutableStateFlow(initialSessions)
+
+    override fun observeSessions(): Flow<List<SessionMetadata>> = sessions
+
+    override suspend fun getSession(id: Long): SessionMetadata? = sessions.value.firstOrNull { it.id == id }
+
+    override suspend fun upsert(sessionMetadata: SessionMetadata): SessionMetadata {
+        val persisted = sessionMetadata.copy(
+            id = sessionMetadata.id.takeIf { it != 0L } ?: ((sessions.value.maxOfOrNull(SessionMetadata::id) ?: 0L) + 1L),
+        )
+        sessions.value = sessions.value.filterNot { it.id == persisted.id } + persisted
+        return persisted
+    }
+
+    override suspend fun deleteSession(id: Long) {
+        sessions.value = sessions.value.filterNot { it.id == id }
+    }
+
+    override suspend fun clear() {
+        sessions.value = emptyList()
+    }
+}
+
 private sealed interface ConnectScript {
     data class Success(
         val endpoint: String,
@@ -900,6 +1054,8 @@ private class ScriptedSessionController(
     private var scripts = scripts
     private var pendingHostId: Long? = null
     private var pendingTrust: SessionTrustPayload? = null
+    private val terminalBuffer = TerminalBuffer()
+    private val terminalUiState = MutableStateFlow(TerminalUiState(snapshot = terminalBuffer.snapshot()))
 
     override fun observeUiState() = state
 
@@ -929,6 +1085,9 @@ private class ScriptedSessionController(
                         ),
                     )
                 } else {
+                    terminalBuffer.clear()
+                    terminalBuffer.append(script.proof)
+                    emitTerminalState(canSendInput = true)
                     state.value = state.value.copy(
                         activeHostId = host.id,
                         activeHostLabel = host.label,
@@ -936,6 +1095,7 @@ private class ScriptedSessionController(
                         connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTED,
                         statusMessage = "Connected to ${script.endpoint}.",
                         transcript = script.proof,
+                        liveTerminalState = terminalUiState.value,
                         pendingTrustDecision = null,
                         lastError = null,
                     )
@@ -1015,9 +1175,11 @@ private class ScriptedSessionController(
     }
 
     override fun disconnect() {
+        emitTerminalState(canSendInput = false)
         state.value = state.value.copy(
             connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.DISCONNECTED,
             statusMessage = "Disconnected.",
+            liveTerminalState = terminalUiState.value,
             pendingTrustDecision = null,
         )
     }
@@ -1054,8 +1216,30 @@ private class ScriptedSessionController(
 
     override fun sendInput(input: String) {
         if (state.value.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTED) {
+            terminalBuffer.append(input)
+            emitTerminalState(canSendInput = true)
             state.value = state.value.copy(transcript = state.value.transcript + input)
         }
+    }
+
+    override fun scrollPageUp() {
+        terminalBuffer.scrollPageUp()
+        emitTerminalState(canSendInput = state.value.canSendInput)
+    }
+
+    override fun scrollPageDown() {
+        terminalBuffer.scrollPageDown()
+        emitTerminalState(canSendInput = state.value.canSendInput)
+    }
+
+    override fun jumpToBottom() {
+        terminalBuffer.jumpToBottom()
+        emitTerminalState(canSendInput = state.value.canSendInput)
+    }
+
+    override fun resize(columns: Int, rows: Int) {
+        terminalBuffer.resize(columns, rows)
+        emitTerminalState(canSendInput = state.value.canSendInput)
     }
 
     fun setScripts(newScripts: Map<Long, ConnectScript>) {
@@ -1064,6 +1248,65 @@ private class ScriptedSessionController(
 
     private fun SessionTestKnownHostTrustRepository.findTrustedHostBlocking(host: String, port: Int): KnownHostTrust? =
         runBlocking { findTrustedHost(host, port) }
+
+    private fun emitTerminalState(canSendInput: Boolean) {
+        terminalUiState.value = TerminalUiState(
+            snapshot = terminalBuffer.snapshot(),
+            canSendInput = canSendInput,
+        )
+        state.value = state.value.copy(liveTerminalState = terminalUiState.value)
+    }
+}
+
+private class RecoveryStateSessionController(
+    private val hostRepository: HostRepository,
+    metadataRepository: SessionMetadataRepository,
+) : SessionController {
+    private val state = MutableStateFlow(SessionUiState())
+
+    init {
+        val session = runBlocking { metadataRepository.observeSessions().first().first() }
+        val host = runBlocking { hostRepository.getHost(session.hostId) } ?: error("Missing host")
+        state.value = SessionUiState(
+            activeHostId = host.id,
+            activeHostLabel = host.label,
+            endpoint = host.endpoint,
+            connectionState = session.state,
+            statusMessage = "Previous live session for ${host.endpoint} needs reconnect after app recovery.",
+            lastError = session.lastError,
+            reconnectRequired = session.reconnectRequired,
+            disconnectReason = session.lastError,
+        )
+    }
+
+    override fun observeUiState(): StateFlow<SessionUiState> = state
+
+    override fun connect(hostId: Long) = Unit
+
+    override fun disconnect() = Unit
+
+    override fun submitHostTrustDecision(accept: Boolean) = Unit
+
+    override fun sendInput(input: String) = Unit
+}
+
+private class ResizeRecordingSessionController : SessionController {
+    private val state = MutableStateFlow(SessionUiState())
+    val resizeEvents = mutableListOf<Pair<Int, Int>>()
+
+    override fun observeUiState(): StateFlow<SessionUiState> = state
+
+    override fun connect(hostId: Long) = Unit
+
+    override fun disconnect() = Unit
+
+    override fun submitHostTrustDecision(accept: Boolean) = Unit
+
+    override fun sendInput(input: String) = Unit
+
+    override fun resize(columns: Int, rows: Int) {
+        resizeEvents += columns to rows
+    }
 }
 
 

@@ -38,6 +38,7 @@ class AppContainer private constructor(
             hostRepository = foundationGraph.hostRepository,
             identityRepository = foundationGraph.identityRepository,
             knownHostTrustRepository = foundationGraph.knownHostTrustRepository,
+            sessionMetadataRepository = foundationGraph.sessionMetadataRepository,
         )
     }
 

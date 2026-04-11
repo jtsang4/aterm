@@ -1,6 +1,8 @@
 package io.github.jtsang4.aterm.core.ssh
 
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
+import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
+import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 
 data class PendingTrustDecision(
     val hostId: Long,
@@ -23,8 +25,13 @@ data class SessionUiState(
     val transcript: String = "",
     val pendingTrustDecision: PendingTrustDecision? = null,
     val lastError: String? = null,
+    val liveTerminalState: TerminalUiState = TerminalUiState(snapshot = TerminalBuffer().snapshot()),
+    val reconnectRequired: Boolean = false,
+    val disconnectReason: String? = null,
 ) {
     val isConnecting: Boolean = connectionState == SessionConnectionState.CONNECTING
     val isConnected: Boolean = connectionState == SessionConnectionState.CONNECTED
     val canSendInput: Boolean = isConnected
+    val hasLiveSession: Boolean = isConnected && !reconnectRequired
+    val isTerminalLive: Boolean = hasLiveSession && liveTerminalState.canSendInput
 }

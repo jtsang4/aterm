@@ -31,6 +31,7 @@ android {
 
 dependencies {
     implementation(project(":core:domain"))
+    implementation(project(":core:terminal"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.mina.sshd.common)
     implementation(libs.mina.sshd.core)

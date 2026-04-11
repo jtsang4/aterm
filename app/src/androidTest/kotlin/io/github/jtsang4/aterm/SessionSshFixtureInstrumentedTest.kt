@@ -329,6 +329,44 @@ class SessionSshFixtureInstrumentedTest {
         assertTrue(settled.transcript.isEmpty())
     }
 
+    @Test
+    fun remote_disconnect_marks_session_reconnect_required_and_preserves_history_as_non_live() {
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = buildCoordinator(container)
+
+        coordinator.connect(hostId)
+        waitForState(coordinator) { it.pendingTrustDecision != null }
+        coordinator.submitHostTrustDecision(true)
+        val connected = waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
+        assertProof(connected, FIXTURE_PORT)
+
+        coordinator.disconnect()
+        val disconnected = waitForState(coordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+        assertFalse(disconnected.canSendInput)
+        assertTrue(disconnected.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:"))
+    }
+
     private fun buildCoordinator(container: AppContainer): SshSessionCoordinator = SshSessionCoordinator(
         hostRepository = container.foundationGraph.hostRepository,
         identityRepository = container.foundationGraph.identityRepository,

@@ -39,4 +39,19 @@ class TerminalBufferTest {
         assertTrue(snapshot.visibleText.contains("row two"))
         assertEquals(listOf("fullscreen mode", "row two", ""), snapshot.visibleLines.map(String::trimEnd))
     }
+
+    @Test
+    fun resize_preserves_scrollback_and_latest_visible_content() {
+        val buffer = TerminalBuffer(columns = 12, rows = 3, maxScrollbackLines = 32)
+
+        buffer.append("one\ntwo\nthree\nfour\n")
+        buffer.resize(columns = 20, rows = 4)
+
+        val snapshot = buffer.snapshot()
+        assertEquals(20, snapshot.columns)
+        assertEquals(4, snapshot.rows)
+        assertEquals(listOf("one", "two"), snapshot.scrollbackLines.map(String::trimEnd))
+        assertEquals(listOf("one", "two", "three", "four"), snapshot.completeText.lines().take(4))
+        assertTrue(snapshot.visibleText.contains("four"))
+    }
 }
