@@ -4,5 +4,19 @@ import android.app.Application
 import io.github.jtsang4.aterm.di.AppContainer
 
 class AtermApplication : Application() {
-    val appContainer: AppContainer by lazy { AppContainer.create(this) }
+    private val defaultAppContainer: AppContainer by lazy { AppContainer.create(this) }
+
+    @Volatile
+    private var appContainerOverride: AppContainer? = null
+
+    val appContainer: AppContainer
+        get() = appContainerOverride ?: defaultAppContainer
+
+    fun replaceAppContainerForTesting(container: AppContainer) {
+        appContainerOverride = container
+    }
+
+    fun clearAppContainerOverrideForTesting() {
+        appContainerOverride = null
+    }
 }
