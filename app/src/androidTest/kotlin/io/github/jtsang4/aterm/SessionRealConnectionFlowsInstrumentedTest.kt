@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.material3.Text
@@ -279,6 +280,121 @@ class SessionRealConnectionFlowsInstrumentedTest {
                     .assertTextContains("Host key changed for 127.0.0.1:$port. Connection blocked.", substring = true)
             }.isSuccess
         }
+    }
+
+    @Test
+    fun terminal_surface_supports_scrollback_and_terminal_chrome() {
+        val port = 2299
+
+        passwordIdentityRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Session password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "secret-password")),
+        )
+        hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Terminal host",
+                    address = "10.0.2.2",
+                    port = port,
+                    username = "tester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        knownHostTrustRepository = SessionTestKnownHostTrustRepository()
+        controller = ScriptedSessionController(
+            hostRepository = hostRepository,
+            trustRepository = knownHostTrustRepository,
+            scripts = mapOf(
+                1L to ConnectScript.Success(
+                    endpoint = "10.0.2.2:$port",
+                    proof = listOf(
+                        "line1",
+                        "line2",
+                        "line3",
+                        "line4",
+                        "line5",
+                        "line6",
+                        "line7",
+                        "line8",
+                        "line9",
+                        "line10",
+                        "line11",
+                        "line12",
+                        "line13",
+                        "line14",
+                        "line15",
+                        "line16",
+                        "line17",
+                        "line18",
+                        "line19",
+                        "line20",
+                        "line21",
+                        "line22",
+                        "line23",
+                        "line24",
+                        "line25",
+                        "line26",
+                    ).joinToString(separator = "\n"),
+                    trust = SessionTrustPayload(
+                        endpoint = "10.0.2.2:$port",
+                        fingerprint = "SHA256:terminal-flow",
+                        algorithm = "RSA",
+                        hostKeyBase64 = "host-key-terminal-$port",
+                    ),
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = hostRepository,
+                identityRepository = passwordIdentityRepository,
+                knownHostTrustRepository = knownHostTrustRepository,
+                coordinator = controller,
+            )
+        }
+
+        connectAndTrust(hostId = 1)
+
+        composeRule.onNodeWithTag("session_terminal_surface").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_terminal_status")
+            .assertTextContains("Scrollback: 2 lines", substring = true)
+        composeRule.onNodeWithTag("session_terminal_line_0")
+            .assertTextContains("line3", substring = true)
+        composeRule.onNodeWithTag("session_transcript")
+            .assertTextContains("line26", substring = true)
+        composeRule.onNodeWithTag("session_special_key_Tab").assertExists()
+        composeRule.onNodeWithTag("session_special_key_CtrlC").assertExists()
+        composeRule.onNodeWithTag("session_copy_button").assertExists()
+        composeRule.onNodeWithTag("session_paste_button").assertExists()
+
+        composeRule.onNodeWithTag("session_scrollback_up").performClick()
+        composeRule.onNodeWithTag("session_terminal_status")
+            .assertTextContains("viewing history", substring = true)
+        composeRule.onNodeWithTag("session_terminal_line_0")
+            .assertTextContains("line1", substring = true)
+
+        composeRule.onNodeWithTag("session_jump_to_live").performClick()
+        composeRule.onNodeWithTag("session_terminal_status")
+            .assertTextContains("Scrollback: 2 lines", substring = true)
+        composeRule.onNodeWithTag("session_terminal_line_0")
+            .assertTextContains("line3", substring = true)
+        composeRule.onNodeWithTag("session_transcript")
+            .assertTextContains("line26", substring = true)
+
+        composeRule.onNodeWithTag("session_input_field").assertExists()
+        composeRule.onNodeWithTag("session_send_button").assertExists()
     }
 
     @Test
@@ -938,7 +1054,7 @@ private class ScriptedSessionController(
 
     override fun sendInput(input: String) {
         if (state.value.connectionState == io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.CONNECTED) {
-            state.value = state.value.copy(transcript = state.value.transcript + "\n" + input.trim())
+            state.value = state.value.copy(transcript = state.value.transcript + input)
         }
     }
 
@@ -949,6 +1065,7 @@ private class ScriptedSessionController(
     private fun SessionTestKnownHostTrustRepository.findTrustedHostBlocking(host: String, port: Int): KnownHostTrust? =
         runBlocking { findTrustedHost(host, port) }
 }
+
 
 private class SlowScriptedSessionController(
     private val hostRepository: HostRepository,

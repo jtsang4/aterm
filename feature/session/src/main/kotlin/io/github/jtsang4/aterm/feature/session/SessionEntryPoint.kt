@@ -1,5 +1,8 @@
 package io.github.jtsang4.aterm.feature.session
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,8 +12,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -18,12 +19,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,10 @@ import io.github.jtsang4.aterm.core.ssh.PendingTrustDecision
 import io.github.jtsang4.aterm.core.ssh.SessionController
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
+import io.github.jtsang4.aterm.core.terminal.ComposeTerminalSurface
+import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
+import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKeyBar
+import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 
 object SessionEntryPoint {
     const val route = "session"
@@ -274,6 +281,27 @@ private fun SessionTerminal(
     onSendInput: (String) -> Unit,
 ) {
     var input by remember { mutableStateOf("") }
+    val terminalStateHolder = remember(sessionState.activeHostId) { SessionTerminalStateHolder() }
+    val context = LocalContext.current
+    val clipboardManager = remember(context) {
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    }
+    var clipboardStatus by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(sessionState.connectionState) {
+        if (!sessionState.canSendInput) {
+            clipboardStatus = null
+        }
+    }
+    LaunchedEffect(sessionState.activeHostId) {
+        terminalStateHolder.reset(canSendInput = sessionState.canSendInput)
+    }
+    LaunchedEffect(sessionState.transcript, sessionState.canSendInput) {
+        terminalStateHolder.applyTranscript(
+            transcript = sessionState.transcript,
+            canSendInput = sessionState.canSendInput,
+        )
+    }
 
     Card(
         modifier = Modifier
@@ -285,16 +313,19 @@ private fun SessionTerminal(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Terminal transcript",
+                text = "Terminal surface",
                 style = MaterialTheme.typography.titleMedium,
             )
-            Text(
-                text = sessionState.transcript.ifBlank { "No terminal transcript yet." },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 120.dp)
-                    .verticalScroll(rememberScrollState())
-                    .testTag("session_transcript"),
+            ComposeTerminalSurface(
+                terminalState = terminalStateHolder.uiState,
+                onScrollPageUp = terminalStateHolder::scrollPageUp,
+                onScrollPageDown = terminalStateHolder::scrollPageDown,
+                onJumpToBottom = terminalStateHolder::jumpToBottom,
+                modifier = Modifier.testTag("session_terminal_region"),
+            )
+            TerminalSpecialKeyBar(
+                enabled = sessionState.canSendInput,
+                onSpecialKey = { key -> onSendInput(key.encoded) },
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -322,6 +353,117 @@ private fun SessionTerminal(
                     Text("Send")
                 }
             }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val text = terminalStateHolder.copyableText()
+                            .ifBlank { sessionState.transcript }
+                            .ifBlank { return@OutlinedButton }
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("aterm-terminal", text))
+                        clipboardStatus = "Copied terminal output"
+                    },
+                    modifier = Modifier.testTag("session_copy_button"),
+                ) {
+                    Text("Copy")
+                }
+                OutlinedButton(
+                    onClick = {
+                        val text = clipboardManager.primaryClip
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)
+                            ?.coerceToText(context)
+                            ?.toString()
+                            ?.takeIf { it.isNotBlank() }
+                            ?: return@OutlinedButton
+                        onSendInput(text)
+                        clipboardStatus = "Pasted from clipboard"
+                    },
+                    enabled = sessionState.canSendInput,
+                    modifier = Modifier.testTag("session_paste_button"),
+                ) {
+                    Text("Paste")
+                }
+            }
+            clipboardStatus?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("session_clipboard_status"),
+                )
+            }
+            Text(
+                text = terminalStateHolder.copyableText().ifBlank { "No terminal transcript yet." },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("session_transcript"),
+            )
         }
     }
+}
+
+private class SessionTerminalStateHolder {
+    private val terminalBuffer = TerminalBuffer()
+    private var lastTranscript: String = ""
+
+    var uiState: TerminalUiState by mutableStateOf(TerminalUiState(snapshot = terminalBuffer.snapshot()))
+        private set
+
+    fun reset(canSendInput: Boolean) {
+        terminalBuffer.clear()
+        lastTranscript = ""
+        uiState = TerminalUiState(
+            snapshot = terminalBuffer.snapshot(),
+            canSendInput = canSendInput,
+        )
+    }
+
+    fun applyTranscript(
+        transcript: String,
+        canSendInput: Boolean,
+    ) {
+        when {
+            transcript == lastTranscript -> {
+                uiState = uiState.copy(canSendInput = canSendInput)
+                return
+            }
+
+            transcript.startsWith(lastTranscript) -> {
+                val delta = transcript.removePrefix(lastTranscript)
+                if (delta.isNotEmpty()) {
+                    terminalBuffer.append(delta)
+                }
+            }
+
+            else -> {
+                terminalBuffer.clear()
+                if (transcript.isNotEmpty()) {
+                    terminalBuffer.append(transcript)
+                }
+            }
+        }
+        lastTranscript = transcript
+        uiState = TerminalUiState(
+            snapshot = terminalBuffer.snapshot(),
+            canSendInput = canSendInput,
+        )
+    }
+
+    fun scrollPageUp() {
+        terminalBuffer.scrollPageUp()
+        uiState = uiState.copy(snapshot = terminalBuffer.snapshot())
+    }
+
+    fun scrollPageDown() {
+        terminalBuffer.scrollPageDown()
+        uiState = uiState.copy(snapshot = terminalBuffer.snapshot())
+    }
+
+    fun jumpToBottom() {
+        terminalBuffer.jumpToBottom()
+        uiState = uiState.copy(snapshot = terminalBuffer.snapshot())
+    }
+
+    fun copyableText(): String = uiState.snapshot.completeText
 }
