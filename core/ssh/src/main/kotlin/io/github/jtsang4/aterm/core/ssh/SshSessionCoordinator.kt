@@ -10,15 +10,19 @@ import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import io.github.jtsang4.aterm.core.domain.repository.KnownHostTrustRepository
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.SocketAddress
+import java.nio.file.Paths
 import java.security.KeyPair
+import java.security.MessageDigest
 import java.security.PublicKey
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,7 +40,7 @@ import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.NamedResource
 import org.apache.sshd.common.channel.PtyChannelConfiguration
 import org.apache.sshd.common.config.keys.FilePasswordProvider
-import org.apache.sshd.common.digest.BuiltinDigests
+import org.apache.sshd.common.util.io.PathUtils
 import org.apache.sshd.common.util.security.SecurityUtils
 
 class SshSessionCoordinator(
@@ -86,7 +90,6 @@ class SshSessionCoordinator(
                 appendTranscript(input)
             }.onFailure { throwable ->
                 failConnection(
-                    hostId = connection.host.id,
                     host = connection.host,
                     message = "Input failed: ${throwable.message ?: "Unable to send input."}",
                 )
@@ -127,6 +130,7 @@ class SshSessionCoordinator(
                 pendingTrustDecision = null,
             )
 
+            ensureAndroidFriendlySshdDefaults()
             val client = SshClient.setUpDefaultClient().apply {
                 serverKeyVerifier = BlockingTrustVerifier(host)
                 start()
@@ -167,7 +171,7 @@ class SshSessionCoordinator(
             val host = hostRepository.getHost(hostId)
             val message = throwable.toUserMessage(host)
             if (host != null) {
-                failConnection(hostId, host, message)
+                failConnection(host, message)
             } else {
                 stateMutex.withLock {
                     uiState.value = uiState.value.copy(
@@ -205,19 +209,32 @@ class SshSessionCoordinator(
     private fun startReader(connection: RuntimeConnection) {
         ioScope.launch {
             val buffer = ByteArray(1024)
-            runCatching {
+            val failure = runCatching {
                 while (true) {
                     val read = connection.stdout.read(buffer)
-                    if (read <= 0) {
+                    if (read < 0) {
                         break
+                    }
+                    if (read == 0) {
+                        continue
                     }
                     appendTranscript(String(buffer, 0, read))
                 }
-            }.onFailure { throwable ->
+            }.exceptionOrNull()
+
+            if (connection.closing.get() || runtimeConnection !== connection) {
+                return@launch
+            }
+
+            if (failure != null) {
                 failConnection(
-                    hostId = connection.host.id,
                     host = connection.host,
-                    message = "Session ended: ${throwable.message ?: "Remote shell closed."}",
+                    message = "Session ended: ${failure.message ?: "Remote shell closed."}",
+                )
+            } else {
+                failConnection(
+                    host = connection.host,
+                    message = "Remote shell closed for ${connection.host.endpoint}.",
                 )
             }
         }
@@ -242,6 +259,7 @@ class SshSessionCoordinator(
             pendingDecisionLatch = null
             pendingDecisionAccepted = null
             runtimeConnection?.let { connection ->
+                connection.closing.set(true)
                 runCatching { connection.channel.close(false) }
                 runCatching { connection.session.close(false) }
                 runCatching { connection.client.stop() }
@@ -279,7 +297,7 @@ class SshSessionCoordinator(
         }
     }
 
-    private suspend fun failConnection(hostId: Long, host: Host, message: String) {
+    private suspend fun failConnection(host: Host, message: String) {
         disconnectInternal(
             state = SessionConnectionState.FAILED,
             statusMessage = message,
@@ -304,9 +322,8 @@ class SshSessionCoordinator(
         ): Boolean {
             val encoded = serverKey.encoded ?: return false
             val hostKeyBase64 = Base64.getEncoder().encodeToString(encoded)
-            val fingerprint = BuiltinDigests.sha256.create().let { digest ->
-                digest.update(encoded)
-                "SHA256:${Base64.getEncoder().withoutPadding().encodeToString(digest.digest())}"
+            val fingerprint = MessageDigest.getInstance("SHA-256").digest(encoded).let { digest ->
+                "SHA256:${Base64.getEncoder().withoutPadding().encodeToString(digest)}"
             }
             val trusted = runBlocking {
                 knownHostTrustRepository.findTrustedHost(host.address, host.port)
@@ -329,6 +346,7 @@ class SshSessionCoordinator(
                 pendingDecisionLatch = CountDownLatch(1)
                 pendingDecisionLatch?.await(TRUST_DECISION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
                 val accepted = pendingDecisionAccepted == true
+                pendingDecisionLatch = null
                 if (accepted) {
                     runBlocking {
                         knownHostTrustRepository.upsert(
@@ -345,18 +363,25 @@ class SshSessionCoordinator(
                         pendingTrustDecision = null,
                         statusMessage = "Trusted ${host.endpoint}. Continuing…",
                     )
+                } else {
+                    throw IllegalStateException("Host trust rejected.")
                 }
                 return accepted
             }
             if (trusted.hostKeyBase64 != hostKeyBase64) {
-                uiState.value = uiState.value.copy(
-                    pendingTrustDecision = null,
-                    statusMessage = "Host key changed for ${host.endpoint}. Connection blocked.",
-                    lastError = "Host key changed for ${host.endpoint}.",
-                )
-                return false
+                throw IllegalStateException("Host key changed for ${host.endpoint}.")
             }
             return true
+        }
+    }
+
+    private fun ensureAndroidFriendlySshdDefaults() {
+        if (userHomeConfigured.compareAndSet(false, true)) {
+            PathUtils.setUserHomeFolderResolver {
+                Paths.get(File(System.getProperty("java.io.tmpdir") ?: ".").absolutePath)
+                    .toAbsolutePath()
+                    .normalize()
+            }
         }
     }
 
@@ -377,6 +402,8 @@ class SshSessionCoordinator(
         val endpoint = host?.endpoint ?: uiState.value.endpoint ?: "the saved endpoint"
         val rawMessage = message.orEmpty()
         return when {
+            rawMessage.contains("trust rejected", ignoreCase = true) ->
+                "Host trust rejected."
             rawMessage.contains("Host key changed", ignoreCase = true) ->
                 "Host key changed for $endpoint. Connection blocked."
             rawMessage.contains("Permission denied", ignoreCase = true) ||
@@ -409,6 +436,7 @@ class SshSessionCoordinator(
         val channel: ChannelShell,
         val stdin: OutputStream,
         val stdout: InputStream,
+        val closing: AtomicBoolean = AtomicBoolean(false),
     )
 
     companion object {
@@ -417,5 +445,6 @@ class SshSessionCoordinator(
         private const val AUTH_TIMEOUT_MILLIS = 5_000L
         private const val CHANNEL_OPEN_TIMEOUT_MILLIS = 5_000L
         private const val TRUST_DECISION_TIMEOUT_MILLIS = 30_000L
+        private val userHomeConfigured = AtomicBoolean(false)
     }
 }
