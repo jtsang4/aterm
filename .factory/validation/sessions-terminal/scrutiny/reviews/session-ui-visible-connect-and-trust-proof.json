@@ -1,0 +1,15 @@
+{
+  "featureId": "session-ui-visible-connect-and-trust-proof",
+  "reviewedAt": "2026-04-12T08:39:54Z",
+  "commitId": "f1f4874",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass: the rerun closes the scrutiny round-3 blocker. Reviewing the prior failed review, the fix handoff/transcript, commit `41865e93` (the earlier incomplete app-shell proof), and commit `f1f4874` shows the helper now drives the shipped `MainActivity` / `AtermNavHost` session surface by tapping the visible `session_connect_<id>` control for initial connect and reconnect, then accepts trust through the visible `session_trust_accept` action before waiting for connected UI state and remote proof. The remaining coordinator calls in this test file are limited to non-app-shell unit-style fixture setup/assertion paths, not the reviewed end-to-end proof flow.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/session-ui-real-app-shell-and-relaunch-proof.json",
+  "summary": "Reviewed the prior failed review, the fix feature handoff and transcript skeleton, and the relevant diffs for commits `41865e93` and `f1f4874` plus the touched session UI/coordinator files. The fix adequately resolves the original failure: connect/reconnect and trust acceptance in the real SSH fixture proof are now exercised through visible session UI controls in the shipped app shell, and the relaunch path continues to prove trusted reconnect without coordinator-only shortcuts."
+}
