@@ -8,7 +8,7 @@ import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.hosts.HostsScreen
 import io.github.jtsang4.aterm.feature.session.SessionsScreen
 import io.github.jtsang4.aterm.feature.settings.SettingsPlaceholder
-import io.github.jtsang4.aterm.feature.snippets.SnippetsPlaceholder
+import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
 
 @Composable
 fun AtermNavHost(
@@ -38,7 +38,10 @@ fun AtermNavHost(
             )
         }
         composable(AppDestination.Snippets.route) {
-            SnippetsPlaceholder()
+            SnippetsScreen(
+                snippetRepository = appContainer.foundationGraph.snippetRepository,
+                hostRepository = appContainer.foundationGraph.hostRepository,
+            )
         }
         composable(AppDestination.Settings.route) {
             SettingsPlaceholder()
