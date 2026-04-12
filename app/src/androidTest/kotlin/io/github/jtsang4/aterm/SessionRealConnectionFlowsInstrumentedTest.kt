@@ -615,6 +615,59 @@ class SessionRealConnectionFlowsInstrumentedTest {
     }
 
     @Test
+    fun timeout_failure_surfaces_clearly() {
+        val passwordRepository = SessionTestIdentityRepository(
+            initialIdentities = listOf(
+                Identity(
+                    id = 1,
+                    name = "Timeout password",
+                    kind = IdentityKind.PASSWORD,
+                    hasSecret = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                ),
+            ),
+            initialSecrets = mapOf(1L to IdentitySecretMaterial(primarySecret = "timeout-password")),
+        )
+        val hostRepository = SessionTestHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 4,
+                    label = "Timeout host",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "atermtimeout",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        val trustRepository = SessionTestKnownHostTrustRepository()
+        val controller = ScriptedSessionController(
+            hostRepository = hostRepository,
+            trustRepository = trustRepository,
+            scripts = mapOf(4L to ConnectScript.TimeoutFailure),
+        )
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = hostRepository,
+                identityRepository = passwordRepository,
+                knownHostTrustRepository = trustRepository,
+                coordinator = controller,
+            )
+        }
+
+        composeRule.onNodeWithTag("session_connect_4").performScrollTo()
+        composeRule.onNodeWithTag("session_connect_4").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_status_message")
+                    .assertTextContains("Connection timed out while reaching", substring = true)
+            }.isSuccess
+        }
+    }
+
+    @Test
     fun repeated_connect_taps_and_cancel_yield_one_truthful_final_state() {
         passwordIdentityRepository = SessionTestIdentityRepository(
             initialIdentities = listOf(
@@ -1123,6 +1176,8 @@ private sealed interface ConnectScript {
 
     data object NetworkFailure : ConnectScript
 
+    data object TimeoutFailure : ConnectScript
+
     data class ChangedHostKey(
         val endpoint: String,
     ) : ConnectScript
@@ -1246,6 +1301,18 @@ private class ScriptedSessionController(
                     connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.FAILED,
                     statusMessage = "Host is unreachable at ${host.endpoint}.",
                     lastError = "Host is unreachable at ${host.endpoint}.",
+                    pendingTrustDecision = null,
+                )
+            }
+
+            ConnectScript.TimeoutFailure -> {
+                state.value = state.value.copy(
+                    activeHostId = host.id,
+                    activeHostLabel = host.label,
+                    endpoint = host.endpoint,
+                    connectionState = io.github.jtsang4.aterm.core.domain.model.SessionConnectionState.FAILED,
+                    statusMessage = "Connection timed out while reaching ${host.endpoint}.",
+                    lastError = "Connection timed out while reaching ${host.endpoint}.",
                     pendingTrustDecision = null,
                 )
             }

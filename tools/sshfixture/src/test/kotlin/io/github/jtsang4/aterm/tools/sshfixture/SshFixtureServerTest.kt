@@ -3,9 +3,11 @@ package io.github.jtsang4.aterm.tools.sshfixture
 import java.nio.file.Files
 import java.time.Duration
 import java.net.ServerSocket
+import java.util.concurrent.TimeUnit
 import org.apache.sshd.client.SshClient
 import org.apache.sshd.client.channel.ChannelShell
 import org.apache.sshd.client.keyverifier.AcceptAllServerKeyVerifier
+import org.apache.sshd.client.future.ConnectFuture
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -104,6 +106,48 @@ class SshFixtureServerTest {
             )
 
             assertTrue(output, output.containsOutputLine("CTRL_C_RECOVERED"))
+        }
+    }
+
+    @Test
+    fun fixture_timeout_username_stalls_auth_longer_than_client_connect_timeout() {
+        val runtimeDir = Files.createTempDirectory("ssh-fixture-timeout")
+        val hostKey = TestKeyMaterial.generate("host@test")
+        val clientKey = TestKeyMaterial.generate("client@test")
+        val prepared = SshFixtureConfig(
+            runtimeDir = runtimeDir,
+            port = reservePort(),
+            timeoutStallMillis = 6_000L,
+        ).prepareRuntime(
+            hostKeyMaterial = hostKey,
+            clientKeyMaterial = clientKey,
+            authorizedClientPublicKey = clientKey.publicKey,
+        )
+
+        SshFixtureServer(prepared).start().use {
+            val client = SshClient.setUpDefaultClient().apply {
+                serverKeyVerifier = AcceptAllServerKeyVerifier.INSTANCE
+                start()
+            }
+            try {
+                val connectFuture: ConnectFuture = client.connect(
+                    prepared.metadata.timeoutUsername,
+                    prepared.metadata.host,
+                    prepared.metadata.port,
+                )
+                val session = connectFuture.verify(Duration.ofSeconds(5)).session
+                session.use {
+                    session.addPasswordIdentity(prepared.password)
+                    val authFuture = session.auth()
+                    assertFalse(authFuture.await(Duration.ofSeconds(1)))
+                    val startNanos = System.nanoTime()
+                    authFuture.cancel()
+                    val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
+                    assertTrue("Cancel should return quickly after reproducer starts stalling", elapsedMillis < 2_000)
+                }
+            } finally {
+                client.stop()
+            }
         }
     }
 

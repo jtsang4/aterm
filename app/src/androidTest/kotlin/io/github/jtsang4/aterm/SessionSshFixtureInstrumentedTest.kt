@@ -444,6 +444,49 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun timeout_reproducer_stalls_at_auth_and_surfaces_timeout_cleanly() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Timeout fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val timeoutHostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Timeout repro",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_TIMEOUT_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = buildCoordinator(container)
+
+        coordinator.connect(timeoutHostId)
+        waitForState(coordinator) { it.pendingTrustDecision != null }
+        coordinator.submitHostTrustDecision(true)
+        val timedOut = waitForState(coordinator, timeoutMillis = 35_000) {
+            it.connectionState == SessionConnectionState.FAILED &&
+                it.statusMessage?.contains("Connection timed out while reaching") == true
+        }
+        assertEquals(
+            "Connection timed out while reaching $FIXTURE_HOST:$FIXTURE_PORT.",
+            timedOut.statusMessage,
+        )
+        assertNull(timedOut.pendingTrustDecision)
+        assertFalse(timedOut.canSendInput)
+        assertTrue(timedOut.transcript.isEmpty())
+    }
+
+    @Test
     fun canceling_during_real_connect_prompt_leaves_one_clean_disconnected_state() {
         val container = AppContainer.create(context)
         val identityId = runBlocking {
@@ -950,6 +993,7 @@ class SessionSshFixtureInstrumentedTest {
         const val FIXTURE_PORT = 3122
         const val HOST_SSH_PORT = 22
         const val FIXTURE_USERNAME = "atermtester"
+        const val FIXTURE_TIMEOUT_USERNAME = "atermtimeout"
         const val FIXTURE_PASSWORD = "aterm-password-fixture"
     }
 }

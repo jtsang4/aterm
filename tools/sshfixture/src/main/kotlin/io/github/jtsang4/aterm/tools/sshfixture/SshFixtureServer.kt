@@ -30,6 +30,10 @@ class SshFixtureServer(
         port = preparedFixture.metadata.port
         keyPairProvider = KeyPairProvider.wrap(loadHostKey(preparedFixture.hostKeyPath))
         passwordAuthenticator = PasswordAuthenticator { username, password, _ ->
+            if (username == preparedFixture.metadata.timeoutUsername) {
+                Thread.sleep(preparedFixture.metadata.timeoutStallMillis)
+                return@PasswordAuthenticator false
+            }
             username == preparedFixture.metadata.username &&
                 password == preparedFixture.password
         }

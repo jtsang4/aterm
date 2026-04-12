@@ -17,6 +17,8 @@ data class SshFixtureConfig(
     val port: Int = 3122,
     val username: String = "atermtester",
     val password: String = "aterm-password-fixture",
+    val timeoutUsername: String = "atermtimeout",
+    val timeoutStallMillis: Long = 25_000L,
 )
 
 data class PreparedFixture(
@@ -37,6 +39,9 @@ data class SshFixtureMetadata(
     val host: String,
     val port: Int,
     val username: String,
+    val timeoutUsername: String,
+    val timeoutPhase: String,
+    val timeoutStallMillis: Long,
     val passwordEnvName: String,
     val secretEnvPath: String,
     val hostPublicKey: String,
@@ -54,6 +59,9 @@ data class SshFixtureMetadata(
         appendLine("ATERM_SSH_FIXTURE_ENDPOINT=$host:$port")
         appendLine("ATERM_SSH_FIXTURE_EMULATOR_ENDPOINT=10.0.2.2:$port")
         appendLine("ATERM_SSH_FIXTURE_USERNAME=$username")
+        appendLine("ATERM_SSH_FIXTURE_TIMEOUT_USERNAME=$timeoutUsername")
+        appendLine("ATERM_SSH_FIXTURE_TIMEOUT_PHASE=$timeoutPhase")
+        appendLine("ATERM_SSH_FIXTURE_TIMEOUT_STALL_MILLIS=$timeoutStallMillis")
         appendLine("ATERM_SSH_FIXTURE_PASSWORD_ENV=$passwordEnvName")
         appendLine("ATERM_SSH_FIXTURE_SECRET_ENV_PATH=${shellEscape(secretEnvPath)}")
         appendLine("ATERM_SSH_FIXTURE_HOST_KEY_PATH=${shellEscape(hostKeyPath)}")
@@ -92,6 +100,9 @@ fun SshFixtureConfig.prepareRuntime(
         host = host,
         port = port,
         username = username,
+        timeoutUsername = timeoutUsername,
+        timeoutPhase = "password-auth",
+        timeoutStallMillis = timeoutStallMillis,
         passwordEnvName = passwordEnvName,
         secretEnvPath = secretEnvPath.toString(),
         hostPublicKey = hostKeyMaterial.publicKey.trim(),
