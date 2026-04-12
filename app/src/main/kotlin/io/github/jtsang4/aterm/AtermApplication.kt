@@ -27,6 +27,8 @@ class AtermApplication : Application() {
     }
 
     fun resetDefaultContainerForTesting() {
+        _defaultAppContainer?.foundationGraph?.clearPersistentState?.invoke()
+        appContainerOverride?.foundationGraph?.clearPersistentState?.invoke()
         _defaultAppContainer = null
         appContainerOverride = null
     }

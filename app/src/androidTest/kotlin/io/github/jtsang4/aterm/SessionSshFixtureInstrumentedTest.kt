@@ -39,33 +39,38 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.After
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SessionSshFixtureInstrumentedTest {
-    @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
-
     private lateinit var context: Context
     private lateinit var application: AtermApplication
 
-    @Before
-    fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        application = context as AtermApplication
-        application.clearAppContainerOverrideForTesting()
-        context.deleteDatabase("aterm.db")
-        File(context.filesDir.parentFile, "datastore").deleteRecursively()
+    private val resetAppStateRule = object : ExternalResource() {
+        override fun before() {
+            context = ApplicationProvider.getApplicationContext()
+            application = context as AtermApplication
+            application.resetDefaultContainerForTesting()
+            context.deleteDatabase("aterm.db")
+            File(context.filesDir.parentFile, "datastore").deleteRecursively()
+        }
+
+        override fun after() {
+            application.resetDefaultContainerForTesting()
+        }
     }
 
-    @After
-    fun tearDown() {
-        application.clearAppContainerOverrideForTesting()
-    }
+    private val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @get:Rule
+    val ruleChain: TestRule = RuleChain
+        .outerRule(resetAppStateRule)
+        .around(composeRule)
 
     @Test
     fun real_fixture_connection_requires_explicit_trust_then_reuses_it_after_identity_edit_and_relaunch() {
