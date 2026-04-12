@@ -2,12 +2,22 @@ package io.github.jtsang4.aterm.core.domain.model
 
 import java.time.Instant
 
+enum class SnippetSavedTarget {
+    ACTIVE_SESSION,
+    SAVED_HOST,
+}
+
 data class Snippet(
     val id: Long = 0,
     val title: String,
     val description: String? = null,
     val tags: List<String> = emptyList(),
     val hostId: Long? = null,
+    val savedTarget: SnippetSavedTarget = if (hostId != null) {
+        SnippetSavedTarget.SAVED_HOST
+    } else {
+        SnippetSavedTarget.ACTIVE_SESSION
+    },
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = createdAt,
     val lastRunAt: Instant? = null,
@@ -17,4 +27,5 @@ data class Snippet(
     }
 
     val hasTargetHost: Boolean = hostId != null
+    val prefersSavedHostTarget: Boolean = savedTarget == SnippetSavedTarget.SAVED_HOST
 }

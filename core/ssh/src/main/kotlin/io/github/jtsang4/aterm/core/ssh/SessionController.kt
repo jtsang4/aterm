@@ -13,6 +13,20 @@ interface SessionController : TerminalController {
     fun disconnect()
     fun submitHostTrustDecision(accept: Boolean)
     fun sendInput(input: String)
+    suspend fun dispatchToActiveSession(input: String): SessionDispatchResult {
+        val state = observeUiState().value
+        if (!state.isTerminalLive) {
+            return SessionDispatchResult.Failure(
+                state.disconnectReason ?: "No active session is available.",
+            )
+        }
+        return runCatching {
+            sendInput(input)
+            SessionDispatchResult.Success
+        }.getOrElse { throwable ->
+            SessionDispatchResult.Failure(throwable.message ?: "Unable to dispatch into the active session.")
+        }
+    }
 
     override fun sendText(text: String) = sendInput(text)
 
@@ -43,4 +57,12 @@ interface SessionController : TerminalController {
     override fun resize(columns: Int, rows: Int) = Unit
 
     override fun resize(viewport: TerminalViewport) = resize(viewport.columns, viewport.rows)
+}
+
+sealed interface SessionDispatchResult {
+    data object Success : SessionDispatchResult
+
+    data class Failure(
+        val message: String,
+    ) : SessionDispatchResult
 }

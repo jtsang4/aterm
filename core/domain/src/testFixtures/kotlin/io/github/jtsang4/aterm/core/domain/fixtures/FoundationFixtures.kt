@@ -9,6 +9,7 @@ import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.model.ThemePreference
 import io.github.jtsang4.aterm.core.domain.model.UserPreferences
 import java.time.Instant
@@ -50,6 +51,7 @@ fun sampleSnippet(id: Long = 1, hostId: Long? = 1): Snippet = Snippet(
     description = "Restarts the local service and prints status.",
     tags = listOf("ops", "safe"),
     hostId = hostId,
+    savedTarget = if (hostId != null) SnippetSavedTarget.SAVED_HOST else SnippetSavedTarget.ACTIVE_SESSION,
     createdAt = sampleInstant,
     updatedAt = sampleInstant,
     lastRunAt = sampleInstant,

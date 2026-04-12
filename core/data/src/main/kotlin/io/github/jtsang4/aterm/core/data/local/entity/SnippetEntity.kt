@@ -26,6 +26,7 @@ data class SnippetEntity(
     val description: String?,
     val tagsSerialized: String,
     val hostId: Long?,
+    val savedTarget: String,
     val bodyCipherText: ByteArray?,
     val bodyIv: ByteArray?,
     val createdAtEpochMillis: Long,

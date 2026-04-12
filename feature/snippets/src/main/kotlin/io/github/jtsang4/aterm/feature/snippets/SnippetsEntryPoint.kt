@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -30,11 +32,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
+import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.SnippetRepository
+import io.github.jtsang4.aterm.core.ssh.SessionController
+import io.github.jtsang4.aterm.core.ssh.SessionDispatchResult
+import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import java.time.Instant
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 object SnippetsEntryPoint {
     const val route = "snippets"
@@ -47,26 +56,53 @@ private sealed interface SnippetsDestination {
         val snippet: Snippet,
         val returnDraft: SnippetEditorDraft,
     ) : SnippetsDestination
+
+    data class ExecutionBlocked(
+        val draft: SnippetExecutionDraft,
+    ) : SnippetsDestination
+
+    data class ExecuteConfirmation(
+        val draft: SnippetExecutionDraft,
+    ) : SnippetsDestination
 }
+
+private data class SnippetExecutionNotice(
+    val message: String,
+    val isError: Boolean,
+)
 
 @Composable
 fun SnippetsScreen(
     snippetRepository: SnippetRepository,
     hostRepository: HostRepository,
+    sessionController: SessionController? = null,
 ) {
     val snippets by snippetRepository.observeSnippets().collectAsState(initial = emptyList())
     val hosts by hostRepository.observeHosts().collectAsState(initial = emptyList())
+    val sessionState by (
+        sessionController?.observeUiState()?.collectAsState()
+            ?: remember { mutableStateOf(SessionUiState()) }
+        )
     var destination by remember { mutableStateOf<SnippetsDestination>(SnippetsDestination.Library) }
+    var executionNotice by remember { mutableStateOf<SnippetExecutionNotice?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val hostMetadataById = remember(hosts) { hosts.associate { it.id to it.toSnippetMetadata() } }
+
+    fun currentSnippet(snippetId: Long): Snippet? = snippets.firstOrNull { it.id == snippetId }
 
     when (val currentDestination = destination) {
         SnippetsDestination.Library -> SnippetsLibraryScreen(
             snippets = snippets,
             hosts = hosts,
+            sessionState = sessionState,
+            notice = executionNotice,
+            onDismissNotice = { executionNotice = null },
             onCreateSnippet = {
+                executionNotice = null
                 destination = SnippetsDestination.Editor(SnippetEditorDraft())
             },
             onEditSnippet = { snippet ->
+                executionNotice = null
                 coroutineScope.launch {
                     destination = SnippetsDestination.Editor(
                         SnippetEditorDraft.from(
@@ -74,6 +110,27 @@ fun SnippetsScreen(
                             body = snippetRepository.getBody(snippet.id).orEmpty(),
                         ),
                     )
+                }
+            },
+            onRunSnippet = { snippet, targetMode ->
+                executionNotice = null
+                coroutineScope.launch {
+                    val body = snippetRepository.getBody(snippet.id).orEmpty()
+                    val draft = SnippetExecutionDraft(
+                        snippet = snippet,
+                        body = body,
+                        targetSnapshot = buildTargetSnapshot(
+                            snippet = snippet,
+                            targetMode = targetMode,
+                            hostMetadataById = hostMetadataById,
+                            sessionState = sessionState,
+                        ),
+                    )
+                    destination = if (draft.targetSnapshot.invalidReason() != null) {
+                        SnippetsDestination.ExecutionBlocked(draft)
+                    } else {
+                        SnippetsDestination.ExecuteConfirmation(draft)
+                    }
                 }
             },
         )
@@ -95,6 +152,65 @@ fun SnippetsScreen(
             onCancel = { destination = SnippetsDestination.Editor(currentDestination.returnDraft) },
             onDeleted = { destination = SnippetsDestination.Library },
         )
+
+        is SnippetsDestination.ExecutionBlocked -> {
+            val latestSnippet = currentSnippet(currentDestination.draft.snippet.id) ?: currentDestination.draft.snippet
+            val latestTargetSnapshot = buildTargetSnapshot(
+                snippet = latestSnippet,
+                targetMode = currentDestination.draft.targetSnapshot.mode,
+                hostMetadataById = hostMetadataById,
+                sessionState = sessionState,
+            )
+            val latestDraft = currentDestination.draft.copy(
+                snippet = latestSnippet,
+                targetSnapshot = latestTargetSnapshot,
+            )
+            SnippetExecutionBlockedScreen(
+                draft = latestDraft,
+                onBack = { destination = SnippetsDestination.Library },
+                onEditSnippet = {
+                    destination = SnippetsDestination.Editor(
+                        SnippetEditorDraft.from(
+                            snippet = latestSnippet,
+                            body = currentDestination.draft.body,
+                        ),
+                    )
+                },
+            )
+        }
+
+        is SnippetsDestination.ExecuteConfirmation -> {
+            val latestSnippet = currentSnippet(currentDestination.draft.snippet.id) ?: currentDestination.draft.snippet
+            val latestTargetSnapshot = buildTargetSnapshot(
+                snippet = latestSnippet,
+                targetMode = currentDestination.draft.targetSnapshot.mode,
+                hostMetadataById = hostMetadataById,
+                sessionState = sessionState,
+            )
+            val latestDraft = currentDestination.draft.copy(
+                snippet = latestSnippet,
+                targetSnapshot = latestTargetSnapshot,
+            )
+            SnippetExecutionConfirmationScreen(
+                draft = latestDraft,
+                sessionState = sessionState,
+                sessionController = sessionController,
+                snippetRepository = snippetRepository,
+                onCancel = { destination = SnippetsDestination.Library },
+                onEditSnippet = {
+                    destination = SnippetsDestination.Editor(
+                        SnippetEditorDraft.from(
+                            snippet = latestSnippet,
+                            body = latestDraft.body,
+                        ),
+                    )
+                },
+                onSuccess = { message ->
+                    executionNotice = SnippetExecutionNotice(message = message, isError = false)
+                    destination = SnippetsDestination.Library
+                },
+            )
+        }
     }
 }
 
@@ -102,10 +218,15 @@ fun SnippetsScreen(
 private fun SnippetsLibraryScreen(
     snippets: List<Snippet>,
     hosts: List<Host>,
+    sessionState: SessionUiState,
+    notice: SnippetExecutionNotice?,
+    onDismissNotice: () -> Unit,
     onCreateSnippet: () -> Unit,
     onEditSnippet: (Snippet) -> Unit,
+    onRunSnippet: (Snippet, SnippetExecutionTargetMode) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    val targetModes = remember { mutableStateMapOf<Long, SnippetExecutionTargetMode>() }
     val hostMetadataById = remember(hosts) { hosts.associate { it.id to it.toSnippetMetadata() } }
     val filteredSnippets = remember(snippets, query, hostMetadataById) {
         snippets.filteredBy(query = query, hostMetadataById = hostMetadataById)
@@ -113,7 +234,7 @@ private fun SnippetsLibraryScreen(
 
     AppScreenScaffold(
         title = "Snippets",
-        supportingText = "Save local command snippets with optional host and tag metadata so they stay easy to rediscover on-device.",
+        supportingText = "Save local command snippets with optional host metadata, then run them only against an explicit saved host or the current live session.",
         modifier = Modifier.testTag("screen_snippets"),
     ) {
         Column(
@@ -127,6 +248,36 @@ private fun SnippetsLibraryScreen(
                     .testTag("snippet_create_action"),
             ) {
                 Text("Create snippet")
+            }
+
+            notice?.let { currentNotice ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("snippet_execution_notice"),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = if (currentNotice.isError) "Snippet run failed" else "Snippet run sent",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (currentNotice.isError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        )
+                        Text(currentNotice.message)
+                        TextButton(
+                            onClick = onDismissNotice,
+                            modifier = Modifier.testTag("snippet_execution_notice_dismiss"),
+                        ) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
             }
 
             if (snippets.isNotEmpty()) {
@@ -192,10 +343,23 @@ private fun SnippetsLibraryScreen(
                             .testTag("snippet_list"),
                     ) {
                         items(filteredSnippets, key = Snippet::id) { snippet ->
+                            val selectedTargetMode = targetModes[snippet.id]
+                                ?: defaultExecutionTargetMode(snippet)
+                            val targetSnapshot = buildTargetSnapshot(
+                                snippet = snippet,
+                                targetMode = selectedTargetMode,
+                                hostMetadataById = hostMetadataById,
+                                sessionState = sessionState,
+                            )
                             SnippetRow(
                                 snippet = snippet,
                                 hostMetadata = snippet.hostId?.let(hostMetadataById::get),
+                                targetSnapshot = targetSnapshot,
+                                onSelectTargetMode = { mode ->
+                                    targetModes[snippet.id] = mode
+                                },
                                 onEditSnippet = onEditSnippet,
+                                onRunSnippet = { onRunSnippet(snippet, selectedTargetMode) },
                             )
                         }
                     }
@@ -209,7 +373,10 @@ private fun SnippetsLibraryScreen(
 private fun SnippetRow(
     snippet: Snippet,
     hostMetadata: SnippetHostMetadata?,
+    targetSnapshot: SnippetExecutionTargetSnapshot,
+    onSelectTargetMode: (SnippetExecutionTargetMode) -> Unit,
     onEditSnippet: (Snippet) -> Unit,
+    onRunSnippet: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -245,11 +412,251 @@ private fun SnippetRow(
                     modifier = Modifier.testTag("snippet_last_run_${snippet.id}"),
                 )
             }
-            TextButton(
-                onClick = { onEditSnippet(snippet) },
-                modifier = Modifier.testTag("snippet_edit_${snippet.id}"),
-            ) {
-                Text("Edit")
+
+            Text(
+                text = "Execution target",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { onSelectTargetMode(SnippetExecutionTargetMode.SAVED_HOST) },
+                    modifier = Modifier.testTag("snippet_target_saved_host_${snippet.id}"),
+                ) {
+                    Text("Saved host")
+                }
+                OutlinedButton(
+                    onClick = { onSelectTargetMode(SnippetExecutionTargetMode.ACTIVE_SESSION) },
+                    modifier = Modifier.testTag("snippet_target_active_session_${snippet.id}"),
+                ) {
+                    Text("Active session")
+                }
+            }
+            Text(
+                text = targetSnapshot.summary,
+                modifier = Modifier.testTag("snippet_run_target_${snippet.id}"),
+            )
+            targetSnapshot.invalidReason()?.let { reason ->
+                Text(
+                    text = reason,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("snippet_target_warning_${snippet.id}"),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onRunSnippet,
+                    modifier = Modifier.testTag("snippet_run_${snippet.id}"),
+                ) {
+                    Text("Run")
+                }
+                TextButton(
+                    onClick = { onEditSnippet(snippet) },
+                    modifier = Modifier.testTag("snippet_edit_${snippet.id}"),
+                ) {
+                    Text("Edit")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SnippetExecutionBlockedScreen(
+    draft: SnippetExecutionDraft,
+    onBack: () -> Unit,
+    onEditSnippet: () -> Unit,
+) {
+    AppScreenScaffold(
+        title = "Snippet target blocked",
+        supportingText = "Snippet execution is blocked until the target is explicit and valid.",
+        modifier = Modifier.testTag("snippet_execution_blocked"),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = draft.snippet.title,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.testTag("snippet_execution_blocked_title"),
+            )
+            Text(
+                text = draft.targetSnapshot.summary,
+                modifier = Modifier.testTag("snippet_execution_blocked_target"),
+            )
+            Text(
+                text = requireNotNull(draft.targetSnapshot.invalidReason()),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("snippet_execution_block_reason"),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (draft.targetSnapshot.mode == SnippetExecutionTargetMode.SAVED_HOST) {
+                    Button(
+                        onClick = onEditSnippet,
+                        modifier = Modifier.testTag("snippet_execution_repair"),
+                    ) {
+                        Text("Repair target")
+                    }
+                }
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.testTag("snippet_execution_block_back"),
+                ) {
+                    Text("Back")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SnippetExecutionConfirmationScreen(
+    draft: SnippetExecutionDraft,
+    sessionState: SessionUiState,
+    sessionController: SessionController?,
+    snippetRepository: SnippetRepository,
+    onCancel: () -> Unit,
+    onEditSnippet: () -> Unit,
+    onSuccess: (String) -> Unit,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isDispatching by remember(draft.snippet.id, draft.targetSnapshot.mode) { mutableStateOf(false) }
+    var executionError by remember(draft.snippet.id, draft.targetSnapshot.mode) { mutableStateOf<String?>(null) }
+    val invalidReason = draft.targetSnapshot.invalidReason()
+    val confirmEnabled = !isDispatching && invalidReason == null && sessionController != null
+
+    AppScreenScaffold(
+        title = "Confirm snippet run",
+        supportingText = "Verify the target and visible command body before dispatching anything.",
+        modifier = Modifier.testTag("snippet_execution_confirmation"),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = draft.snippet.title,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.testTag("snippet_execution_title"),
+            )
+            Text(
+                text = draft.targetSnapshot.summary,
+                modifier = Modifier.testTag("snippet_execution_target"),
+            )
+            Text(
+                text = draft.bodyPreview,
+                modifier = Modifier.testTag("snippet_execution_body_preview"),
+            )
+            if (invalidReason != null) {
+                Text(
+                    text = invalidReason,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("snippet_execution_error"),
+                )
+            }
+            if (sessionController == null) {
+                Text(
+                    text = "Snippet execution is unavailable in this surface because no session controller is attached.",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("snippet_execution_error"),
+                )
+            }
+            executionError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("snippet_execution_error"),
+                )
+            }
+            if (isDispatching) {
+                Text(
+                    text = "Dispatching snippet…",
+                    modifier = Modifier.testTag("snippet_execution_progress"),
+                )
+            }
+            sessionState.pendingTrustDecision?.let { decision ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("snippet_execution_trust_prompt"),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = "Trust host key for ${decision.hostLabel}",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = "Endpoint: ${decision.endpoint}",
+                            modifier = Modifier.testTag("snippet_execution_trust_endpoint"),
+                        )
+                        Text(
+                            text = "Fingerprint: ${decision.fingerprint}",
+                            modifier = Modifier.testTag("snippet_execution_trust_fingerprint"),
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(
+                                onClick = { sessionController?.submitHostTrustDecision(false) },
+                                enabled = isDispatching && sessionController != null,
+                                modifier = Modifier.testTag("snippet_execution_trust_reject"),
+                            ) {
+                                Text("Reject")
+                            }
+                            Button(
+                                onClick = { sessionController?.submitHostTrustDecision(true) },
+                                enabled = isDispatching && sessionController != null,
+                                modifier = Modifier.testTag("snippet_execution_trust_accept"),
+                            ) {
+                                Text("Trust and continue")
+                            }
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        if (!confirmEnabled) {
+                            return@Button
+                        }
+                        executionError = null
+                        isDispatching = true
+                        coroutineScope.launch {
+                            when (
+                                val result = executeSnippet(
+                                    draft = draft,
+                                    sessionController = requireNotNull(sessionController),
+                                    snippetRepository = snippetRepository,
+                                )
+                            ) {
+                                is SnippetExecutionResult.Success -> {
+                                    onSuccess(result.message)
+                                }
+
+                                is SnippetExecutionResult.Failure -> {
+                                    executionError = result.message
+                                    isDispatching = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = confirmEnabled,
+                    modifier = Modifier.testTag("snippet_execution_confirm"),
+                ) {
+                    Text("Confirm run")
+                }
+                TextButton(
+                    onClick = onCancel,
+                    enabled = !isDispatching,
+                    modifier = Modifier.testTag("snippet_execution_cancel"),
+                ) {
+                    Text("Cancel")
+                }
+                if (draft.targetSnapshot.mode == SnippetExecutionTargetMode.SAVED_HOST) {
+                    TextButton(
+                        onClick = onEditSnippet,
+                        enabled = !isDispatching,
+                        modifier = Modifier.testTag("snippet_execution_edit_target"),
+                    ) {
+                        Text("Edit target")
+                    }
+                }
             }
         }
     }
@@ -270,8 +677,18 @@ private fun SnippetEditorScreen(
     var tagsText by remember(initialDraft) { mutableStateOf(initialDraft.tagsText) }
     var body by remember(initialDraft) { mutableStateOf(initialDraft.body) }
     var selectedHostId by remember(initialDraft) { mutableStateOf(initialDraft.hostId) }
+    var savedTarget by remember(initialDraft) {
+        mutableStateOf(
+            if (initialDraft.hostId != null) {
+                SnippetSavedTarget.SAVED_HOST
+            } else {
+                initialDraft.savedTarget
+            },
+        )
+    }
     var titleError by remember(initialDraft) { mutableStateOf<String?>(null) }
     var bodyError by remember(initialDraft) { mutableStateOf<String?>(null) }
+    var targetError by remember(initialDraft) { mutableStateOf<String?>(null) }
     var saveError by remember(initialDraft) { mutableStateOf<String?>(null) }
 
     AppScreenScaffold(
@@ -328,8 +745,36 @@ private fun SnippetEditorScreen(
             )
 
             Text(
-                text = "Associated host",
+                text = "Default execution target",
                 style = MaterialTheme.typography.titleMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        savedTarget = SnippetSavedTarget.ACTIVE_SESSION
+                        targetError = null
+                    },
+                    modifier = Modifier.testTag("snippet_target_mode_active_session"),
+                ) {
+                    Text("Current active session")
+                }
+                OutlinedButton(
+                    onClick = {
+                        savedTarget = SnippetSavedTarget.SAVED_HOST
+                        targetError = null
+                    },
+                    modifier = Modifier.testTag("snippet_target_mode_saved_host"),
+                ) {
+                    Text("Saved host")
+                }
+            }
+            Text(
+                text = if (savedTarget == SnippetSavedTarget.SAVED_HOST) {
+                    "Runs only after confirming the selected saved host target."
+                } else {
+                    "Runs only in the currently live session after confirmation."
+                },
+                modifier = Modifier.testTag("snippet_target_mode_summary"),
             )
             Column(
                 modifier = Modifier
@@ -340,20 +785,34 @@ private fun SnippetEditorScreen(
                 SelectableHostOption(
                     selected = selectedHostId == null,
                     title = "No associated host",
-                    detail = "Keep this snippet unscoped until you choose a target later.",
+                    detail = "Use the current live session instead of a saved host target.",
                     testTag = "snippet_host_option_none",
-                    onClick = { selectedHostId = null },
+                    onClick = {
+                        selectedHostId = null
+                        targetError = null
+                    },
                 )
                 hosts.forEach { host ->
                     val metadata = host.toSnippetMetadata()
                     SelectableHostOption(
-                        selected = selectedHostId == host.id,
+                        selected = selectedHostId == host.id && savedTarget == SnippetSavedTarget.SAVED_HOST,
                         title = metadata.label,
                         detail = metadata.detail,
                         testTag = "snippet_host_option_${host.id}",
-                        onClick = { selectedHostId = host.id },
+                        onClick = {
+                            selectedHostId = host.id
+                            savedTarget = SnippetSavedTarget.SAVED_HOST
+                            targetError = null
+                        },
                     )
                 }
+            }
+            targetError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("snippet_target_error"),
+                )
             }
 
             OutlinedTextField(
@@ -394,7 +853,12 @@ private fun SnippetEditorScreen(
                         val normalizedBody = body.trim()
                         titleError = if (normalizedTitle.isEmpty()) "Snippet title is required." else null
                         bodyError = if (normalizedBody.isEmpty()) "Command body is required." else null
-                        if (titleError != null || bodyError != null) {
+                        targetError = if (savedTarget == SnippetSavedTarget.SAVED_HOST && selectedHostId == null) {
+                            "Choose a saved host target or switch this snippet back to active-session execution."
+                        } else {
+                            null
+                        }
+                        if (titleError != null || bodyError != null || targetError != null) {
                             return@Button
                         }
 
@@ -406,7 +870,8 @@ private fun SnippetEditorScreen(
                                         title = normalizedTitle,
                                         description = description.trim().takeIf { it.isNotEmpty() },
                                         tags = initialDraft.copy(tagsText = tagsText).parsedTags(),
-                                        hostId = selectedHostId,
+                                        hostId = if (savedTarget == SnippetSavedTarget.SAVED_HOST) selectedHostId else null,
+                                        savedTarget = savedTarget,
                                         createdAt = if (initialDraft.isEditing) {
                                             snippetRepository.getSnippet(initialDraft.snippetId)?.createdAt ?: Instant.now()
                                         } else {
@@ -452,6 +917,7 @@ private fun SnippetEditorScreen(
                                             tagsText = tagsText,
                                             body = body,
                                             hostId = selectedHostId,
+                                            savedTarget = savedTarget,
                                         ),
                                     )
                                 }
@@ -538,3 +1004,166 @@ private fun DeleteSnippetScreen(
         }
     }
 }
+
+private fun defaultExecutionTargetMode(snippet: Snippet): SnippetExecutionTargetMode =
+    if (snippet.savedTarget == SnippetSavedTarget.SAVED_HOST) {
+        SnippetExecutionTargetMode.SAVED_HOST
+    } else {
+        SnippetExecutionTargetMode.ACTIVE_SESSION
+    }
+
+private fun buildTargetSnapshot(
+    snippet: Snippet,
+    targetMode: SnippetExecutionTargetMode,
+    hostMetadataById: Map<Long, SnippetHostMetadata>,
+    sessionState: SessionUiState,
+): SnippetExecutionTargetSnapshot = SnippetExecutionTargetSnapshot(
+    mode = targetMode,
+    snippetHostId = snippet.hostId,
+    snippetHostMetadata = snippet.hostId?.let(hostMetadataById::get),
+    activeSessionTarget = sessionState.activeHostId?.let { activeHostId ->
+        ActiveSessionSnippetTarget(
+            hostId = activeHostId,
+            hostLabel = sessionState.activeHostLabel ?: sessionState.endpoint ?: "Current session",
+            endpoint = sessionState.endpoint ?: "Unknown endpoint",
+            connectionState = sessionState.connectionState,
+        )
+    },
+)
+
+private sealed interface SnippetExecutionResult {
+    data class Success(
+        val message: String,
+    ) : SnippetExecutionResult
+
+    data class Failure(
+        val message: String,
+    ) : SnippetExecutionResult
+}
+
+private suspend fun executeSnippet(
+    draft: SnippetExecutionDraft,
+    sessionController: SessionController,
+    snippetRepository: SnippetRepository,
+): SnippetExecutionResult {
+    val invalidReason = draft.targetSnapshot.invalidReason()
+    if (invalidReason != null) {
+        return SnippetExecutionResult.Failure(invalidReason)
+    }
+
+    return when (draft.targetSnapshot.mode) {
+        SnippetExecutionTargetMode.ACTIVE_SESSION -> {
+            dispatchIntoCurrentSession(
+                draft = draft,
+                sessionController = sessionController,
+                snippetRepository = snippetRepository,
+            )
+        }
+
+        SnippetExecutionTargetMode.SAVED_HOST -> {
+            val targetHostId = draft.snippet.hostId
+                ?: return SnippetExecutionResult.Failure(
+                    "This snippet no longer has a saved host target. Edit it before running.",
+                )
+            val ready = ensureConnectedToTargetHost(
+                sessionController = sessionController,
+                targetHostId = targetHostId,
+            )
+            when (ready) {
+                is SnippetExecutionResult.Failure -> ready
+                is SnippetExecutionResult.Success -> {
+                    dispatchIntoCurrentSession(
+                        draft = draft,
+                        sessionController = sessionController,
+                        snippetRepository = snippetRepository,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private suspend fun ensureConnectedToTargetHost(
+    sessionController: SessionController,
+    targetHostId: Long,
+): SnippetExecutionResult {
+    val currentState = sessionController.observeUiState().value
+    if (currentState.activeHostId == targetHostId && currentState.isTerminalLive) {
+        return SnippetExecutionResult.Success("Ready.")
+    }
+
+    sessionController.connect(targetHostId)
+
+    val finalState = withTimeoutOrNull<SessionUiState>(30_000L) {
+        while (true) {
+            val state = sessionController.observeUiState().value
+            when {
+                state.activeHostId == targetHostId && state.isTerminalLive -> {
+                    return@withTimeoutOrNull state
+                }
+
+                state.activeHostId == targetHostId &&
+                    state.connectionState in setOf(
+                        SessionConnectionState.FAILED,
+                        SessionConnectionState.RECONNECT_REQUIRED,
+                        SessionConnectionState.DISCONNECTED,
+                    ) &&
+                    !state.isConnecting -> {
+                    return@withTimeoutOrNull state
+                }
+            }
+            delay(100)
+        }
+        error("Unreachable")
+    } ?: return SnippetExecutionResult.Failure(
+        "Timed out while preparing the saved host target.",
+    )
+
+    return if (finalState.isTerminalLive) {
+        SnippetExecutionResult.Success("Ready.")
+    } else {
+        SnippetExecutionResult.Failure(
+            finalState.statusMessage ?: finalState.disconnectReason ?: "Unable to prepare the saved host target.",
+        )
+    }
+}
+
+private suspend fun dispatchIntoCurrentSession(
+    draft: SnippetExecutionDraft,
+    sessionController: SessionController,
+    snippetRepository: SnippetRepository,
+): SnippetExecutionResult {
+    val transcriptBeforeDispatch = sessionController.observeUiState().value.transcript
+    val payload = draft.body.ensureTrailingNewline()
+    return when (val dispatchResult = sessionController.dispatchToActiveSession(payload)) {
+        is SessionDispatchResult.Failure -> SnippetExecutionResult.Failure(dispatchResult.message)
+        SessionDispatchResult.Success -> {
+            val transcriptChanged = withTimeoutOrNull<Boolean>(5_000L) {
+                while (true) {
+                    val state = sessionController.observeUiState().value
+                    if (!state.isTerminalLive) {
+                        return@withTimeoutOrNull false
+                    }
+                    if (state.transcript != transcriptBeforeDispatch) {
+                        return@withTimeoutOrNull true
+                    }
+                    delay(100)
+                }
+                error("Unreachable")
+            } ?: false
+
+            if (!transcriptChanged) {
+                SnippetExecutionResult.Failure(
+                    "Snippet dispatch could not be confirmed in the live transcript, so no successful run was recorded.",
+                )
+            } else {
+                snippetRepository.markExecuted(draft.snippet.id)
+                SnippetExecutionResult.Success(
+                    "Sent “${draft.snippet.title}” to ${draft.targetSnapshot.summary.lowercase()}.",
+                )
+            }
+        }
+    }
+}
+
+private fun String.ensureTrailingNewline(): String = if (endsWith("\n")) this else "$this\n"

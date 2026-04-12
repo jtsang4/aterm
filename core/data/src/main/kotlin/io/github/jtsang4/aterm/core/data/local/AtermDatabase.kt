@@ -25,7 +25,7 @@ import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
         SessionMetadataEntity::class,
         KnownHostTrustEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AtermDatabase : RoomDatabase() {
@@ -36,6 +36,65 @@ abstract class AtermDatabase : RoomDatabase() {
     abstract fun knownHostTrustDao(): KnownHostTrustDao
 
     companion object {
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `snippets_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `description` TEXT,
+                        `tagsSerialized` TEXT NOT NULL,
+                        `hostId` INTEGER,
+                        `savedTarget` TEXT NOT NULL,
+                        `bodyCipherText` BLOB,
+                        `bodyIv` BLOB,
+                        `createdAtEpochMillis` INTEGER NOT NULL,
+                        `updatedAtEpochMillis` INTEGER NOT NULL,
+                        `lastRunAtEpochMillis` INTEGER,
+                        FOREIGN KEY(`hostId`) REFERENCES `hosts`(`id`) ON UPDATE CASCADE ON DELETE SET NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `snippets_new` (
+                        `id`,
+                        `title`,
+                        `description`,
+                        `tagsSerialized`,
+                        `hostId`,
+                        `savedTarget`,
+                        `bodyCipherText`,
+                        `bodyIv`,
+                        `createdAtEpochMillis`,
+                        `updatedAtEpochMillis`,
+                        `lastRunAtEpochMillis`
+                    )
+                    SELECT
+                        `id`,
+                        `title`,
+                        `description`,
+                        `tagsSerialized`,
+                        `hostId`,
+                        CASE
+                            WHEN `hostId` IS NOT NULL THEN 'SAVED_HOST'
+                            ELSE 'ACTIVE_SESSION'
+                        END,
+                        `bodyCipherText`,
+                        `bodyIv`,
+                        `createdAtEpochMillis`,
+                        `updatedAtEpochMillis`,
+                        `lastRunAtEpochMillis`
+                    FROM `snippets`
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE `snippets`")
+                db.execSQL("ALTER TABLE `snippets_new` RENAME TO `snippets`")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_snippets_hostId` ON `snippets` (`hostId`)")
+            }
+        }
+
         val MIGRATION_3_4: Migration = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -210,6 +269,7 @@ abstract class AtermDatabase : RoomDatabase() {
                         `description` TEXT,
                         `tagsSerialized` TEXT NOT NULL,
                         `hostId` INTEGER,
+                        `savedTarget` TEXT NOT NULL,
                         `bodyCipherText` BLOB,
                         `bodyIv` BLOB,
                         `createdAtEpochMillis` INTEGER NOT NULL,
@@ -227,6 +287,7 @@ abstract class AtermDatabase : RoomDatabase() {
                         `description`,
                         `tagsSerialized`,
                         `hostId`,
+                        `savedTarget`,
                         `bodyCipherText`,
                         `bodyIv`,
                         `createdAtEpochMillis`,
@@ -243,6 +304,12 @@ abstract class AtermDatabase : RoomDatabase() {
                                 AND EXISTS(SELECT 1 FROM `hosts` WHERE `hosts`.`id` = `snippets`.`hostId`)
                                 THEN `hostId`
                             ELSE NULL
+                        END,
+                        CASE
+                            WHEN `hostId` IS NOT NULL
+                                AND EXISTS(SELECT 1 FROM `hosts` WHERE `hosts`.`id` = `snippets`.`hostId`)
+                                THEN 'SAVED_HOST'
+                            ELSE 'ACTIVE_SESSION'
                         END,
                         `bodyCipherText`,
                         `bodyIv`,
@@ -262,7 +329,7 @@ abstract class AtermDatabase : RoomDatabase() {
             context.applicationContext,
             AtermDatabase::class.java,
             "aterm.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
     }
 }

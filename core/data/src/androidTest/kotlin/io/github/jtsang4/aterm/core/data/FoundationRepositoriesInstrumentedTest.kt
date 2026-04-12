@@ -25,6 +25,7 @@ import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
+import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.model.ThemePreference
 import io.github.jtsang4.aterm.core.security.crypto.EncryptedPayload
 import io.github.jtsang4.aterm.core.security.crypto.KeystoreAesGcmCipher
@@ -243,6 +244,7 @@ class FoundationRepositoriesInstrumentedTest {
         val rawEntity = database.snippetDao().getById(snippet.id)
 
         assertEquals(host.id, persistedSnippet?.hostId)
+        assertEquals(SnippetSavedTarget.SAVED_HOST, persistedSnippet?.savedTarget)
         assertEquals("sudo systemctl restart aterm", body)
         assertNotNull(rawEntity?.bodyCipherText)
         assertFalse(
@@ -484,7 +486,12 @@ class FoundationRepositoriesInstrumentedTest {
         supportDb.close()
 
         val opened = Room.databaseBuilder(context, AtermDatabase::class.java, dbName)
-            .addMigrations(AtermDatabase.MIGRATION_1_2, AtermDatabase.MIGRATION_2_3, AtermDatabase.MIGRATION_3_4)
+            .addMigrations(
+                AtermDatabase.MIGRATION_1_2,
+                AtermDatabase.MIGRATION_2_3,
+                AtermDatabase.MIGRATION_3_4,
+                AtermDatabase.MIGRATION_4_5,
+            )
             .allowMainThreadQueries()
             .build()
 
@@ -498,6 +505,14 @@ class FoundationRepositoriesInstrumentedTest {
         val orphanedSnippetHostId = opened.query(SimpleSQLiteQuery("SELECT hostId FROM snippets WHERE id = 2")).use {
             if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
         }
+        val linkedSnippetSavedTarget = opened.query(SimpleSQLiteQuery("SELECT savedTarget FROM snippets WHERE id = 1")).use {
+            it.moveToFirst()
+            it.getString(0)
+        }
+        val orphanedSnippetSavedTarget = opened.query(SimpleSQLiteQuery("SELECT savedTarget FROM snippets WHERE id = 2")).use {
+            it.moveToFirst()
+            it.getString(0)
+        }
         val linkedHostAuthKind = opened.query(SimpleSQLiteQuery("SELECT authKind FROM hosts WHERE id = 1")).use {
             it.moveToFirst()
             it.getString(0)
@@ -510,6 +525,8 @@ class FoundationRepositoriesInstrumentedTest {
         assertNull(orphanedHostIdentity)
         assertEquals(0, orphanedSessionCount)
         assertNull(orphanedSnippetHostId)
+        assertEquals("SAVED_HOST", linkedSnippetSavedTarget)
+        assertEquals("ACTIVE_SESSION", orphanedSnippetSavedTarget)
         assertEquals("KEY", linkedHostAuthKind)
         assertEquals("UNKNOWN", orphanedHostAuthKind)
 

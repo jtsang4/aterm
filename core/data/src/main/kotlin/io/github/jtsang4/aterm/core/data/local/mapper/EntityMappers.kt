@@ -14,6 +14,7 @@ import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import java.time.Instant
 
 internal fun HostEntity.toDomain(): Host = Host(
@@ -87,6 +88,7 @@ internal fun SnippetEntity.toDomain(): Snippet = Snippet(
     description = description,
     tags = tagsSerialized.toTagList(),
     hostId = hostId,
+    savedTarget = SnippetSavedTarget.valueOf(savedTarget),
     createdAt = createdAtEpochMillis.toInstant(),
     updatedAt = updatedAtEpochMillis.toInstant(),
     lastRunAt = lastRunAtEpochMillis?.toInstant(),
@@ -101,6 +103,7 @@ internal fun Snippet.toEntity(
     description = description,
     tagsSerialized = tags.serializeTags(),
     hostId = hostId,
+    savedTarget = savedTarget.name,
     bodyCipherText = bodyCipherText,
     bodyIv = bodyIv,
     createdAtEpochMillis = createdAt.toEpochMilli(),

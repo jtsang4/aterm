@@ -41,6 +41,7 @@ fun AtermNavHost(
             SnippetsScreen(
                 snippetRepository = appContainer.foundationGraph.snippetRepository,
                 hostRepository = appContainer.foundationGraph.hostRepository,
+                sessionController = appContainer.sshSessionCoordinator,
             )
         }
         composable(AppDestination.Settings.route) {

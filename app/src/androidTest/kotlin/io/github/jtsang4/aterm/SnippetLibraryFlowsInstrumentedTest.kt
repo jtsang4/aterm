@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -27,14 +28,21 @@ import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
+import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.SnippetRepository
+import io.github.jtsang4.aterm.core.ssh.SessionController
+import io.github.jtsang4.aterm.core.ssh.SessionDispatchResult
+import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -93,6 +101,7 @@ class SnippetLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("snippet_description_field").performTextInput("Restarts the API and tails logs.")
         composeRule.onNodeWithTag("snippet_tags_field").performTextInput("ops, restart")
         closeKeyboardIfShown()
+        composeRule.onNodeWithTag("snippet_target_mode_saved_host").performClick()
         composeRule.onNodeWithTag("snippet_host_option_$hostId").performScrollTo().performClick()
         composeRule.onNodeWithTag("snippet_body_field").performTextInput("sudo systemctl restart api\njournalctl -u api -n 20")
         composeRule.onNodeWithTag("snippet_editor_save").performScrollTo().performClick()
@@ -105,6 +114,10 @@ class SnippetLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("snippet_tags_1").assertTextContains("ops, restart", substring = true)
         composeRule.onNodeWithTag("snippet_host_1")
             .assertTextContains("Production (root@10.0.2.2:22)", substring = true)
+        assertEquals(
+            SnippetSavedTarget.SAVED_HOST,
+            runBlocking { firstContainer.foundationGraph.snippetRepository.getSnippet(1) }?.savedTarget,
+        )
 
         val relaunchedContainer = AppContainer.create(context)
         composeRule.runOnIdle {
@@ -152,7 +165,12 @@ class SnippetLibraryFlowsInstrumentedTest {
         }
 
         composeRule.onNodeWithTag("snippet_edit_1").performScrollTo().performClick()
-        composeRule.onNodeWithTag("snippet_body_field").assertTextContains(multilineBody, substring = true)
+        composeRule.onNodeWithTag("snippet_body_field", useUnmergedTree = true)
+            .assertTextContains("echo first line", substring = true)
+        composeRule.onNodeWithTag("snippet_body_field", useUnmergedTree = true)
+            .assertTextContains("echo second line", substring = true)
+        composeRule.onNodeWithTag("snippet_body_field", useUnmergedTree = true)
+            .assertTextContains("echo third line", substring = true)
         assertEquals(multilineBody, runBlocking { container.foundationGraph.snippetRepository.getBody(1) })
     }
 
@@ -273,19 +291,161 @@ class SnippetLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("snippet_search_field").assert(hasSetTextAction())
 
         composeRule.onNodeWithTag("snippet_search_field").performTextInput("metrics")
-        composeRule.onNodeWithTag("snippet_row_2").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_row_2").performScrollTo().assertIsDisplayed()
         composeRule.onAllNodesWithTag("snippet_row_1").assertCountEquals(0)
         composeRule.onAllNodesWithTag("snippet_row_3").assertCountEquals(0)
 
-        composeRule.onNodeWithTag("snippet_search_clear").performClick()
-        composeRule.onNodeWithTag("snippet_row_1").assertIsDisplayed()
-        composeRule.onNodeWithTag("snippet_row_2").assertIsDisplayed()
-        composeRule.onNodeWithTag("snippet_row_3").assertIsDisplayed()
-
+        composeRule.onNodeWithTag("snippet_search_field").performTextClearance()
         composeRule.onNodeWithTag("snippet_search_field").performTextInput("production")
         composeRule.onNodeWithTag("snippet_row_1").assertIsDisplayed()
         composeRule.onAllNodesWithTag("snippet_row_2").assertCountEquals(0)
         composeRule.onAllNodesWithTag("snippet_row_3").assertCountEquals(0)
+    }
+
+    @Test
+    fun execution_surface_makes_target_explicit_and_blocks_stale_saved_target_with_repair_path() {
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Restart stale host",
+                    hostId = 99,
+                    savedTarget = SnippetSavedTarget.SAVED_HOST,
+                ),
+            ),
+            initialBodies = mapOf(1L to "echo stale"),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = SnippetFakeHostRepository(),
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_run_target_1")
+            .assertTextContains("Saved host target unavailable", substring = true)
+        composeRule.onNodeWithTag("snippet_target_warning_1")
+            .assertTextContains("saved host target is missing or stale", substring = true)
+
+        composeRule.onNodeWithTag("snippet_run_1").performClick()
+
+        composeRule.onNodeWithTag("snippet_execution_blocked").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_execution_block_reason")
+            .assertTextContains("saved host target is missing or stale", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_repair").assertIsDisplayed()
+    }
+
+    @Test
+    fun execution_confirmation_shows_target_and_body_and_cancel_dispatches_nothing() {
+        val sessionController = SnippetFakeSessionController()
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Restart live session",
+                    hostId = null,
+                    savedTarget = SnippetSavedTarget.ACTIVE_SESSION,
+                ),
+            ),
+            initialBodies = mapOf(1L to "printf 'snippet proof\\n'"),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = SnippetFakeHostRepository(),
+                sessionController = sessionController,
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_run_target_1")
+            .assertTextContains("Active session: Fixture live session (atermtester@10.0.2.2:3122)", substring = true)
+        composeRule.onNodeWithTag("snippet_run_1").performClick()
+
+        composeRule.onNodeWithTag("snippet_execution_confirmation").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_execution_title")
+            .assertTextContains("Restart live session", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_target")
+            .assertTextContains("Active session: Fixture live session (atermtester@10.0.2.2:3122)", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_body_preview")
+            .assertTextContains("printf 'snippet proof\\n'", substring = true)
+
+        composeRule.onNodeWithTag("snippet_execution_cancel").performClick()
+
+        composeRule.onNodeWithTag("screen_snippets").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("snippet_execution_notice").assertCountEquals(0)
+        assertEquals(0, sessionController.dispatchedInputs.size)
+        assertNull(runBlocking { snippetRepository.getSnippet(1) }?.lastRunAt)
+    }
+
+    @Test
+    fun failed_dispatch_does_not_record_success_and_duplicate_guard_disables_confirm() {
+        val sessionController = SnippetFakeSessionController(
+            dispatchBehavior = { _ ->
+                delay(200)
+                SessionDispatchResult.Failure("Fixture session dropped before dispatch.")
+            },
+        )
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Failing live snippet",
+                    hostId = null,
+                    savedTarget = SnippetSavedTarget.ACTIVE_SESSION,
+                ),
+            ),
+            initialBodies = mapOf(1L to "printf 'should not mark success\\n'"),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = SnippetFakeHostRepository(),
+                sessionController = sessionController,
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_run_1").performClick()
+        composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("snippet_execution_confirm").assertIsNotEnabled()
+            }.isSuccess
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("snippet_execution_error")
+                    .assertTextContains("Fixture session dropped before dispatch.", substring = true)
+            }.isSuccess
+        }
+
+        assertEquals(1, sessionController.dispatchedInputs.size)
+        assertNull(runBlocking { snippetRepository.getSnippet(1) }?.lastRunAt)
+        composeRule.onAllNodesWithTag("snippet_execution_notice").assertCountEquals(0)
+    }
+
+    @Test
+    fun saved_target_selection_is_persisted_and_requires_an_explicit_host_choice() {
+        val snippetRepository = FakeSnippetRepository()
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = SnippetFakeHostRepository(),
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_create_action").performClick()
+        composeRule.onNodeWithTag("snippet_title_field").performTextInput("Needs host")
+        composeRule.onNodeWithTag("snippet_body_field").performTextInput("echo host required")
+        composeRule.onNodeWithTag("snippet_target_mode_saved_host").performClick()
+        composeRule.onNodeWithTag("snippet_editor_save").performScrollTo().performClick()
+        composeRule.onNodeWithTag("snippet_target_error")
+            .assertTextContains("Choose a saved host target", substring = true)
+        assertNull(runBlocking { snippetRepository.getSnippet(1) })
     }
 
     private fun navigateToSnippets() {
@@ -342,6 +502,11 @@ private class FakeSnippetRepository(
         val existing = getSnippet(persistedId)
         val persisted = snippet.copy(
             id = persistedId,
+            savedTarget = if (snippet.hostId != null) {
+                SnippetSavedTarget.SAVED_HOST
+            } else {
+                snippet.savedTarget
+            },
             createdAt = existing?.createdAt ?: snippet.createdAt,
             updatedAt = snippet.updatedAt,
             lastRunAt = existing?.lastRunAt ?: snippet.lastRunAt,
@@ -392,6 +557,44 @@ private class SnippetFakeHostRepository(
 
     override suspend fun deleteHost(id: Long) {
         hosts.value = hosts.value.filterNot { it.id == id }
+    }
+}
+
+private class SnippetFakeSessionController(
+    initialState: SessionUiState = SessionUiState(
+        activeHostId = 44,
+        activeHostLabel = "Fixture live session",
+        endpoint = "atermtester@10.0.2.2:3122",
+        connectionState = SessionConnectionState.CONNECTED,
+    ),
+    private val dispatchBehavior: suspend (String) -> SessionDispatchResult = {
+        SessionDispatchResult.Success
+    },
+) : SessionController {
+    private val state = MutableStateFlow(
+        initialState.copy(
+            liveTerminalState = initialState.liveTerminalState.copy(canSendInput = initialState.connectionState == SessionConnectionState.CONNECTED),
+        ),
+    )
+    val dispatchedInputs = mutableListOf<String>()
+
+    override fun observeUiState(): StateFlow<SessionUiState> = state
+
+    override fun connect(hostId: Long) = Unit
+
+    override fun disconnect() {
+        state.value = state.value.copy(connectionState = SessionConnectionState.DISCONNECTED)
+    }
+
+    override fun submitHostTrustDecision(accept: Boolean) = Unit
+
+    override fun sendInput(input: String) {
+        dispatchedInputs += input
+    }
+
+    override suspend fun dispatchToActiveSession(input: String): SessionDispatchResult {
+        dispatchedInputs += input
+        return dispatchBehavior(input)
     }
 }
 

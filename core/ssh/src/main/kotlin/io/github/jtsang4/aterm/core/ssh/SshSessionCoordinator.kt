@@ -174,6 +174,30 @@ class SshSessionCoordinator(
         }
     }
 
+    override suspend fun dispatchToActiveSession(input: String): SessionDispatchResult {
+        val connection = runtimeConnection
+            ?: return SessionDispatchResult.Failure("No active session is available.")
+        if (!uiState.value.isTerminalLive) {
+            return SessionDispatchResult.Failure(
+                uiState.value.disconnectReason ?: "The current session is no longer live.",
+            )
+        }
+        return runCatching {
+            connection.stdin.write(input.encodeToByteArray())
+            connection.stdin.flush()
+            SessionDispatchResult.Success
+        }.getOrElse { throwable ->
+            failConnection(
+                host = connection.host,
+                message = "Input failed: ${throwable.message ?: "Unable to send input."}",
+                reconnectRequired = true,
+            )
+            SessionDispatchResult.Failure(
+                uiState.value.disconnectReason ?: "Unable to dispatch into the active session.",
+            )
+        }
+    }
+
     override fun scrollPageUp() {
         authoritativeTerminalSession.scrollPageUp()
         emitTerminalState(canSendInput = uiState.value.canSendInput)
