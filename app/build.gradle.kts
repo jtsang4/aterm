@@ -80,10 +80,22 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.mina.sshd.common)
     androidTestImplementation(libs.mina.sshd.core)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+val startSshFixture by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Starts the repo-local SSH fixture before fixture-backed instrumentation."
+    workingDir = rootDir
+    commandLine("sh", "./tools/sshfixture/start.sh")
+}
+
+tasks.matching { it.name == "connectedDebugAndroidTest" }.configureEach {
+    dependsOn(startSshFixture)
 }

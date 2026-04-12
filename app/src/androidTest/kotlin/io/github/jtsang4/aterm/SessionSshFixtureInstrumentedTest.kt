@@ -21,6 +21,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
@@ -55,17 +57,28 @@ import org.junit.runner.RunWith
 class SessionSshFixtureInstrumentedTest {
     private lateinit var context: Context
     private lateinit var application: AtermApplication
+    private lateinit var device: UiDevice
+    private lateinit var deviceOrchestrator: SessionDeviceOrchestrator
 
     private val resetAppStateRule = object : ExternalResource() {
         override fun before() {
             context = ApplicationProvider.getApplicationContext()
             application = context as AtermApplication
+            device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            deviceOrchestrator = SessionDeviceOrchestrator(
+                composeRule = composeRule,
+                context = context,
+                device = device,
+            )
             application.resetDefaultContainerForTesting()
             context.deleteDatabase("aterm.db")
             File(context.filesDir.parentFile, "datastore").deleteRecursively()
         }
 
         override fun after() {
+            if (::deviceOrchestrator.isInitialized) {
+                deviceOrchestrator.restoreDeviceState()
+            }
             application.resetDefaultContainerForTesting()
         }
     }
@@ -823,6 +836,103 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun fixture_orchestration_handles_ime_rotation_background_and_relaunch_with_real_app_shell() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        deviceOrchestrator.openSessionScreen(appPackage = APP_PACKAGE)
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        logStep("device orchestration: connected", coordinator)
+        waitForProofText(coordinator, FIXTURE_PORT)
+
+        deviceOrchestrator.showImeForTaggedField("session_input_field")
+        assertTrue(
+            "Expected the IME to be visible after focusing terminal input.",
+            deviceOrchestrator.isImeVisible(),
+        )
+        logStep("device orchestration: ime visible", coordinator)
+
+        val beforeRotation = waitForTerminalSizeMarker(
+            coordinator = coordinator,
+            marker = captureRemoteTerminalSize(coordinator, "SIZE_ORCH_BEFORE_ROTATION"),
+        )
+        Log.i("SessionSshFixtureTest", "device orchestration: size before rotation=$beforeRotation")
+        deviceOrchestrator.rotateAndWaitForAppShell(
+            orientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            appPackage = APP_PACKAGE,
+        )
+        deviceOrchestrator.openSessionScreen(appPackage = APP_PACKAGE)
+        logStep("device orchestration: reopened after rotation", coordinator)
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        val afterRotation = waitForTerminalSizeMarker(
+            coordinator = coordinator,
+            marker = captureRemoteTerminalSize(coordinator, "SIZE_ORCH_AFTER_ROTATION"),
+        )
+        Log.i("SessionSshFixtureTest", "device orchestration: size after rotation=$afterRotation")
+        assertNotEquals("Expected device rotation to change the PTY size.", beforeRotation, afterRotation)
+
+        deviceOrchestrator.backgroundAndResumeApp(appPackage = APP_PACKAGE)
+        deviceOrchestrator.openSessionScreen(appPackage = APP_PACKAGE)
+        logStep("device orchestration: reopened after background", coordinator)
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        sendCommandDirectly(coordinator, "printf 'ORCHESTRATION_BACKGROUND_RESUME_OK\\n'")
+        waitForTranscriptOutputLine(coordinator, "ORCHESTRATION_BACKGROUND_RESUME_OK")
+        logStep("device orchestration: background proof complete", coordinator)
+
+        deviceOrchestrator.recreateActivityAndWaitForAppShell(appPackage = APP_PACKAGE)
+        deviceOrchestrator.openSessionScreen(appPackage = APP_PACKAGE)
+        logStep("device orchestration: reopened after relaunch", coordinator)
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("session_input_field").performScrollTo()
+        composeRule.onAllNodesWithTag("session_input_field").assertCountEquals(1)
+        composeRule.onNodeWithTag("session_send_button").performScrollTo()
+        composeRule.onAllNodesWithTag("session_send_button").assertCountEquals(1)
+
+        coordinator.disconnect()
+        waitForUiDisconnect(coordinator, "Disconnected.")
+        deviceOrchestrator.rotateAndWaitForAppShell(
+            orientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            appPackage = APP_PACKAGE,
+        )
+    }
+
+    @Test
     fun disconnect_truthfully_blocks_live_input_through_real_session_ui() {
         assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
@@ -1561,10 +1671,9 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("identity_password_field").performTextInput(replacementPassword)
         composeRule.onNodeWithTag("identity_editor_save").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            runCatching {
-                composeRule.onNodeWithTag("identity_row_$identityId").assertIsDisplayed()
-            }.isSuccess
+            composeRule.onAllNodesWithTag("identity_password_editor").fetchSemanticsNodes().isEmpty()
         }
+        composeRule.onNodeWithTag("screen_identities").assertIsDisplayed()
     }
 
 
@@ -1613,6 +1722,17 @@ class SessionSshFixtureInstrumentedTest {
         }
     }
 
+    private fun captureRemoteTerminalSize(
+        coordinator: SshSessionCoordinator,
+        marker: String,
+    ): String {
+        sendCommandDirectly(
+            coordinator,
+            "read rows cols < <(stty size); printf '$marker:%s %s:END\\n' \"\$rows\" \"\$cols\"",
+        )
+        return marker
+    }
+
     private fun assertFixtureReachableFromHost() {
         Socket(FIXTURE_HOST, FIXTURE_PORT).use { socket ->
             check(socket.isConnected) { "Fixture socket did not connect to $FIXTURE_HOST:$FIXTURE_PORT" }
@@ -1626,6 +1746,7 @@ class SessionSshFixtureInstrumentedTest {
         const val FIXTURE_USERNAME = "atermtester"
         const val FIXTURE_TIMEOUT_USERNAME = "atermtimeout"
         const val FIXTURE_PASSWORD = "aterm-password-fixture"
+        const val APP_PACKAGE = "io.github.jtsang4.aterm"
     }
 }
 
