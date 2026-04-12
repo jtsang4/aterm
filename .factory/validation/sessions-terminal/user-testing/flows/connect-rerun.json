@@ -1,0 +1,167 @@
+{
+  "groupId": "connect-rerun",
+  "testedAt": "2026-04-12T16:26:10.951418Z",
+  "isolation": {
+    "surface": "Android instrumentation on shared emulator",
+    "emulator": "atermApi35 / emulator-5554",
+    "maxConcurrency": 1,
+    "sshFixtureHostFromEmulator": "10.0.2.2:3122",
+    "missionDir": "/root/.factory/missions/6ec3e8cd-9180-4f81-8d0f-0f1382e1ac50",
+    "repoRoot": "/root/workspace/github/jtsang4/aterm"
+  },
+  "toolsUsed": [
+    "Gradle connectedDebugAndroidTest",
+    "adb",
+    "Android instrumentation on emulator"
+  ],
+  "commandsRun": [
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "/root/Android/Sdk/platform-tools/adb devices -l",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop sys.boot_completed",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell 'toybox nc -z 10.0.2.2 3122; echo fixture_exit:$?'",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_session_ui_surfaces_timeout_distinctly_from_other_failure_messages,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#rotating_during_real_connect_setup_keeps_one_truthful_connected_state,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#backgrounding_and_resuming_during_real_connect_setup_keeps_one_truthful_connected_state,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_fixture_session_ui_truthfully_reflects_password_replacement_failures_and_recovery,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest#dns_failure_surfaces_clearly,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest#network_failure_surfaces_clearly"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CONNECT-004",
+      "title": "DNS, timeout, and unreachable-host failures are surfaced clearly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run the focused timeout failure flow through the real session UI on MainActivity against the SSH fixture endpoint",
+          "expected": "Timeout failure is surfaced distinctly, the app returns to a disconnected/non-live state, and the message is not confused with DNS or unreachable-host errors",
+          "observed": "SessionSshFixtureInstrumentedTest.real_session_ui_surfaces_timeout_distinctly_from_other_failure_messages passed and asserted 'Connection timed out while reaching 10.0.2.2:3122.', no pending trust, no connected state, disabled input, and a visible Reconnect action."
+        },
+        {
+          "action": "Run the invalid-hostname failure flow on the instrumented session screen",
+          "expected": "DNS failure is surfaced clearly and remains disconnected",
+          "observed": "SessionRealConnectionFlowsInstrumentedTest.dns_failure_surfaces_clearly passed and surfaced 'DNS lookup failed' on the session status surface."
+        },
+        {
+          "action": "Run the unreachable-host failure flow on the instrumented session screen",
+          "expected": "Unreachable-host failure is surfaced clearly and remains disconnected",
+          "observed": "SessionRealConnectionFlowsInstrumentedTest.network_failure_surfaces_clearly passed and surfaced 'Host is unreachable' on the session status surface."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-rerun/init-check.log",
+          "sessions-terminal/connect-rerun/adb-readiness.log",
+          "sessions-terminal/connect-rerun/connected-android-tests.log",
+          "sessions-terminal/connect-rerun/TEST-connected-android.xml",
+          "sessions-terminal/connect-rerun/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/connect-rerun/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture was reachable from emulator at 10.0.2.2:3122 (fixture_exit:0); timeout, DNS, and unreachable-host failure messages were all validated by passing instrumentation flows.",
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_session_ui_surfaces_timeout_distinctly_from_other_failure_messages",
+          "SessionRealConnectionFlowsInstrumentedTest.dns_failure_surfaces_clearly",
+          "SessionRealConnectionFlowsInstrumentedTest.network_failure_surfaces_clearly"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-011",
+      "title": "Rotating or backgrounding during connection setup resolves to one truthful final state",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start a real SSH fixture connection from the session tab in MainActivity and rotate during connection setup before trust is resolved",
+          "expected": "After lifecycle interruption there is still exactly one truthful in-progress state and the flow resolves to one final state",
+          "observed": "SessionSshFixtureInstrumentedTest.rotating_during_real_connect_setup_keeps_one_truthful_connected_state passed: after rotation there was one trust prompt, one disconnect button, a disabled Connecting\u2026 action for the host row, and accepting trust resolved to one connected state with remote proof on 10.0.2.2:3122."
+        },
+        {
+          "action": "Start the same real fixture connection and background/resume the app during connection setup",
+          "expected": "Background/resume preserves one truthful connecting flow and resolves to one final state without duplicates or stale UI",
+          "observed": "SessionSshFixtureInstrumentedTest.backgrounding_and_resuming_during_real_connect_setup_keeps_one_truthful_connected_state passed with the same single trust-gated connecting state and one final connected state after resume."
+        },
+        {
+          "action": "Inspect the resulting session surface after each lifecycle interruption",
+          "expected": "No duplicate sessions, stuck spinners, or misleading resumed state remain",
+          "observed": "Both flows ended with a single connected session, no duplicate trust prompts, and normal disconnect behavior afterward."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-rerun/init-check.log",
+          "sessions-terminal/connect-rerun/adb-readiness.log",
+          "sessions-terminal/connect-rerun/connected-android-tests.log",
+          "sessions-terminal/connect-rerun/TEST-connected-android.xml",
+          "sessions-terminal/connect-rerun/SessionSshFixtureInstrumentedTest.html"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "Real SSH fixture connection from emulator to 10.0.2.2:3122 remained truthful across rotation and background/resume during setup.",
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.rotating_during_real_connect_setup_keeps_one_truthful_connected_state",
+          "SessionSshFixtureInstrumentedTest.backgrounding_and_resuming_during_real_connect_setup_keeps_one_truthful_connected_state"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "title": "Editing an identity preserves or updates the real credential behavior correctly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Connect with the saved password identity through the real app shell, then edit only identity metadata from the identities UI",
+          "expected": "Metadata-only edits preserve the stored secret and the next connection still works",
+          "observed": "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows passed: renaming the identity in the identities UI updated the visible label, kept the stored secret, and the host reconnected successfully without another trust prompt."
+        },
+        {
+          "action": "Replace the saved password secret with an incorrect value through the identities UI and reconnect",
+          "expected": "Secret replacement takes effect on the very next connection attempt and changed credentials alter authentication behavior",
+          "observed": "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_truthfully_reflects_password_replacement_failures_and_recovery passed: replacing the password with 'wrong-password' caused the next connection attempt to fail with 'Authentication failed. Verify the linked identity and try again.' while the terminal remained non-live."
+        },
+        {
+          "action": "Replace the secret back with the fixture password and reconnect again",
+          "expected": "Restoring the correct secret recovers real authentication behavior on the next attempt",
+          "observed": "The same rerun test then replaced the password back to the fixture value and the next reconnect succeeded to 10.0.2.2:3122 with remote proof, confirming secret updates are honored by real connection behavior."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-rerun/init-check.log",
+          "sessions-terminal/connect-rerun/adb-readiness.log",
+          "sessions-terminal/connect-rerun/connected-android-tests.log",
+          "sessions-terminal/connect-rerun/TEST-connected-android.xml",
+          "sessions-terminal/connect-rerun/SessionSshFixtureInstrumentedTest.html"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "Real SSH fixture authentication on 10.0.2.2:3122 succeeded before metadata edit, failed immediately after wrong-password replacement, and succeeded again after restoring the correct password.",
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows",
+          "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_truthfully_reflects_password_replacement_failures_and_recovery"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The current instrumentation harness emits XML, HTML, and log artifacts but does not automatically produce screenshot files for these UI flows.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-CONNECT-004",
+        "VAL-CONNECT-011",
+        "VAL-IDENTITY-008"
+      ]
+    },
+    {
+      "description": "Current runnable evidence for VAL-CONNECT-004 is split across two instrumented surfaces: timeout was rerun through MainActivity, while DNS and unreachable-host messaging were rerun through the instrumented session screen test surface.",
+      "resolved": true,
+      "resolution": "Used the best runnable user-surface evidence currently available and only marked pass after all three failure categories were covered by passing focused reruns.",
+      "affectedAssertions": [
+        "VAL-CONNECT-004"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Retested 3 previously blocked assertions on emulator-5554 with focused instrumentation against the shared SSH fixture surface. PASS: VAL-CONNECT-004, VAL-CONNECT-011, VAL-IDENTITY-008. No assigned assertions remain blocked in this rerun."
+}
