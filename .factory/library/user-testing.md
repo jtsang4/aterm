@@ -19,6 +19,7 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 - Real integration path: emulator reaches host services via `10.0.2.2:<port>`; the system sshd on `10.0.2.2:22` is reachable but currently not automatable for app auth proof.
 - Use this surface for host/identity CRUD, trust prompts, real SSH connection, snippet execution, theme/font persistence, and repeat-use flows. For authenticated SSH end-to-end proof, prefer the repo-local fixture once it exists.
 - When filtering to app-only instrumentation classes, prefer `./gradlew :app:connectedDebugAndroidTest` so other modules do not try to load `:app` test classes
+- For any fixture-backed session instrumentation, start `ssh_fixture` first; otherwise fixture tests can fail with `ECONNREFUSED` to `10.0.2.2:3122`
 
 ### Surface 3: Manual terminal QA on emulator/device
 - Tools: manual QA plus screen capture/logs as evidence
@@ -57,6 +58,7 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 - Use only the shared `atermApi35` emulator on `emulator-5554`; do not start another emulator or run validators in parallel on this surface.
 - Treat the emulator as a single shared isolation boundary. Before running a flow, clear app state through the test setup already used by the instrumentation suites instead of inventing external seed files.
 - When a test uses `createAndroidComposeRule<MainActivity>()`, remember that `MainActivity` launches before ordinary `@Before` methods run. Any reset that must happen before the activity binds its `AppContainer` or opens Room/DataStore state should live in a pre-launch rule such as `RuleChain` / `ExternalResource`, not only in `@Before`.
+- For lifecycle-heavy session proofs (rotation, IME, background/resume, relaunch/process-loss), prefer device-level orchestration such as UiAutomator or equivalent activity/device control rather than composable-only recreation shortcuts when the proof must keep the real app shell foregrounded.
 - Reach the host SSH target through `10.0.2.2:22` only. Do not modify host `sshd`, host keys, firewall rules, or any system SSH configuration.
 - Keep evidence within the assigned mission evidence directory and avoid capturing plaintext passwords, private keys, or passphrases in logs or screenshots.
 - Prefer the existing instrumentation suites for hosts/identities flows because they already encode the expected user-visible behaviors and persistence/relaunch checks for this milestone.
