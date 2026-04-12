@@ -151,6 +151,43 @@ class SshFixtureServerTest {
         }
     }
 
+    @Test
+    fun disconnect_command_forcibly_closes_live_shells() {
+        val runtimeDir = Files.createTempDirectory("ssh-fixture-disconnect")
+        val hostKey = TestKeyMaterial.generate("host@test")
+        val clientKey = TestKeyMaterial.generate("client@test")
+        val prepared = SshFixtureConfig(runtimeDir = runtimeDir, port = reservePort()).prepareRuntime(
+            hostKeyMaterial = hostKey,
+            clientKeyMaterial = clientKey,
+            authorizedClientPublicKey = clientKey.publicKey,
+        )
+
+        SshFixtureServer(prepared).start().use {
+            val client = SshClient.setUpDefaultClient().apply {
+                serverKeyVerifier = AcceptAllServerKeyVerifier.INSTANCE
+                start()
+            }
+            try {
+                client.connect(prepared.metadata.username, prepared.metadata.host, prepared.metadata.port)
+                    .verify(Duration.ofSeconds(5))
+                    .session.use { session ->
+                        session.addPasswordIdentity(prepared.password)
+                        session.auth().verify(Duration.ofSeconds(5))
+                        val output = connectAndRunInteractiveShell(
+                            host = prepared.metadata.host,
+                            port = prepared.metadata.port,
+                            username = prepared.metadata.username,
+                            password = prepared.password,
+                            command = "aterm-fixture-disconnect\n",
+                        )
+                        assertTrue(output.contains("aterm-fixture-disconnect"))
+                    }
+            } finally {
+                client.stop()
+            }
+        }
+    }
+
     private fun connectAndRun(
         host: String,
         port: Int,
@@ -209,6 +246,7 @@ class SshFixtureServerTest {
                             Thread.sleep(extraInputDelayMillis)
                             stdin.write(extraInput.toByteArray())
                             stdin.flush()
+                            Thread.sleep(300)
                         }
                     }
                     shell.waitFor(setOf(org.apache.sshd.client.channel.ClientChannelEvent.CLOSED), Duration.ofSeconds(5))
@@ -246,3 +284,4 @@ private fun String.containsOutputLine(value: String): Boolean =
     lineSequence()
         .map { it.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trim() }
         .any { it == value }
+

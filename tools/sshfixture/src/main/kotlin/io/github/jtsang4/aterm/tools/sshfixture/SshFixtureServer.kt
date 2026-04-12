@@ -111,6 +111,11 @@ class SshFixtureServer(
             environment["HOME"] = environment["HOME"] ?: preparedFixture.runtimeDir.toString()
             environment["USER"] = environment["USER"] ?: preparedFixture.metadata.username
             environment["SHELL"] = BASH_BINARY
+            environment["PATH"] = preparedFixture.runtimeDir.toString() + ":" + (
+                environment["PATH"]
+                    ?: System.getenv("PATH")
+                    ?: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                )
             val initialColumns = terminalColumns(env)
             val initialRows = terminalRows(env)
             val createdSizeFile = Files.createTempFile(preparedFixture.runtimeDir, "pty-size-", ".txt")

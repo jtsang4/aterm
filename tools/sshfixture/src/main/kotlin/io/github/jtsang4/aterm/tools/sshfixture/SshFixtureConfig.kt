@@ -11,6 +11,8 @@ import org.apache.sshd.common.config.keys.PublicKeyEntry
 import org.apache.sshd.common.config.keys.writer.openssh.OpenSSHKeyPairResourceWriter
 import org.apache.sshd.common.util.security.SecurityUtils
 
+const val SSH_FIXTURE_DISCONNECT_COMMAND = "aterm-fixture-disconnect"
+
 data class SshFixtureConfig(
     val runtimeDir: Path,
     val host: String = "127.0.0.1",
@@ -30,6 +32,7 @@ data class PreparedFixture(
     val authorizedKeysPath: Path,
     val secretEnvPath: Path,
     val metadataPath: Path,
+    val disconnectScriptPath: Path,
     val password: String,
     val metadata: SshFixtureMetadata,
 )
@@ -44,6 +47,7 @@ data class SshFixtureMetadata(
     val timeoutStallMillis: Long,
     val passwordEnvName: String,
     val secretEnvPath: String,
+    val disconnectCommand: String,
     val hostPublicKey: String,
     val hostFingerprint: String,
     val hostKeyPath: String,
@@ -64,6 +68,7 @@ data class SshFixtureMetadata(
         appendLine("ATERM_SSH_FIXTURE_TIMEOUT_STALL_MILLIS=$timeoutStallMillis")
         appendLine("ATERM_SSH_FIXTURE_PASSWORD_ENV=$passwordEnvName")
         appendLine("ATERM_SSH_FIXTURE_SECRET_ENV_PATH=${shellEscape(secretEnvPath)}")
+        appendLine("ATERM_SSH_FIXTURE_DISCONNECT_COMMAND=$disconnectCommand")
         appendLine("ATERM_SSH_FIXTURE_HOST_KEY_PATH=${shellEscape(hostKeyPath)}")
         appendLine("ATERM_SSH_FIXTURE_HOST_PUBLIC_KEY=${shellEscape(hostPublicKey)}")
         appendLine("ATERM_SSH_FIXTURE_HOST_FINGERPRINT=$hostFingerprint")
@@ -86,6 +91,7 @@ fun SshFixtureConfig.prepareRuntime(
     val authorizedKeysPath = runtimeDir.resolve("authorized_keys")
     val secretEnvPath = runtimeDir.resolve("fixture-secrets.env")
     val metadataPath = runtimeDir.resolve("fixture-metadata.env")
+    val disconnectScriptPath = runtimeDir.resolve(SSH_FIXTURE_DISCONNECT_COMMAND)
     val passwordEnvName = "ATERM_SSH_FIXTURE_PASSWORD"
 
     hostKeyPath.writeSecureText(hostKeyMaterial.privateKey.trim() + "\n")
@@ -94,6 +100,22 @@ fun SshFixtureConfig.prepareRuntime(
     clientPublicKeyPath.writeSecureText(clientKeyMaterial.publicKey.trim() + "\n")
     authorizedKeysPath.writeSecureText(authorizedClientPublicKey.trim() + "\n")
     secretEnvPath.writeSecureText("$passwordEnvName=${shellEscape(password)}\n")
+    disconnectScriptPath.writeSecureText(
+        """
+        #!/bin/sh
+        kill -KILL "${'$'}PPID"
+        """.trimIndent() + "\n",
+    )
+    runCatching {
+        Files.setPosixFilePermissions(
+            disconnectScriptPath,
+            setOf(
+                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
+            ),
+        )
+    }
 
     val metadata = SshFixtureMetadata(
         runtimeDir = runtimeDir.toString(),
@@ -105,6 +127,7 @@ fun SshFixtureConfig.prepareRuntime(
         timeoutStallMillis = timeoutStallMillis,
         passwordEnvName = passwordEnvName,
         secretEnvPath = secretEnvPath.toString(),
+        disconnectCommand = SSH_FIXTURE_DISCONNECT_COMMAND,
         hostPublicKey = hostKeyMaterial.publicKey.trim(),
         hostFingerprint = hostKeyMaterial.fingerprint,
         hostKeyPath = hostKeyPath.toString(),
@@ -123,6 +146,7 @@ fun SshFixtureConfig.prepareRuntime(
         authorizedKeysPath = authorizedKeysPath,
         secretEnvPath = secretEnvPath,
         metadataPath = metadataPath,
+        disconnectScriptPath = disconnectScriptPath,
         password = password,
         metadata = metadata,
     )

@@ -29,6 +29,7 @@ class SshFixtureConfigTest {
         assertTrue(Files.exists(prepared.runtimeDir.resolve("authorized_keys")))
         assertTrue(Files.exists(prepared.runtimeDir.resolve("fixture-secrets.env")))
         assertTrue(Files.exists(prepared.runtimeDir.resolve("fixture-metadata.env")))
+        assertTrue(Files.exists(prepared.runtimeDir.resolve("aterm-fixture-disconnect")))
         assertEquals(config.password, prepared.password)
         assertEquals(config.username, prepared.metadata.username)
         assertEquals(config.port, prepared.metadata.port)
@@ -39,6 +40,7 @@ class SshFixtureConfigTest {
         assertEquals("ATERM_SSH_FIXTURE_PASSWORD", prepared.metadata.passwordEnvName)
         assertEquals(prepared.secretEnvPath.toString(), prepared.metadata.secretEnvPath)
         assertTrue(prepared.secretEnvPath.readText().contains("ATERM_SSH_FIXTURE_PASSWORD="))
+        assertTrue(prepared.disconnectScriptPath.readText().contains("kill -KILL \"\$PPID\""))
         assertNotEquals(hostKey.publicKey.trim(), clientKey.publicKey.trim())
     }
 
@@ -91,6 +93,7 @@ class SshFixtureConfigTest {
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_TIMEOUT_STALL_MILLIS=25000"))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_PASSWORD_ENV=ATERM_SSH_FIXTURE_PASSWORD"))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_SECRET_ENV_PATH="))
+        assertTrue(envFile.contains("ATERM_SSH_FIXTURE_DISCONNECT_COMMAND=aterm-fixture-disconnect"))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_HOST_KEY_PATH="))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_HOST_FINGERPRINT="))
         assertTrue(envFile.contains("ATERM_SSH_FIXTURE_CLIENT_PUBLIC_KEY="))

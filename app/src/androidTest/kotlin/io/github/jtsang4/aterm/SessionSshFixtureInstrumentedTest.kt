@@ -987,6 +987,71 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun unexpected_fixture_disconnect_trigger_truthfully_requires_reconnect_through_visible_terminal_ui() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        waitForProofText(coordinator, FIXTURE_PORT)
+
+        triggerUnexpectedFixtureDisconnect()
+
+        val disconnected = waitForState(coordinator, timeoutMillis = 20_000) {
+            it.connectionState == SessionConnectionState.RECONNECT_REQUIRED &&
+                it.reconnectRequired &&
+                !it.canSendInput
+        }
+        assertTrue(disconnected.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:"))
+        assertEquals(
+            "Remote shell closed for $FIXTURE_HOST:$FIXTURE_PORT.",
+            disconnected.statusMessage,
+        )
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Remote shell closed for $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        composeRule.onNodeWithTag("session_reconnect_required")
+            .assertTextContains("Remote shell closed for $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        composeRule.onNodeWithTag("session_terminal_truth_banner")
+            .assertTextContains("Remote shell closed for $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        composeRule.onNodeWithTag("session_connect_$hostId")
+            .assertTextContains("Reconnect", substring = true)
+        composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(0)
+        composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_send_button").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_paste_button").assertIsNotEnabled()
+    }
+
+    @Test
     fun real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state() {
         assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
@@ -1739,6 +1804,10 @@ class SessionSshFixtureInstrumentedTest {
         }
     }
 
+    private fun triggerUnexpectedFixtureDisconnect() {
+        sendCommandFromUi(FIXTURE_DISCONNECT_COMMAND)
+    }
+
     private companion object {
         const val FIXTURE_HOST = "10.0.2.2"
         const val FIXTURE_PORT = 3122
@@ -1746,6 +1815,7 @@ class SessionSshFixtureInstrumentedTest {
         const val FIXTURE_USERNAME = "atermtester"
         const val FIXTURE_TIMEOUT_USERNAME = "atermtimeout"
         const val FIXTURE_PASSWORD = "aterm-password-fixture"
+        const val FIXTURE_DISCONNECT_COMMAND = "aterm-fixture-disconnect"
         const val APP_PACKAGE = "io.github.jtsang4.aterm"
     }
 }
