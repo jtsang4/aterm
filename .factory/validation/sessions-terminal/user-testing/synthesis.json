@@ -1,0 +1,81 @@
+{
+  "milestone": "sessions-terminal",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 27,
+    "passed": 15,
+    "failed": 0,
+    "blocked": 12
+  },
+  "passedAssertions": [
+    "VAL-CONNECT-001",
+    "VAL-CONNECT-002",
+    "VAL-CONNECT-003",
+    "VAL-CONNECT-005",
+    "VAL-CONNECT-006",
+    "VAL-CONNECT-007",
+    "VAL-CONNECT-008",
+    "VAL-CONNECT-009",
+    "VAL-CONNECT-010",
+    "VAL-CONNECT-012",
+    "VAL-IDENTITY-010",
+    "VAL-TERM-005",
+    "VAL-TERM-009",
+    "VAL-TERM-012",
+    "VAL-TERM-013"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-CONNECT-004",
+      "blockedBy": "Timeout-specific failure coverage was not present in the runnable validation subset, so the full contract assertion cannot be marked pass."
+    },
+    {
+      "id": "VAL-CONNECT-011",
+      "blockedBy": "Blocked because the current runnable validation surface does not perform a real rotation or background/resume flow during connection setup on the shared emulator; the available composable hide/show recreation proof is not equivalent enough to claim this lifecycle assertion."
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "blockedBy": "Blocked because secret-replacement behavior is not covered by the available runnable validation surface, so the full assertion cannot be claimed end to end."
+    },
+    {
+      "id": "VAL-TERM-001",
+      "blockedBy": "Blocked because the available executable proof confirms remote command execution but not the full visible typed-input path required by this assertion."
+    },
+    {
+      "id": "VAL-TERM-002",
+      "blockedBy": "Blocked because the only runnable scrollback proof uses scripted transcript data instead of long/multiline output from the real SSH target required by the contract."
+    },
+    {
+      "id": "VAL-TERM-003",
+      "blockedBy": "Blocked because the current executable surface lacks the manual/live remote-output proof required for this scrollback-to-live assertion."
+    },
+    {
+      "id": "VAL-TERM-004",
+      "blockedBy": "Blocked because runnable evidence covers only a single paste path and does not cover copy-out or multiline paste as required by the assertion."
+    },
+    {
+      "id": "VAL-TERM-006",
+      "blockedBy": "Blocked because the current runnable validation surface has no soft-keyboard visibility proof for the terminal."
+    },
+    {
+      "id": "VAL-TERM-007",
+      "blockedBy": "Blocked because there is no runnable rotation proof for an active live terminal session."
+    },
+    {
+      "id": "VAL-TERM-008",
+      "blockedBy": "Blocked because the current executable validation surface does not perform background/resume testing for a live terminal session."
+    },
+    {
+      "id": "VAL-TERM-010",
+      "blockedBy": "Blocked because no runnable test currently induces a real remote-side or network disconnect against the live fixture session."
+    },
+    {
+      "id": "VAL-TERM-011",
+      "blockedBy": "Blocked because the current executable surface does not provide process-death or activity-recreation proof for a real live session."
+    }
+  ],
+  "appliedUpdates": [],
+  "previousRound": null
+}

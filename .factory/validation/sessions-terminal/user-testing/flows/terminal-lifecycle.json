@@ -1,0 +1,687 @@
+{
+  "groupId": "terminal-lifecycle",
+  "testedAt": "2026-04-12T09:21:51.019978Z",
+  "isolation": {
+    "surface": "Android instrumentation on shared emulator",
+    "emulator": "atermApi35 / emulator-5554",
+    "maxConcurrency": 1,
+    "sshFixtureHostFromEmulator": "10.0.2.2:3122",
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/6ec3e8cd-9180-4f81-8d0f-0f1382e1ac50"
+  },
+  "toolsUsed": [
+    "adb",
+    "Gradle connectedDebugAndroidTest"
+  ],
+  "commandsRun": [
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "/root/Android/Sdk/platform-tools/adb devices -l",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop sys.boot_completed",
+    "/root/Android/Sdk/platform-tools/adb -s emulator-5554 shell 'toybox nc -z 10.0.2.2 3122; echo fixture_exit:$?'",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CONNECT-008",
+      "title": "The user can disconnect and reconnect without recreating the host",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open the session tab and connect the saved SSH fixture host",
+          "expected": "A live session opens for the existing host",
+          "observed": "The visible session flow connected to 10.0.2.2:3122 and rendered remote proof text."
+        },
+        {
+          "action": "Tap Disconnect from the active session",
+          "expected": "The session should move to a truthful disconnected state",
+          "observed": "The UI showed Disconnected., disabled input, and kept the same saved host entry available."
+        },
+        {
+          "action": "Reconnect using the same saved host entry",
+          "expected": "A fresh session should reconnect without recreating the host",
+          "observed": "The same host row reconnected and produced a fresh successful shell proof without recreating the host."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-009",
+      "title": "Repeated connect taps do not create duplicate live sessions",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Start connecting a slow scripted host",
+          "expected": "The session should enter one connecting state",
+          "observed": "The UI showed Connecting\u2026 with a single visible disconnect control."
+        },
+        {
+          "action": "Attempt to interact again while connect is in progress",
+          "expected": "Duplicate connects should be prevented",
+          "observed": "The connect control was disabled during the in-flight attempt, so duplicate taps were blocked."
+        },
+        {
+          "action": "Inspect controller call counts after canceling the attempt",
+          "expected": "Only one live session attempt should have been created",
+          "observed": "The test finished with connectCalls == 1 and completedConnections == 0, confirming no duplicate live session was created."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionRealConnectionFlowsInstrumentedTest.repeated_connect_taps_and_cancel_yield_one_truthful_final_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "No HTTP calls; scripted session controller recorded exactly one connect attempt while the UI kept the connect action disabled."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-010",
+      "title": "A hanging connection attempt can be canceled without leaving zombie state behind",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Begin a real SSH fixture connection until the trust/cancelable connecting state appears",
+          "expected": "The session should show an in-progress connection",
+          "observed": "The fixture session reached CONNECTING with a pending trust decision for 10.0.2.2:3122."
+        },
+        {
+          "action": "Cancel/disconnect before the connection completes",
+          "expected": "The app should return to a clean non-connecting state",
+          "observed": "The session moved to DISCONNECTED with status Connection canceled. and no pending trust prompt."
+        },
+        {
+          "action": "Wait for late completion or zombie resurrection",
+          "expected": "No hidden session should appear after canceling",
+          "observed": "After an additional settle delay the state remained DISCONNECTED with empty transcript and no saved trust."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.canceling_during_real_connect_prompt_leaves_one_clean_disconnected_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-011",
+      "title": "Rotating or backgrounding during connection setup resolves to one truthful final state",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect available runnable lifecycle coverage",
+          "expected": "A real rotation/background validation should exist",
+          "observed": "The available executable suite only recreates/hides the session composable during connect; it does not rotate or background/resume the real app while connecting to the live fixture."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionRealConnectionFlowsInstrumentedTest.activity_recreation_while_connecting_keeps_single_connecting_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the current runnable validation surface does not perform a real rotation or background/resume flow during connection setup on the shared emulator; the available composable hide/show recreation proof is not equivalent enough to claim this lifecycle assertion."
+    },
+    {
+      "id": "VAL-TERM-001",
+      "title": "Typed input executes on the remote shell and resulting output is rendered in order",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable terminal-input coverage against the live fixture",
+          "expected": "A visible typed-input flow should send text from the user input surface to the remote shell",
+          "observed": "The live-fixture suite sends commands through coordinator.sendText/sendCommandDirectly and validates remote output, but it does not exercise visible user typing through the shipped terminal input control."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the available executable proof confirms remote command execution but not the full visible typed-input path required by this assertion."
+    },
+    {
+      "id": "VAL-TERM-002",
+      "title": "Long or multiline output remains readable and scrollback preserves earlier transcript",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable scrollback coverage",
+          "expected": "A long-output flow should be validated against the real SSH target",
+          "observed": "The current suite proves scrollback UI behavior with a scripted controller, but not with long or multiline output coming from the real SSH fixture target named by the contract."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionRealConnectionFlowsInstrumentedTest.terminal_surface_supports_scrollback_and_terminal_chrome"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the only runnable scrollback proof uses scripted transcript data instead of long/multiline output from the real SSH target required by the contract."
+    },
+    {
+      "id": "VAL-TERM-003",
+      "title": "The user can return to the live bottom after inspecting older scrollback",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect available scrollback-to-live coverage",
+          "expected": "A manual/live-bottom recovery flow should be runnable on the real terminal surface",
+          "observed": "Only scripted-controller scrollback/jump-to-live coverage is available; there is no manual or live-fixture proof of returning to a live bottom while new remote output arrives."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionRealConnectionFlowsInstrumentedTest.terminal_surface_supports_scrollback_and_terminal_chrome"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the current executable surface lacks the manual/live remote-output proof required for this scrollback-to-live assertion."
+    },
+    {
+      "id": "VAL-TERM-004",
+      "title": "Copy and paste work through the terminal surface, including multiline paste",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect clipboard coverage in the live-fixture suite",
+          "expected": "Copy plus multiline paste should both be proven",
+          "observed": "The live-fixture suite proves a clipboard paste action that yields remote output, but it does not prove terminal copy-out or multiline paste ordering/character preservation."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because runnable evidence covers only a single paste path and does not cover copy-out or multiline paste as required by the assertion."
+    },
+    {
+      "id": "VAL-TERM-005",
+      "title": "The special-key bar delivers control-oriented keys needed for shell workflows",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Connect to the real SSH fixture and prepare raw byte readers/interruptible commands",
+          "expected": "The remote shell should be ready to observe control-oriented key effects",
+          "observed": "The live fixture session printed readiness markers for Tab, ArrowUp, and Ctrl+C checks."
+        },
+        {
+          "action": "Use the visible special-key controls",
+          "expected": "Representative control keys should reach the remote shell correctly",
+          "observed": "Pressing Tab produced byte 9, ArrowUp produced bytes 27 91 65, and Ctrl+C interrupted a waiting Python process with CTRL_C_RECOVERED."
+        },
+        {
+          "action": "Return to the shell after each interaction",
+          "expected": "Shell workflows should remain usable after key delivery",
+          "observed": "Each key path completed against the live fixture and returned the session to a usable shell state."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TERM-006",
+      "title": "Opening and closing the soft keyboard keeps the terminal readable, focused, and interactive",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable keyboard-visibility coverage",
+          "expected": "A keyboard open/close flow should be exercised on the emulator",
+          "observed": "No available instrumentation test opens and dismisses the soft keyboard while interacting with the live terminal surface."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the current runnable validation surface has no soft-keyboard visibility proof for the terminal."
+    },
+    {
+      "id": "VAL-TERM-007",
+      "title": "Orientation changes preserve truthful session and transcript state",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable orientation coverage for active terminal sessions",
+          "expected": "A real rotation flow should preserve truthful transcript/session state",
+          "observed": "The current suites do not rotate the active live terminal session on the shared emulator."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because there is no runnable rotation proof for an active live terminal session."
+    },
+    {
+      "id": "VAL-TERM-008",
+      "title": "Backgrounding and resuming the app preserves or truthfully reports session state",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable background/resume coverage",
+          "expected": "A background/resume flow should be exercised against the live session",
+          "observed": "No available instrumentation test backgrounds and resumes the real app during an active terminal session."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the current executable validation surface does not perform background/resume testing for a live terminal session."
+    },
+    {
+      "id": "VAL-TERM-009",
+      "title": "After disconnect, the terminal does not pretend that new input is still live",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Open a real fixture session and verify live shell proof",
+          "expected": "The terminal should begin from a live connected state",
+          "observed": "The session connected to 10.0.2.2:3122 and displayed the remote proof transcript."
+        },
+        {
+          "action": "Tap Disconnect in the visible session UI",
+          "expected": "The terminal should become truthfully non-live",
+          "observed": "The UI moved to Disconnected. and rendered a disconnected truth banner."
+        },
+        {
+          "action": "Inspect post-disconnect controls",
+          "expected": "Live input actions should be blocked or clearly non-live",
+          "observed": "The input field, send button, and paste button were all disabled after disconnect."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.disconnect_truthfully_blocks_live_input_through_real_session_ui"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TERM-010",
+      "title": "Unexpected remote-side or network disconnects are surfaced quickly and stop live interaction",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable disconnect-failure coverage",
+          "expected": "A live remote/network drop should be induced and observed",
+          "observed": "The current suites do not induce a remote-side or network disconnect during an active live fixture session; the available reconnect-required proof is synthetic recovery-state coverage."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionRealConnectionFlowsInstrumentedTest.reconnect_required_state_disables_live_input_and_survives_screen_recreation"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because no runnable test currently induces a real remote-side or network disconnect against the live fixture session."
+    },
+    {
+      "id": "VAL-TERM-011",
+      "title": "Process death or activity recreation restores only a truthful session state",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable recovery coverage for live sessions",
+          "expected": "A process-death or activity-recreation proof should exist around an active or recently active real session",
+          "observed": "The available test proves reconnect-required UI state survives screen recreation, but it does not recreate or kill the app around an active/recent live fixture session."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionRealConnectionFlowsInstrumentedTest.reconnect_required_state_disables_live_input_and_survives_screen_recreation"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because the current executable surface does not provide process-death or activity-recreation proof for a real live session."
+    },
+    {
+      "id": "VAL-TERM-012",
+      "title": "Terminal resize changes propagate to the remote PTY on orientation or keyboard-driven viewport changes",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Connect to the live SSH fixture and read remote PTY size",
+          "expected": "The session should report an initial remote terminal size",
+          "observed": "The test captured SIZE_BEFORE from the remote shell via stty size."
+        },
+        {
+          "action": "Apply a smaller terminal viewport and read remote PTY size again",
+          "expected": "The remote PTY should observe the resized dimensions",
+          "observed": "The test captured a different SIZE_AFTER value from the remote shell and asserted it matched the resized viewport rows/columns."
+        },
+        {
+          "action": "Verify the resize remains tied to the terminal surface metrics",
+          "expected": "The resize should represent the terminal viewport rather than a fake local-only change",
+          "observed": "The test computed the viewport from live terminal metrics and the remote shell reflected the new dimensions."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TERM-013",
+      "title": "Basic full-screen terminal programs remain usable as real terminal content, not just plain line output",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Enter alternate-screen/full-screen terminal content on the live fixture session",
+          "expected": "The terminal should switch into a coherent full-screen state",
+          "observed": "The test sent alternate-screen control sequences and observed alternateScreenActive == true with a full-screen program active status."
+        },
+        {
+          "action": "Allow the full-screen content to redraw and exit",
+          "expected": "The terminal should return cleanly to the normal shell transcript",
+          "observed": "The test observed alternateScreenActive == false and then FULL_SCREEN_DONE in the normal shell transcript."
+        },
+        {
+          "action": "Confirm shell usability after leaving the full-screen state",
+          "expected": "The session should remain usable after full-screen content exits",
+          "observed": "The session returned to the live shell transcript after exiting the alternate-screen state."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "title": "Editing an identity preserves or updates the real credential behavior correctly",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect runnable identity-edit coverage against the real fixture",
+          "expected": "Metadata-only edits and secret replacement behavior should both be validated",
+          "observed": "The available real-fixture tests prove metadata-only rename edits preserve the stored password and reconnect successfully, but they do not replace the secret/key material and verify the next authentication behavior."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_connection_requires_explicit_trust_then_reuses_it_after_identity_edit_and_relaunch",
+          "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": "Blocked because secret-replacement behavior is not covered by the available runnable validation surface, so the full assertion cannot be claimed end to end."
+    },
+    {
+      "id": "VAL-IDENTITY-010",
+      "title": "Keystore-protected secrets remain usable after normal app restart",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create a saved password identity and connect to the real SSH fixture",
+          "expected": "The saved secret should authenticate successfully before restart",
+          "observed": "The fixture connected successfully and saved trust/identity state."
+        },
+        {
+          "action": "Relaunch/recreate the app container and visible activity shell",
+          "expected": "The saved identity should still be present after restart-like recovery",
+          "observed": "After recreate, the renamed identity remained present and secret material was still retrievable from storage."
+        },
+        {
+          "action": "Reconnect using the previously saved identity",
+          "expected": "The existing secret should still authenticate without recreation",
+          "observed": "The relaunched session reconnected to 10.0.2.2:3122 without recreating the identity or secret."
+        }
+      ],
+      "evidence": {
+        "artifacts": [
+          "sessions-terminal/terminal-lifecycle/init-check.log",
+          "sessions-terminal/terminal-lifecycle/adb-readiness.log",
+          "sessions-terminal/terminal-lifecycle/connected-android-tests.log",
+          "sessions-terminal/terminal-lifecycle/TEST-connected-android.xml",
+          "sessions-terminal/terminal-lifecycle/SessionSshFixtureInstrumentedTest.html",
+          "sessions-terminal/terminal-lifecycle/SessionRealConnectionFlowsInstrumentedTest.html"
+        ],
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.real_fixture_connection_requires_explicit_trust_then_reuses_it_after_identity_edit_and_relaunch",
+          "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows"
+        ],
+        "consoleErrors": "none observed in connectedDebugAndroidTest output",
+        "network": "SSH fixture reachable at 10.0.2.2:3122 from emulator (adb readiness check fixture_exit:0)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The connected Android XML output aggregates both classes into one testsuite entry, so per-test class coverage had to be cross-checked against the two generated HTML reports.",
+      "resolved": true,
+      "resolution": "Used both the XML result file and the per-class HTML reports copied into the mission evidence directory.",
+      "affectedAssertions": [
+        "VAL-CONNECT-008",
+        "VAL-CONNECT-009",
+        "VAL-CONNECT-010",
+        "VAL-CONNECT-011",
+        "VAL-TERM-001",
+        "VAL-TERM-002",
+        "VAL-TERM-003",
+        "VAL-TERM-004",
+        "VAL-TERM-005",
+        "VAL-TERM-006",
+        "VAL-TERM-007",
+        "VAL-TERM-008",
+        "VAL-TERM-009",
+        "VAL-TERM-010",
+        "VAL-TERM-011",
+        "VAL-TERM-012",
+        "VAL-TERM-013",
+        "VAL-IDENTITY-008",
+        "VAL-IDENTITY-010"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Manual/lifecycle assertions requiring real rotation, background-resume, soft-keyboard visibility, unexpected live disconnect, or process-death proof do not currently have matching runnable coverage in the available shared-emulator instrumentation suites.",
+      "affectedAssertions": [
+        "VAL-CONNECT-011",
+        "VAL-TERM-003",
+        "VAL-TERM-006",
+        "VAL-TERM-007",
+        "VAL-TERM-008",
+        "VAL-TERM-010",
+        "VAL-TERM-011"
+      ],
+      "quickFixAttempted": "Reviewed both assigned instrumentation suites and executed the full focused connected test run; no runnable test in scope exercised those lifecycle paths on the shared emulator."
+    },
+    {
+      "description": "Some contract requirements have only partial executable proof today: visible typed terminal input, real-target long-output scrollback, copy plus multiline paste, and secret replacement after identity edit.",
+      "affectedAssertions": [
+        "VAL-TERM-001",
+        "VAL-TERM-002",
+        "VAL-TERM-004",
+        "VAL-IDENTITY-008"
+      ],
+      "quickFixAttempted": "Mapped the available live-fixture and scripted-controller tests to each assertion and only marked pass where the runnable proof fully covered the contract requirement."
+    }
+  ],
+  "summary": "Tested 19 assigned assertions through the available shared-emulator validation surface: 8 passed, 0 failed, 11 blocked, 0 skipped. Passed assertions were VAL-CONNECT-008, VAL-CONNECT-009, VAL-CONNECT-010, VAL-TERM-005, VAL-TERM-009, VAL-TERM-012, VAL-TERM-013, and VAL-IDENTITY-010."
+}

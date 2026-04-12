@@ -1,0 +1,357 @@
+{
+  "groupId": "connect-trust",
+  "testedAt": "2026-04-12T09:09:05Z",
+  "isolation": {
+    "surface": "Android instrumentation on shared emulator",
+    "emulator": "atermApi35 / emulator-5554",
+    "maxConcurrency": 1,
+    "sshFixtureHostFromEmulator": "10.0.2.2:3122",
+    "missionDir": "/root/.factory/missions/6ec3e8cd-9180-4f81-8d0f-0f1382e1ac50"
+  },
+  "toolsUsed": [
+    "Gradle",
+    "adb",
+    "Android instrumentation on emulator",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    "/root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "/root/Android/Sdk/platform-tools/adb devices -l",
+    "python3 - <<'PY' ... socket checks for 127.0.0.1:3122 and 127.0.0.1:5037 ... PY",
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest",
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_fixture_connection_requires_explicit_trust_then_reuses_it_after_identity_edit_and_relaunch,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#changed_key_is_blocked_and_endpoint_edits_do_not_reuse_prior_trust,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#auth_dns_and_unreachable_failures_surface_clearly,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#canceling_during_real_connect_prompt_leaves_one_clean_disconnected_state,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest#repeated_connect_taps_and_cancel_yield_one_truthful_final_state,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest#authentication_failure_surfaces_clearly,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest#dns_failure_surfaces_clearly,io.github.jtsang4.aterm.SessionRealConnectionFlowsInstrumentedTest#network_failure_surfaces_clearly"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CONNECT-001",
+      "title": "Connecting to a reachable SSH host opens an interactive shell on the intended target",
+      "status": "pass",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows"
+      ],
+      "steps": [
+        {
+          "action": "Open the shipped session screen with the saved SSH fixture host visible",
+          "expected": "Host row is visible and connect can be triggered from the real app shell",
+          "observed": "Visible session host row and connect control were exercised through MainActivity / AtermNavHost."
+        },
+        {
+          "action": "Tap connect and accept the host-trust prompt",
+          "expected": "Connection transitions into a real connected session",
+          "observed": "The trust prompt appeared for 10.0.2.2:3122 and the session reached Connected."
+        },
+        {
+          "action": "Inspect endpoint and transcript proof",
+          "expected": "Terminal proves it is attached to the intended remote fixture host",
+          "observed": "UI asserted session_active_endpoint=10.0.2.2:3122 and transcript contained ATERM_REMOTE_PROOF:10.0.2.2:3122."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-001-005-006-session-ui-trust-relaunch.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted in the copied instrumentation logcat for this flow.",
+        "network": "Real SSH fixture connection from emulator to 10.0.2.2:3122 reached CONNECTED and produced remote-only proof text."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-002",
+      "title": "A visible connecting state is shown while session setup is still in progress",
+      "status": "pass",
+      "methods": [
+        "SessionRealConnectionFlowsInstrumentedTest.repeated_connect_taps_and_cancel_yield_one_truthful_final_state",
+        "SessionSshFixtureInstrumentedTest.canceling_during_real_connect_prompt_leaves_one_clean_disconnected_state"
+      ],
+      "steps": [
+        {
+          "action": "Tap connect on a deliberately delayed session flow",
+          "expected": "A visible in-progress state is shown before completion",
+          "observed": "The surface displayed Connecting\u2026 with a visible cancel/disconnect button and disabled repeat connect."
+        },
+        {
+          "action": "Cancel while setup is still in progress",
+          "expected": "The pending state resolves cleanly instead of hanging or looking connected",
+          "observed": "The flow resolved to Connection canceled. with no trust prompt left behind and no completed connection."
+        },
+        {
+          "action": "Compare with the real-fixture prompt phase",
+          "expected": "The real fixture also remains in a connecting/trust-gated state until resolved",
+          "observed": "The live-fixture flow remained in CONNECTING with a pending trust decision until the user decision was applied."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-002-connecting-state.logcat.txt",
+          "sessions-terminal/connect-trust/VAL-CONNECT-002-005-cancel-during-connect.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted in the copied instrumentation logcat for the connecting-state runs.",
+        "network": "Delayed/scripted session handshake on 10.0.2.2:3130 showed Connecting\u2026 before cancel; live fixture prompt phase stayed connecting until trust resolution."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-003",
+      "title": "Authentication failure is surfaced clearly and leaves the app disconnected",
+      "status": "pass",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.auth_dns_and_unreachable_failures_surface_clearly",
+        "SessionRealConnectionFlowsInstrumentedTest.authentication_failure_surfaces_clearly"
+      ],
+      "steps": [
+        {
+          "action": "Attempt a connection with an invalid password against the fixture host",
+          "expected": "Authentication fails clearly and no shell opens",
+          "observed": "After trust acceptance, the flow ended with Authentication failed. Verify the linked identity and try again."
+        },
+        {
+          "action": "Check the visible session surface",
+          "expected": "The user sees an explicit auth failure on the session screen",
+          "observed": "The session_status_message UI asserted Authentication failed. on the real session surface."
+        },
+        {
+          "action": "Confirm session outcome",
+          "expected": "No usable terminal prompt is presented",
+          "observed": "The tests finished in FAILED/disconnected state rather than a connected shell."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-003-004-fixture-failures.logcat.txt",
+          "sessions-terminal/connect-trust/VAL-CONNECT-003-ui-auth-failure.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted in copied logcat beyond the expected authentication failure state.",
+        "network": "SSH auth attempt to 10.0.2.2:3122 failed after trust acceptance; UI surfaced explicit authentication failure."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-004",
+      "title": "DNS, timeout, and unreachable-host failures are surfaced clearly",
+      "status": "blocked",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.auth_dns_and_unreachable_failures_surface_clearly",
+        "SessionRealConnectionFlowsInstrumentedTest.dns_failure_surfaces_clearly",
+        "SessionRealConnectionFlowsInstrumentedTest.network_failure_surfaces_clearly"
+      ],
+      "steps": [
+        {
+          "action": "Exercise DNS failure and unreachable-host flows",
+          "expected": "Both failures surface clear disconnected-state messaging",
+          "observed": "DNS lookup failed for nonexistent.invalid:3122 and Host is unreachable at 10.0.2.2:65022 were both validated."
+        },
+        {
+          "action": "Look for a timeout-specific runnable validation",
+          "expected": "A timeout path is also exercised through the session surface",
+          "observed": "No timeout-specific instrumentation flow was found or rerun for this assignment."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-003-004-fixture-failures.logcat.txt",
+          "sessions-terminal/connect-trust/VAL-CONNECT-004-ui-dns-failure.logcat.txt",
+          "sessions-terminal/connect-trust/VAL-CONNECT-004-ui-network-failure.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted for the DNS/unreachable runs.",
+        "network": "Validated DNS failure and unreachable-host failure; timeout variant remains unproven in runnable user-surface evidence."
+      },
+      "issues": "Timeout-specific failure coverage was not present in the runnable validation subset, so the full contract assertion cannot be marked pass."
+    },
+    {
+      "id": "VAL-CONNECT-005",
+      "title": "First-time connection to an unknown host key blocks on an explicit trust decision",
+      "status": "pass",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows",
+        "SessionSshFixtureInstrumentedTest.real_fixture_connection_requires_explicit_trust_then_reuses_it_after_identity_edit_and_relaunch"
+      ],
+      "steps": [
+        {
+          "action": "Initiate the first connection to the unknown SSH fixture host",
+          "expected": "Shell entry is blocked behind a visible trust prompt with fingerprint details",
+          "observed": "The session UI displayed session_trust_prompt for 10.0.2.2:3122 before any connected shell state."
+        },
+        {
+          "action": "Reject the trust decision",
+          "expected": "The attempt aborts and no trust record is silently persisted",
+          "observed": "The live-fixture validation reported Host trust rejected. and known trusted-host count remained 0."
+        },
+        {
+          "action": "Retry and accept trust",
+          "expected": "Connection proceeds only after explicit acceptance",
+          "observed": "After acceptance, the flow connected successfully and remote proof appeared."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-001-005-006-session-ui-trust-relaunch.logcat.txt",
+          "sessions-terminal/connect-trust/VAL-CONNECT-005-006-coordinator-trust-reuse.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted in copied logcat for the trust-decision flows.",
+        "network": "First SSH contact to 10.0.2.2:3122 paused for explicit trust; rejecting aborted the attempt and accepting allowed the connection."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-006",
+      "title": "Accepting a host key suppresses repeat prompts for the same unchanged server key",
+      "status": "pass",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows",
+        "SessionSshFixtureInstrumentedTest.real_fixture_connection_requires_explicit_trust_then_reuses_it_after_identity_edit_and_relaunch"
+      ],
+      "steps": [
+        {
+          "action": "Accept the SSH fixture host key on first connect",
+          "expected": "Trust is stored for that unchanged endpoint",
+          "observed": "The first accepted connection stored exactly one trusted-host record."
+        },
+        {
+          "action": "Disconnect and reconnect to the same unchanged fixture endpoint",
+          "expected": "No trust prompt is shown again",
+          "observed": "Reconnections completed with pendingTrustDecision absent and session_trust_prompt count asserted to 0."
+        },
+        {
+          "action": "Recreate the activity and reconnect again",
+          "expected": "Trust reuse still works after relaunch",
+          "observed": "After activity recreate, the same host reconnected without another trust prompt."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-001-005-006-session-ui-trust-relaunch.logcat.txt",
+          "sessions-terminal/connect-trust/VAL-CONNECT-005-006-coordinator-trust-reuse.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted for trusted reconnect flows.",
+        "network": "Accepted trust on 10.0.2.2:3122 was reused across reconnect and relaunch without another trust prompt."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-007",
+      "title": "A changed host key is flagged as a mismatch and never trusted silently",
+      "status": "pass",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.changed_key_is_blocked_and_endpoint_edits_do_not_reuse_prior_trust",
+        "SessionRealConnectionFlowsInstrumentedTest.host_endpoint_edit_requires_fresh_trust_and_changed_key_is_blocked"
+      ],
+      "steps": [
+        {
+          "action": "Attempt a connection with a previously stored but incorrect host key",
+          "expected": "The mismatch is blocked with a clear warning",
+          "observed": "The flow ended with Host key changed for 10.0.2.2:3122. Connection blocked."
+        },
+        {
+          "action": "Check the session-surface mismatch message",
+          "expected": "The user sees the mismatch instead of a silent shell entry",
+          "observed": "The session_status_message UI asserted Host key changed for 127.0.0.1:2223. Connection blocked. in the session screen test."
+        },
+        {
+          "action": "Confirm no automatic trust carry-over",
+          "expected": "No silent continuation into a live shell occurs",
+          "observed": "The flows stayed blocked and never reported CONNECTED after the changed-key condition."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-007-012-changed-key-endpoint.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted beyond the expected changed-host-key block.",
+        "network": "Changed host key on a previously trusted endpoint was surfaced as a blocking mismatch rather than silently trusted."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CONNECT-012",
+      "title": "Trusted-host decisions stay bound to the actual endpoint after host edits",
+      "status": "pass",
+      "methods": [
+        "SessionSshFixtureInstrumentedTest.changed_key_is_blocked_and_endpoint_edits_do_not_reuse_prior_trust",
+        "SessionRealConnectionFlowsInstrumentedTest.host_endpoint_edit_requires_fresh_trust_and_changed_key_is_blocked"
+      ],
+      "steps": [
+        {
+          "action": "Trust the original endpoint and disconnect",
+          "expected": "The original endpoint becomes trusted only for that specific address/port",
+          "observed": "Trust was stored for the original endpoint after an accepted connection."
+        },
+        {
+          "action": "Edit/repoint the host endpoint and reconnect",
+          "expected": "The new endpoint is treated as a fresh trust context",
+          "observed": "A fresh trust prompt appeared for the repointed endpoint instead of silently reusing old trust."
+        },
+        {
+          "action": "Reject the fresh trust decision",
+          "expected": "The edited endpoint remains untrusted and disconnected",
+          "observed": "Rejecting the new-endpoint prompt produced Host trust rejected. and no trusted-host entry was created for the new endpoint."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "sessions-terminal/connect-trust/connect-trust-results.xml",
+          "sessions-terminal/connect-trust/VAL-CONNECT-007-012-changed-key-endpoint.logcat.txt"
+        ],
+        "consoleErrors": "No assertion-linked app errors were noted for endpoint-repoint trust flows.",
+        "network": "Trust accepted on the original endpoint was not silently reused after host address/port changes; the repointed endpoint required a fresh decision."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The first broad connectedDebugAndroidTest run that included the full SessionSshFixtureInstrumentedTest/SessionRealConnectionFlowsInstrumentedTest classes picked up an unrelated terminal-resize failure (outside the assigned assertion set), so I reran only the connect/trust-relevant methods to ground these statuses cleanly.",
+      "resolved": true,
+      "resolution": "Scoped the rerun to nine assertion-relevant test methods; that focused rerun passed 9/9.",
+      "affectedAssertions": [
+        "VAL-CONNECT-001",
+        "VAL-CONNECT-002",
+        "VAL-CONNECT-003",
+        "VAL-CONNECT-004",
+        "VAL-CONNECT-005",
+        "VAL-CONNECT-006",
+        "VAL-CONNECT-007",
+        "VAL-CONNECT-012"
+      ]
+    },
+    {
+      "description": "The current instrumentation harness emits XML/logcat artifacts but no per-step screenshot files, so UI evidence is report/logcat based rather than screenshot based.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-CONNECT-001",
+        "VAL-CONNECT-002",
+        "VAL-CONNECT-003",
+        "VAL-CONNECT-004",
+        "VAL-CONNECT-005",
+        "VAL-CONNECT-006",
+        "VAL-CONNECT-007",
+        "VAL-CONNECT-012"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Timeout-specific failure handling was not exercised by any runnable user-surface validation method in the available connect/trust subset.",
+      "affectedAssertions": [
+        "VAL-CONNECT-004"
+      ],
+      "quickFixAttempted": "Reviewed SessionSshFixtureInstrumentedTest, SessionRealConnectionFlowsInstrumentedTest, and the focused rerun results; only DNS and unreachable-host failure paths were actually covered."
+    }
+  ],
+  "summary": "Validated 8 assigned connect/trust assertions on emulator-5554 using focused instrumentation. PASS: VAL-CONNECT-001, VAL-CONNECT-002, VAL-CONNECT-003, VAL-CONNECT-005, VAL-CONNECT-006, VAL-CONNECT-007, VAL-CONNECT-012. BLOCKED: VAL-CONNECT-004 because timeout-specific failure coverage was not present in runnable user-surface evidence."
+}
