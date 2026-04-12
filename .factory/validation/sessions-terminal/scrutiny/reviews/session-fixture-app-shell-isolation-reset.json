@@ -1,0 +1,24 @@
+{
+  "featureId": "session-fixture-app-shell-isolation-reset",
+  "reviewedAt": "2026-04-12T07:33:10.989526Z",
+  "commitId": "729b98f941144bd19c990fd31ad9baef960f5445",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass: this fix moves fixture-state reset ahead of `MainActivity` launch and clears both cached app-container instances before nulling them, which directly addresses the stale Room/DataStore state contamination described in the feature. It is materially relevant to the prior failed reviews because their later real app-shell/live-fixture proofs depend on `SessionSshFixtureInstrumentedTest` starting from a fresh migrated store, but this commit is supportive rather than sufficient on its own because it does not itself implement the missing proof behaviors from those earlier reviews.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared testing guidance does not currently call out that `createAndroidComposeRule<MainActivity>()` launches the activity before ordinary `@Before` setup, so app-state resets that must happen before `MainActivity` binds its `AppContainer` need a pre-launch rule such as `RuleChain`/`ExternalResource`. This worker had to discover and encode that pattern in the fixture suite.",
+      "evidence": "`app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:54-72` replaces `@Before/@After` with an `ExternalResource` wrapped by `RuleChain` around `createAndroidComposeRule<MainActivity>()`; `.factory/library/user-testing.md` tells validators to clear app state through test setup but does not mention the pre-launch ordering constraint; the worker transcript skeleton for session `b3492085-037f-4bce-afe4-e88b58d7ccd6` shows explicit exploration of `RuleChain|TestRule|ExternalResource|beforeActivityLaunched|ActivityScenarioRule|createAndroidComposeRule`."
+    }
+  ],
+  "addressesFailureFrom": [
+    "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/ssh-session-ui-trust-and-relaunch-proof.json",
+    "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/live-terminal-boundary-truthfulness-and-viewport-resize.json"
+  ],
+  "summary": "Reviewed the fix handoff, transcript skeleton, prior failed reviews, and commit `729b98f941144bd19c990fd31ad9baef960f5445`. The patch is a relevant support fix for both prior scrutiny failures because it ensures `SessionSshFixtureInstrumentedTest` resets cached app-container state before `MainActivity` launches and no longer reuses stale persistence across relaunch-driven fixture flows; I found no new blocking or non-blocking code issues in the fix itself, but it should be understood as enabling infrastructure rather than a standalone resolution of the earlier proof requirements."
+}

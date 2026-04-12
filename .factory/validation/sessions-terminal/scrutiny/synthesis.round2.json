@@ -1,0 +1,75 @@
+{
+  "milestone": "sessions-terminal",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew testDebugUnitTest --max-workers=4",
+      "exitCode": 0
+    },
+    "instrumentation": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew connectedDebugAndroidTest --max-workers=1",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew assembleDebug --max-workers=4",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew lintDebug --max-workers=4",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "ssh-session-ui-trust-and-relaunch-proof",
+      "live-terminal-boundary-truthfulness-and-viewport-resize"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "ssh-session-ui-trust-and-relaunch-proof",
+      "severity": "blocking",
+      "description": "The rerun still bypasses the shipped app shell by mounting `IdentitiesScreen`, `HostsScreen`, and `SessionsScreen` directly with `composeRule.setContent(...)` instead of exercising `MainActivity`/`AtermNavHost`, so it does not prove visible connect/trust/edit behavior through the real navigation path."
+    },
+    {
+      "featureId": "ssh-session-ui-trust-and-relaunch-proof",
+      "severity": "blocking",
+      "description": "The supposed relaunch proof still swaps a fresh `AppContainer` into the same in-process Compose root rather than performing a real activity/app relaunch or restart path, so keystore-backed identity reuse after relaunch remains unproven."
+    },
+    {
+      "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
+      "severity": "blocking",
+      "description": "The terminal boundary remains a Compose `LazyColumn` plus the repo's minimal `TerminalBuffer` instead of a dedicated terminal-emulator/view boundary, so representative full-screen/TUI behavior is still not trustworthy end to end."
+    },
+    {
+      "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
+      "severity": "blocking",
+      "description": "The added tests still do not prove special keys, paste, viewport-driven resize, and representative full-screen behavior against the live SSH fixture; several assertions rely on fake controllers instead of a live SSH/PTY-backed session."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:ssh-terminal-worker",
+      "suggestion": "Explicitly forbid using `composeRule.setContent(...)` screen mounting and in-process `AppContainer` swapping as substitutes for real app-shell navigation and relaunch validation when a feature requires visible UI and restart proof.",
+      "evidence": "The rerun review for `ssh-session-ui-trust-and-relaunch-proof` found the worker interacted with visible Compose screens but still bypassed `MainActivity`/`AtermNavHost` and simulated relaunch by swapping containers in-process, yet the handoff treated this as sufficient proof.",
+      "isSystemic": true
+    },
+    {
+      "target": "skill:ssh-terminal-worker",
+      "suggestion": "Clarify exec-mode expectations for terminal validation: automation may substitute for manual interaction only when it still exercises a live SSH fixture, and special keys, paste, resize, and representative full-screen behavior must be proven against that live fixture rather than fake session controllers.",
+      "evidence": "The rerun review for `live-terminal-boundary-truthfulness-and-viewport-resize` found the worker fixed local echo and viewport sizing but still relied on test controllers instead of the live fixture for critical terminal-behavior proof, while the skill's current manual-check language was treated as flexible.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/sessions-terminal/scrutiny/synthesis.round1.json"
+}

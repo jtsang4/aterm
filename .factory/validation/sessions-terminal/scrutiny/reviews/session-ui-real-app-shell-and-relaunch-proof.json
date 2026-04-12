@@ -1,0 +1,34 @@
+{
+  "featureId": "session-ui-real-app-shell-and-relaunch-proof",
+  "reviewedAt": "2026-04-12T07:32:50Z",
+  "commitId": "41865e93b82b0ff98edb80b26d73f40b9a26b06b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix does remove the original `setContent(...)` screen mounting and in-process `AppContainer` swap by launching `MainActivity`, navigating the shipped tabs, and using `ActivityScenario.recreate()`. However, the proof still stops short of the required end-to-end app-shell validation because the test drives connect/reconnect and trust acceptance through direct `SshSessionCoordinator` calls instead of the visible session UI controls.",
+    "issues": [
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 859,
+        "severity": "blocking",
+        "description": "`connectFromUi()` never taps the visible `session_connect_<id>` button. After only asserting that the button is displayed, it directly calls `coordinator.connect(hostId)`, and the main proof test uses this helper for the initial connect, reconnect-after-edit, and reconnect-after-recreate paths. That means the feature still does not prove connect/reconnect behavior through the shipped session UI end to end; it remains coordinator-driven at the critical action point."
+      },
+      {
+        "file": "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt",
+        "line": 878,
+        "severity": "blocking",
+        "description": "When the trust prompt appears, the helper does not press the visible `session_trust_accept` control. It calls `coordinator.submitHostTrustDecision(true)` directly after checking that the prompt is on screen. So the fix still does not prove host-trust acceptance through the real user-facing app-shell flow, which the feature description and worker skill require."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`ssh-terminal-worker` already forbids coordinator-only proof, but this rerun still reported `followedProcedure: true` after moving to `MainActivity` even though the actual connect and trust actions are still invoked through coordinator methods. It would help to make the skill explicit that helpers in app-shell tests must tap the visible `session_connect_*` / `session_trust_accept` nodes rather than only asserting they are visible before calling coordinator APIs directly.",
+      "evidence": "`/root/workspace/github/jtsang4/aterm/.factory/skills/ssh-terminal-worker/SKILL.md` step 5 says proof must use the visible shipped app shell and not coordinator-only state; handoff `/root/.factory/missions/6ec3e8cd-9180-4f81-8d0f-0f1382e1ac50/handoffs/2026-04-12T05-15-37-569Z__session-ui-real-app-shell-and-relaunch-proof__56017f3c-a274-443a-a9a6-37e27e04eedb.json` still marks `followedProcedure: true`, while `app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:859` calls `coordinator.connect(hostId)` and `:878` calls `coordinator.submitHostTrustDecision(true)` instead of clicking the tagged UI controls."
+    }
+  ],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/ssh-session-ui-trust-and-relaunch-proof.json",
+  "summary": "Fail: the rerun fixes the earlier app-shell and relaunch structure problems, but it still does not fully close the blocking proof gap because connect/reconnect and trust acceptance are exercised through coordinator shortcuts rather than the actual session UI controls."
+}

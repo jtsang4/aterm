@@ -1,0 +1,15 @@
+{
+  "featureId": "live-terminal-live-fixture-proof",
+  "reviewedAt": "2026-04-12T07:35:04Z",
+  "commitId": "664e395",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass: reviewing the fix transcript plus both commits shows the rerun closes the prior blocking gaps. Commit `0475c46` replaces the transcript-backed terminal with a dedicated Termux-backed terminal adapter and upgrades the repo-local SSH fixture to a real PTY-backed shell, while commit `664e395` moves the acceptance proof onto the live fixture session flow so disconnect truthfulness, special keys, clipboard paste, full-screen alternate-screen behavior, and viewport-driven resize are all exercised against the real SSH/PTY boundary.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/sessions-terminal/scrutiny/reviews/live-terminal-boundary-truthfulness-and-viewport-resize.json",
+  "summary": "Reviewed the fix feature handoff, transcript skeleton, prior failed review, and both relevant diffs (`0475c46`, `664e395`). The fix adequately addresses the original failures: the app now uses a dedicated live terminal boundary backed by the repo-local PTY fixture, and the live-fixture instrumentation proves special keys, paste, viewport resize, disconnect truthfulness, and representative full-screen behavior through the real app/session surface rather than fake controllers."
+}

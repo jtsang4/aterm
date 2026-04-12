@@ -56,6 +56,7 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 
 - Use only the shared `atermApi35` emulator on `emulator-5554`; do not start another emulator or run validators in parallel on this surface.
 - Treat the emulator as a single shared isolation boundary. Before running a flow, clear app state through the test setup already used by the instrumentation suites instead of inventing external seed files.
+- When a test uses `createAndroidComposeRule<MainActivity>()`, remember that `MainActivity` launches before ordinary `@Before` methods run. Any reset that must happen before the activity binds its `AppContainer` or opens Room/DataStore state should live in a pre-launch rule such as `RuleChain` / `ExternalResource`, not only in `@Before`.
 - Reach the host SSH target through `10.0.2.2:22` only. Do not modify host `sshd`, host keys, firewall rules, or any system SSH configuration.
 - Keep evidence within the assigned mission evidence directory and avoid capturing plaintext passwords, private keys, or passphrases in logs or screenshots.
 - Prefer the existing instrumentation suites for hosts/identities flows because they already encode the expected user-visible behaviors and persistence/relaunch checks for this milestone.

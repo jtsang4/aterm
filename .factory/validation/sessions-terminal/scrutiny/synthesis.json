@@ -1,6 +1,6 @@
 {
   "milestone": "sessions-terminal",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -26,50 +26,39 @@
   },
   "reviewsSummary": {
     "total": 3,
-    "passed": 1,
-    "failed": 2,
+    "passed": 2,
+    "failed": 1,
     "failedFeatures": [
-      "ssh-session-ui-trust-and-relaunch-proof",
-      "live-terminal-boundary-truthfulness-and-viewport-resize"
+      "session-ui-real-app-shell-and-relaunch-proof"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "ssh-session-ui-trust-and-relaunch-proof",
+      "featureId": "session-ui-real-app-shell-and-relaunch-proof",
       "severity": "blocking",
-      "description": "The rerun still bypasses the shipped app shell by mounting `IdentitiesScreen`, `HostsScreen`, and `SessionsScreen` directly with `composeRule.setContent(...)` instead of exercising `MainActivity`/`AtermNavHost`, so it does not prove visible connect/trust/edit behavior through the real navigation path."
+      "description": "The rerun now launches `MainActivity` and uses real recreation, but the critical connect/reconnect actions still call `SshSessionCoordinator.connect(hostId)` directly after merely asserting the visible `session_connect_<id>` button is displayed, so connect proof remains coordinator-driven instead of being exercised through the shipped session UI."
     },
     {
-      "featureId": "ssh-session-ui-trust-and-relaunch-proof",
+      "featureId": "session-ui-real-app-shell-and-relaunch-proof",
       "severity": "blocking",
-      "description": "The supposed relaunch proof still swaps a fresh `AppContainer` into the same in-process Compose root rather than performing a real activity/app relaunch or restart path, so keystore-backed identity reuse after relaunch remains unproven."
-    },
-    {
-      "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
-      "severity": "blocking",
-      "description": "The terminal boundary remains a Compose `LazyColumn` plus the repo's minimal `TerminalBuffer` instead of a dedicated terminal-emulator/view boundary, so representative full-screen/TUI behavior is still not trustworthy end to end."
-    },
-    {
-      "featureId": "live-terminal-boundary-truthfulness-and-viewport-resize",
-      "severity": "blocking",
-      "description": "The added tests still do not prove special keys, paste, viewport-driven resize, and representative full-screen behavior against the live SSH fixture; several assertions rely on fake controllers instead of a live SSH/PTY-backed session."
+      "description": "The trust flow still calls `SshSessionCoordinator.submitHostTrustDecision(true)` after checking that the prompt is visible instead of pressing the `session_trust_accept` UI control, so host-key acceptance is still not proven end to end through the real app-shell surface."
     }
   ],
-  "appliedUpdates": [],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented that `createAndroidComposeRule<MainActivity>()` launches before ordinary `@Before`, so app-state resets needed before `MainActivity` binds Room/DataStore/AppContainer must use a pre-launch rule such as `RuleChain` or `ExternalResource`.",
+      "sourceFeature": "session-fixture-app-shell-isolation-reset"
+    }
+  ],
   "suggestedGuidanceUpdates": [
     {
       "target": "skill:ssh-terminal-worker",
-      "suggestion": "Explicitly forbid using `composeRule.setContent(...)` screen mounting and in-process `AppContainer` swapping as substitutes for real app-shell navigation and relaunch validation when a feature requires visible UI and restart proof.",
-      "evidence": "The rerun review for `ssh-session-ui-trust-and-relaunch-proof` found the worker interacted with visible Compose screens but still bypassed `MainActivity`/`AtermNavHost` and simulated relaunch by swapping containers in-process, yet the handoff treated this as sufficient proof.",
-      "isSystemic": true
-    },
-    {
-      "target": "skill:ssh-terminal-worker",
-      "suggestion": "Clarify exec-mode expectations for terminal validation: automation may substitute for manual interaction only when it still exercises a live SSH fixture, and special keys, paste, resize, and representative full-screen behavior must be proven against that live fixture rather than fake session controllers.",
-      "evidence": "The rerun review for `live-terminal-boundary-truthfulness-and-viewport-resize` found the worker fixed local echo and viewport sizing but still relied on test controllers instead of the live fixture for critical terminal-behavior proof, while the skill's current manual-check language was treated as flexible.",
+      "suggestion": "Make app-shell proof guidance explicit that helpers must tap visible session UI nodes (for example `session_connect_*`, `session_reconnect_*`, and `session_trust_accept`) instead of only asserting those nodes are visible before calling coordinator APIs directly.",
+      "evidence": "Review of `session-ui-real-app-shell-and-relaunch-proof` found the fix moved to `MainActivity` and `ActivityScenario.recreate()`, but `app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt` still uses `coordinator.connect(hostId)` and `coordinator.submitHostTrustDecision(true)` for the key visible actions, while the worker handoff still marked procedure compliance.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/sessions-terminal/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/sessions-terminal/scrutiny/synthesis.round2.json"
 }
