@@ -1,6 +1,8 @@
 package io.github.jtsang4.aterm
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.util.Log
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
@@ -606,6 +608,129 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun rotating_during_real_connect_setup_keeps_one_truthful_connected_state() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        try {
+            composeRule.onNodeWithTag("nav_session").performClick()
+            tapConnectFromUi(hostId = hostId, expectedButtonLabel = "Connect")
+            rotateSessionActivity(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+            composeRule.onNodeWithTag("nav_session").performClick()
+            waitForConnectingTrustPrompt(
+                coordinator = coordinator,
+                hostId = hostId,
+                expectedTrustEndpoint = "$FIXTURE_HOST:$FIXTURE_PORT",
+            )
+            composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(1)
+            composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(1)
+            scrollSessionHostIntoView(hostId)
+            composeRule.onNodeWithTag("session_connect_$hostId")
+                .assertIsNotEnabled()
+                .assertTextContains("Connecting…", substring = true)
+
+            clickTaggedButton("session_trust_accept")
+            val connected = waitForState(coordinator, timeoutMillis = 30_000) {
+                it.activeHostId == hostId && it.connectionState == SessionConnectionState.CONNECTED
+            }
+            assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
+            composeRule.onNodeWithTag("session_status_message")
+                .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+            composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+            composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(1)
+            waitForProofText(coordinator, FIXTURE_PORT)
+            coordinator.disconnect()
+            waitForUiDisconnect(coordinator, "Disconnected.")
+        } finally {
+            rotateSessionActivity(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+        }
+    }
+
+    @Test
+    fun backgrounding_and_resuming_during_real_connect_setup_keeps_one_truthful_connected_state() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        tapConnectFromUi(hostId = hostId, expectedButtonLabel = "Connect")
+        backgroundAndResumeApp()
+        waitForConnectingTrustPrompt(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedTrustEndpoint = "$FIXTURE_HOST:$FIXTURE_PORT",
+        )
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(1)
+        scrollSessionHostIntoView(hostId)
+        composeRule.onNodeWithTag("session_connect_$hostId")
+            .assertIsNotEnabled()
+            .assertTextContains("Connecting…", substring = true)
+
+        clickTaggedButton("session_trust_accept")
+        val connected = waitForState(coordinator, timeoutMillis = 30_000) {
+            it.activeHostId == hostId && it.connectionState == SessionConnectionState.CONNECTED
+        }
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(1)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        coordinator.disconnect()
+        waitForUiDisconnect(coordinator, "Disconnected.")
+    }
+
+    @Test
     fun disconnect_truthfully_blocks_live_input_through_real_session_ui() {
         assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
@@ -948,6 +1073,43 @@ class SessionSshFixtureInstrumentedTest {
         .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
         .joinToString(separator = "") { it.text }
 
+    private fun tapConnectFromUi(
+        hostId: Long,
+        expectedButtonLabel: String,
+    ) {
+        val connectButtonTag = "session_connect_$hostId"
+        scrollSessionHostIntoView(hostId)
+        composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag(connectButtonTag)
+                    .assertIsDisplayed()
+                    .assertTextContains(expectedButtonLabel, substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag(connectButtonTag).performClick()
+    }
+
+    private fun waitForConnectingTrustPrompt(
+        coordinator: SshSessionCoordinator,
+        hostId: Long,
+        expectedTrustEndpoint: String,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = 20_000) {
+            it.activeHostId == hostId &&
+                it.connectionState == SessionConnectionState.CONNECTING &&
+                it.pendingTrustDecision?.endpoint == expectedTrustEndpoint
+        }
+        assertEquals(SessionConnectionState.CONNECTING, state.connectionState)
+        assertEquals(expectedTrustEndpoint, state.pendingTrustDecision?.endpoint)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("session_trust_prompt").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("session_trust_endpoint").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("session_state_label").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("session_status_message").assertCountEquals(1)
+    }
+
     private fun sendCommandFromUi(command: String) {
         composeRule.onNodeWithTag("session_input_field").performTextClearance()
         composeRule.onNodeWithTag("session_input_field").performTextInput(command)
@@ -1119,6 +1281,34 @@ class SessionSshFixtureInstrumentedTest {
             }.isSuccess
         }
         runBlocking { delay(250) }
+    }
+
+    private fun rotateSessionActivity(orientation: Int) {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.requestedOrientation = orientation
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun backgroundAndResumeApp() {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.moveTaskToBack(true)
+        }
+        runBlocking { delay(500) }
+        context.startActivity(
+            Intent(context, MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+            },
+        )
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("app_shell").assertIsDisplayed()
+            }.isSuccess
+        }
     }
 
     private fun assertFixtureReachableFromHost() {

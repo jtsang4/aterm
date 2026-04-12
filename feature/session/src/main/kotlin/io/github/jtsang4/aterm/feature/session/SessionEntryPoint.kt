@@ -3,6 +3,8 @@ package io.github.jtsang4.aterm.feature.session
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -68,6 +70,7 @@ fun SessionsScreen(
     val hosts by hostRepository.observeHosts().collectAsState(initial = emptyList())
     val identities by identityRepository.observeIdentities().collectAsState(initial = emptyList())
     val sessionState by coordinator.observeUiState().collectAsState()
+    val scrollState = rememberScrollState()
 
     AppScreenScaffold(
         title = "Sessions",
@@ -75,7 +78,9 @@ fun SessionsScreen(
         modifier = Modifier.testTag("screen_session"),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SessionStatusCard(
