@@ -4,6 +4,7 @@ import io.github.jtsang4.aterm.core.data.local.entity.HostEntity
 import io.github.jtsang4.aterm.core.data.local.entity.IdentityEntity
 import io.github.jtsang4.aterm.core.data.local.entity.KnownHostTrustEntity
 import io.github.jtsang4.aterm.core.data.local.entity.SessionMetadataEntity
+import io.github.jtsang4.aterm.core.data.local.entity.SnippetExecutionHistoryEntity
 import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
@@ -14,6 +15,9 @@ import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionHistoryEntry
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionRecordInput
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionTargetKind
 import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import java.time.Instant
 
@@ -109,6 +113,27 @@ internal fun Snippet.toEntity(
     createdAtEpochMillis = createdAt.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
     lastRunAtEpochMillis = lastRunAt?.toEpochMilli(),
+)
+
+internal fun SnippetExecutionHistoryEntity.toDomain(): SnippetExecutionHistoryEntry = SnippetExecutionHistoryEntry(
+    id = id,
+    snippetId = snippetId,
+    snippetTitle = snippetTitle,
+    targetKind = SnippetExecutionTargetKind.valueOf(targetKind),
+    targetLabel = targetLabel,
+    targetDetail = targetDetail,
+    executedAt = executedAtEpochMillis.toInstant(),
+)
+
+internal fun SnippetExecutionRecordInput.toEntity(
+    snippetTitle: String,
+): SnippetExecutionHistoryEntity = SnippetExecutionHistoryEntity(
+    snippetId = snippetId,
+    snippetTitle = snippetTitle,
+    targetKind = targetKind.name,
+    targetLabel = targetLabel,
+    targetDetail = targetDetail,
+    executedAtEpochMillis = executedAt.toEpochMilli(),
 )
 
 internal fun SessionMetadataEntity.toDomain(): SessionMetadata = SessionMetadata(

@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,7 @@ import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionHistoryEntry
 import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.SnippetRepository
@@ -78,6 +80,7 @@ fun SnippetsScreen(
     sessionController: SessionController? = null,
 ) {
     val snippets by snippetRepository.observeSnippets().collectAsState(initial = emptyList())
+    val history by snippetRepository.observeExecutionHistory().collectAsState(initial = emptyList())
     val hosts by hostRepository.observeHosts().collectAsState(initial = emptyList())
     val sessionState by (
         sessionController?.observeUiState()?.collectAsState()
@@ -93,6 +96,7 @@ fun SnippetsScreen(
     when (val currentDestination = destination) {
         SnippetsDestination.Library -> SnippetsLibraryScreen(
             snippets = snippets,
+            history = history,
             hosts = hosts,
             sessionState = sessionState,
             notice = executionNotice,
@@ -115,12 +119,13 @@ fun SnippetsScreen(
             onRunSnippet = { snippet, targetMode ->
                 executionNotice = null
                 coroutineScope.launch {
+                    val latestSnippet = currentSnippet(snippet.id) ?: snippet
                     val body = snippetRepository.getBody(snippet.id).orEmpty()
                     val draft = SnippetExecutionDraft(
-                        snippet = snippet,
+                        snippet = latestSnippet,
                         body = body,
                         targetSnapshot = buildTargetSnapshot(
-                            snippet = snippet,
+                            snippet = latestSnippet,
                             targetMode = targetMode,
                             hostMetadataById = hostMetadataById,
                             sessionState = sessionState,
@@ -169,12 +174,14 @@ fun SnippetsScreen(
                 draft = latestDraft,
                 onBack = { destination = SnippetsDestination.Library },
                 onEditSnippet = {
-                    destination = SnippetsDestination.Editor(
-                        SnippetEditorDraft.from(
-                            snippet = latestSnippet,
-                            body = currentDestination.draft.body,
-                        ),
-                    )
+                    coroutineScope.launch {
+                        destination = SnippetsDestination.Editor(
+                            SnippetEditorDraft.from(
+                                snippet = latestSnippet,
+                                body = snippetRepository.getBody(latestSnippet.id).orEmpty(),
+                            ),
+                        )
+                    }
                 },
             )
         }
@@ -198,12 +205,14 @@ fun SnippetsScreen(
                 snippetRepository = snippetRepository,
                 onCancel = { destination = SnippetsDestination.Library },
                 onEditSnippet = {
-                    destination = SnippetsDestination.Editor(
-                        SnippetEditorDraft.from(
-                            snippet = latestSnippet,
-                            body = latestDraft.body,
-                        ),
-                    )
+                    coroutineScope.launch {
+                        destination = SnippetsDestination.Editor(
+                            SnippetEditorDraft.from(
+                                snippet = latestSnippet,
+                                body = snippetRepository.getBody(latestSnippet.id).orEmpty(),
+                            ),
+                        )
+                    }
                 },
                 onSuccess = { message ->
                     executionNotice = SnippetExecutionNotice(message = message, isError = false)
@@ -217,6 +226,7 @@ fun SnippetsScreen(
 @Composable
 private fun SnippetsLibraryScreen(
     snippets: List<Snippet>,
+    history: List<SnippetExecutionHistoryEntry>,
     hosts: List<Host>,
     sessionState: SessionUiState,
     notice: SnippetExecutionNotice?,
@@ -302,6 +312,10 @@ private fun SnippetsLibraryScreen(
                 )
             }
 
+            if (history.isNotEmpty()) {
+                RecentSnippetHistoryCard(history = history)
+            }
+
             when {
                 snippets.isEmpty() -> {
                     Card(
@@ -362,6 +376,63 @@ private fun SnippetsLibraryScreen(
                                 onRunSnippet = { onRunSnippet(snippet, selectedTargetMode) },
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentSnippetHistoryCard(
+    history: List<SnippetExecutionHistoryEntry>,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("snippet_recent_history"),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Recent successful runs",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            history.take(5).forEachIndexed { index, entry ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        text = "#${index + 1}",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("snippet_history_entry_$index"),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = entry.snippetTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.testTag("snippet_history_title_$index"),
+                        )
+                        Text(
+                            text = entry.historySummary(),
+                            modifier = Modifier.testTag("snippet_history_target_$index"),
+                        )
+                        Text(
+                            text = if (entry.isSnippetDeleted) {
+                                "Snippet deleted; this history entry is retained for context only."
+                            } else {
+                                "Snippet still available."
+                            },
+                            modifier = Modifier.testTag("snippet_history_status_$index"),
+                        )
                     }
                 }
             }
@@ -1157,7 +1228,10 @@ private suspend fun dispatchIntoCurrentSession(
                     "Snippet dispatch could not be confirmed in the live transcript, so no successful run was recorded.",
                 )
             } else {
-                snippetRepository.markExecuted(draft.snippet.id)
+                snippetRepository.markExecuted(
+                    draft.snippet.id,
+                    draft.toExecutionRecord(),
+                )
                 SnippetExecutionResult.Success(
                     "Sent “${draft.snippet.title}” to ${draft.targetSnapshot.summary.lowercase()}.",
                 )
@@ -1167,3 +1241,21 @@ private suspend fun dispatchIntoCurrentSession(
 }
 
 private fun String.ensureTrailingNewline(): String = if (endsWith("\n")) this else "$this\n"
+
+private fun SnippetExecutionHistoryEntry.historySummary(): String =
+    buildString {
+        append(
+            when (targetKind) {
+                io.github.jtsang4.aterm.core.domain.model.SnippetExecutionTargetKind.SAVED_HOST -> "Saved host"
+                io.github.jtsang4.aterm.core.domain.model.SnippetExecutionTargetKind.ACTIVE_SESSION -> "Active session"
+            },
+        )
+        append(": ")
+        append(targetLabel)
+        append(" (")
+        append(targetDetail)
+        append(")")
+        append(" • ")
+        append(executedAt)
+    }
+

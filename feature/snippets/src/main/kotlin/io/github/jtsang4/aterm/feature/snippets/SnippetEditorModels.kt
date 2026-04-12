@@ -3,6 +3,8 @@ package io.github.jtsang4.aterm.feature.snippets
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionRecordInput
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionTargetKind
 import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 
 internal data class SnippetEditorDraft(
@@ -122,6 +124,24 @@ internal data class SnippetExecutionTargetSnapshot(
             else -> null
         }
     }
+
+    val historyTargetKind: SnippetExecutionTargetKind
+        get() = when (mode) {
+            SnippetExecutionTargetMode.SAVED_HOST -> SnippetExecutionTargetKind.SAVED_HOST
+            SnippetExecutionTargetMode.ACTIVE_SESSION -> SnippetExecutionTargetKind.ACTIVE_SESSION
+        }
+
+    val historyTargetLabel: String
+        get() = when (mode) {
+            SnippetExecutionTargetMode.SAVED_HOST -> snippetHostMetadata?.label ?: "Unknown saved host"
+            SnippetExecutionTargetMode.ACTIVE_SESSION -> activeSessionTarget?.hostLabel ?: "Current session"
+        }
+
+    val historyTargetDetail: String
+        get() = when (mode) {
+            SnippetExecutionTargetMode.SAVED_HOST -> snippetHostMetadata?.detail ?: "Unavailable target"
+            SnippetExecutionTargetMode.ACTIVE_SESSION -> activeSessionTarget?.endpoint ?: "Unavailable session"
+        }
 }
 
 internal data class SnippetExecutionDraft(
@@ -135,4 +155,11 @@ internal data class SnippetExecutionDraft(
         .take(4)
         .joinToString("\n")
         .ifBlank { "(empty)" }
+
+    fun toExecutionRecord(): SnippetExecutionRecordInput = SnippetExecutionRecordInput(
+        snippetId = snippet.id,
+        targetKind = targetSnapshot.historyTargetKind,
+        targetLabel = targetSnapshot.historyTargetLabel,
+        targetDetail = targetSnapshot.historyTargetDetail,
+    )
 }

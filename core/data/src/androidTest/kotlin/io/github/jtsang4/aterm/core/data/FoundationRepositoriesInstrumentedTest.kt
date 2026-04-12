@@ -25,6 +25,8 @@ import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionRecordInput
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionTargetKind
 import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.model.ThemePreference
 import io.github.jtsang4.aterm.core.security.crypto.EncryptedPayload
@@ -67,7 +69,12 @@ class FoundationRepositoriesInstrumentedTest {
         cipher = KeystoreAesGcmCipher("repo.test.${UUID.randomUUID()}")
         hostRepository = RoomHostRepository(database.hostDao())
         identityRepository = RoomIdentityRepository(database, database.identityDao(), cipher)
-        snippetRepository = RoomSnippetRepository(database, database.snippetDao(), cipher)
+        snippetRepository = RoomSnippetRepository(
+            database,
+            database.snippetDao(),
+            database.snippetExecutionHistoryDao(),
+            cipher,
+        )
         sessionRepository = RoomSessionMetadataRepository(database.sessionMetadataDao())
         knownHostTrustRepository = RoomKnownHostTrustRepository(database.knownHostTrustDao())
         dataStoreFile = File(context.cacheDir, "prefs-${UUID.randomUUID()}.preferences_pb")
@@ -237,21 +244,110 @@ class FoundationRepositoriesInstrumentedTest {
             sampleSnippet(id = 0, hostId = host.id),
             body = "sudo systemctl restart aterm",
         )
-        snippetRepository.markExecuted(snippet.id, Instant.parse("2026-04-10T02:00:00Z"))
+        snippetRepository.markExecuted(
+            snippet.id,
+            SnippetExecutionRecordInput(
+                snippetId = snippet.id,
+                targetKind = SnippetExecutionTargetKind.SAVED_HOST,
+                targetLabel = host.label,
+                targetDetail = host.endpoint,
+                executedAt = Instant.parse("2026-04-10T02:00:00Z"),
+            ),
+        )
 
         val persistedSnippet = snippetRepository.getSnippet(snippet.id)
         val body = snippetRepository.getBody(snippet.id)
         val rawEntity = database.snippetDao().getById(snippet.id)
+        val history = snippetRepository.observeExecutionHistory().first()
 
         assertEquals(host.id, persistedSnippet?.hostId)
         assertEquals(SnippetSavedTarget.SAVED_HOST, persistedSnippet?.savedTarget)
         assertEquals("sudo systemctl restart aterm", body)
+        assertEquals(1, history.size)
+        assertEquals(snippet.id, history.single().snippetId)
+        assertEquals("Primary host", history.single().targetLabel)
+        assertEquals("example.internal:22", history.single().targetDetail)
         assertNotNull(rawEntity?.bodyCipherText)
         assertFalse(
             rawEntity!!.bodyCipherText!!.contentEquals(
                 "sudo systemctl restart aterm".encodeToByteArray(),
             ),
         )
+    }
+
+    @Test
+    fun snippet_execution_history_survives_relaunch_and_keeps_deleted_entries_stable() = runTest {
+        val persistentDbName = "snippet-history-${UUID.randomUUID()}"
+        database.close()
+        dataStoreFile.delete()
+
+        val persistentDatabase = Room.databaseBuilder(context, AtermDatabase::class.java, persistentDbName)
+            .allowMainThreadQueries()
+            .build()
+        val persistentCipher = KeystoreAesGcmCipher("repo.test.${UUID.randomUUID()}")
+        val persistentSnippetRepository = RoomSnippetRepository(
+            persistentDatabase,
+            persistentDatabase.snippetDao(),
+            persistentDatabase.snippetExecutionHistoryDao(),
+            persistentCipher,
+        )
+        val persistentIdentityRepository = RoomIdentityRepository(
+            persistentDatabase,
+            persistentDatabase.identityDao(),
+            persistentCipher,
+        )
+        val persistentHostRepository = RoomHostRepository(persistentDatabase.hostDao())
+
+        try {
+            val identity = persistentIdentityRepository.upsert(
+                sampleIdentity().copy(id = 0),
+                IdentitySecretMaterial(primarySecret = "pw"),
+            )
+            val host = persistentHostRepository.upsert(sampleHost(id = 0, identityId = identity.id))
+            val snippet = persistentSnippetRepository.upsert(
+                sampleSnippet(id = 0, hostId = host.id),
+                body = "echo before",
+            )
+            persistentSnippetRepository.markExecuted(
+                snippet.id,
+                SnippetExecutionRecordInput(
+                    snippetId = snippet.id,
+                    targetKind = SnippetExecutionTargetKind.SAVED_HOST,
+                    targetLabel = host.label,
+                    targetDetail = host.endpoint,
+                    executedAt = Instant.parse("2026-04-10T03:00:00Z"),
+                ),
+            )
+            persistentSnippetRepository.deleteSnippet(snippet.id)
+
+            persistentDatabase.close()
+
+            val reopenedDatabase = Room.databaseBuilder(context, AtermDatabase::class.java, persistentDbName)
+                .allowMainThreadQueries()
+                .build()
+            val reopenedCipher = KeystoreAesGcmCipher("repo.test.${UUID.randomUUID()}")
+            try {
+                val reopenedRepository = RoomSnippetRepository(
+                    reopenedDatabase,
+                    reopenedDatabase.snippetDao(),
+                    reopenedDatabase.snippetExecutionHistoryDao(),
+                    reopenedCipher,
+                )
+                val history = reopenedRepository.observeExecutionHistory().first()
+
+                assertEquals(1, history.size)
+                assertNull(history.single().snippetId)
+                assertEquals("Restart service", history.single().snippetTitle)
+                assertEquals("Primary host", history.single().targetLabel)
+                assertEquals("example.internal:22", history.single().targetDetail)
+            } finally {
+                reopenedDatabase.close()
+                reopenedCipher.deleteKey()
+            }
+        } finally {
+            persistentDbName.let(context::deleteDatabase)
+            persistentCipher.deleteKey()
+        }
     }
 
     @Test
@@ -264,6 +360,7 @@ class FoundationRepositoriesInstrumentedTest {
         val failingRepository = RoomSnippetRepository(
             database = database,
             snippetDao = database.snippetDao(),
+            snippetExecutionHistoryDao = database.snippetExecutionHistoryDao(),
             fieldCipher = FailingSecretFieldCipher,
         )
 
@@ -491,6 +588,7 @@ class FoundationRepositoriesInstrumentedTest {
                 AtermDatabase.MIGRATION_2_3,
                 AtermDatabase.MIGRATION_3_4,
                 AtermDatabase.MIGRATION_4_5,
+                AtermDatabase.MIGRATION_5_6,
             )
             .allowMainThreadQueries()
             .build()

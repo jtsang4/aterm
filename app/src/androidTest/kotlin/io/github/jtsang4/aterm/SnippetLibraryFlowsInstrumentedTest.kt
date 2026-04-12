@@ -28,6 +28,9 @@ import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionHistoryEntry
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionRecordInput
+import io.github.jtsang4.aterm.core.domain.model.SnippetExecutionTargetKind
 import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
@@ -40,6 +43,7 @@ import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -165,6 +169,10 @@ class SnippetLibraryFlowsInstrumentedTest {
         }
 
         composeRule.onNodeWithTag("snippet_edit_1").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("snippet_body_field", useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("snippet_body_field", useUnmergedTree = true)
             .assertTextContains("echo first line", substring = true)
         composeRule.onNodeWithTag("snippet_body_field", useUnmergedTree = true)
@@ -428,6 +436,90 @@ class SnippetLibraryFlowsInstrumentedTest {
     }
 
     @Test
+    fun successful_runs_show_recent_history_newest_first_and_keep_deleted_entries_stable() {
+        val hostRepository = SnippetFakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Production",
+                    address = "prod.example",
+                    port = 22,
+                    username = "root",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Restart live session",
+                    hostId = null,
+                    savedTarget = SnippetSavedTarget.ACTIVE_SESSION,
+                ),
+                Snippet(
+                    id = 2,
+                    title = "Restart saved host",
+                    hostId = 1,
+                    savedTarget = SnippetSavedTarget.SAVED_HOST,
+                ),
+            ),
+            initialBodies = mapOf(
+                1L to "printf 'history one\\n'",
+                2L to "printf 'history two\\n'",
+            ),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = hostRepository,
+            )
+        }
+
+        runBlocking {
+            snippetRepository.markExecuted(
+                id = 1,
+                execution = SnippetExecutionRecordInput(
+                    snippetId = 1,
+                    targetKind = SnippetExecutionTargetKind.ACTIVE_SESSION,
+                    targetLabel = "Fixture live session",
+                    targetDetail = "atermtester@10.0.2.2:3122",
+                    executedAt = Instant.parse("2026-04-10T01:00:00Z"),
+                ),
+            )
+            snippetRepository.markExecuted(
+                id = 2,
+                execution = SnippetExecutionRecordInput(
+                    snippetId = 2,
+                    targetKind = SnippetExecutionTargetKind.SAVED_HOST,
+                    targetLabel = "Production",
+                    targetDetail = "root@prod.example:22",
+                    executedAt = Instant.parse("2026-04-10T02:00:00Z"),
+                ),
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("snippet_history_title_0")
+            .assertTextContains("Restart saved host", substring = true)
+        composeRule.onNodeWithTag("snippet_history_target_0")
+            .assertTextContains("Saved host: Production (root@prod.example:22)", substring = true)
+        composeRule.onNodeWithTag("snippet_history_title_1")
+            .assertTextContains("Restart live session", substring = true)
+        composeRule.onNodeWithTag("snippet_history_target_1")
+            .assertTextContains("Active session: Fixture live session (atermtester@10.0.2.2:3122)", substring = true)
+
+        runBlocking { snippetRepository.deleteSnippet(2) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("snippet_history_title_0")
+            .assertTextContains("Restart saved host", substring = true)
+        composeRule.onNodeWithTag("snippet_history_status_0")
+            .assertTextContains("Snippet deleted", substring = true)
+    }
+
+    @Test
     fun saved_target_selection_is_persisted_and_requires_an_explicit_host_choice() {
         val snippetRepository = FakeSnippetRepository()
 
@@ -490,10 +582,13 @@ private class FakeSnippetRepository(
     initialBodies: Map<Long, String> = emptyMap(),
 ) : SnippetRepository {
     private val snippets = MutableStateFlow(initialSnippets.sortedBy(Snippet::id))
+    private val executionHistory = MutableStateFlow<List<SnippetExecutionHistoryEntry>>(emptyList())
     private val bodies = linkedMapOf<Long, String>().apply { putAll(initialBodies) }
     private var nextId = ((initialSnippets.maxOfOrNull(Snippet::id) ?: 0L) + 1L)
+    private var nextHistoryId = 1L
 
     override fun observeSnippets(): Flow<List<Snippet>> = snippets
+    override fun observeExecutionHistory(): Flow<List<SnippetExecutionHistoryEntry>> = executionHistory
 
     override suspend fun getSnippet(id: Long): Snippet? = snippets.value.firstOrNull { it.id == id }
 
@@ -521,17 +616,35 @@ private class FakeSnippetRepository(
 
     override suspend fun getBody(id: Long): String? = bodies[id]
 
-    override suspend fun markExecuted(id: Long, executedAt: Instant) {
+    override suspend fun markExecuted(
+        id: Long,
+        execution: SnippetExecutionRecordInput,
+        executedAt: Instant,
+    ) {
         val existing = getSnippet(id) ?: return
         snippets.value = snippets.value
             .filterNot { it.id == id }
             .plus(existing.copy(lastRunAt = executedAt))
             .sortedBy(Snippet::id)
+        executionHistory.value = listOf(
+            SnippetExecutionHistoryEntry(
+                id = nextHistoryId++,
+                snippetId = id,
+                snippetTitle = existing.title,
+                targetKind = execution.targetKind,
+                targetLabel = execution.targetLabel,
+                targetDetail = execution.targetDetail,
+                executedAt = executedAt,
+            ),
+        ) + executionHistory.value
     }
 
     override suspend fun deleteSnippet(id: Long) {
         snippets.value = snippets.value.filterNot { it.id == id }
         bodies.remove(id)
+        executionHistory.value = executionHistory.value.map { entry ->
+            if (entry.snippetId == id) entry.copy(snippetId = null) else entry
+        }
     }
 }
 
@@ -594,7 +707,19 @@ private class SnippetFakeSessionController(
 
     override suspend fun dispatchToActiveSession(input: String): SessionDispatchResult {
         dispatchedInputs += input
-        return dispatchBehavior(input)
+        return dispatchBehavior(input).also { result ->
+            if (result is SessionDispatchResult.Success) {
+                state.value = state.value.copy(transcript = state.value.transcript + input)
+            }
+        }
+    }
+
+    fun updateState(newState: SessionUiState) {
+        state.value = newState.copy(
+            liveTerminalState = newState.liveTerminalState.copy(
+                canSendInput = newState.connectionState == SessionConnectionState.CONNECTED,
+            ),
+        )
     }
 }
 

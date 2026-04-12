@@ -11,10 +11,12 @@ import io.github.jtsang4.aterm.core.data.local.dao.IdentityDao
 import io.github.jtsang4.aterm.core.data.local.dao.KnownHostTrustDao
 import io.github.jtsang4.aterm.core.data.local.dao.SessionMetadataDao
 import io.github.jtsang4.aterm.core.data.local.dao.SnippetDao
+import io.github.jtsang4.aterm.core.data.local.dao.SnippetExecutionHistoryDao
 import io.github.jtsang4.aterm.core.data.local.entity.HostEntity
 import io.github.jtsang4.aterm.core.data.local.entity.IdentityEntity
 import io.github.jtsang4.aterm.core.data.local.entity.KnownHostTrustEntity
 import io.github.jtsang4.aterm.core.data.local.entity.SessionMetadataEntity
+import io.github.jtsang4.aterm.core.data.local.entity.SnippetExecutionHistoryEntity
 import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
 
 @Database(
@@ -22,20 +24,53 @@ import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
         HostEntity::class,
         IdentityEntity::class,
         SnippetEntity::class,
+        SnippetExecutionHistoryEntity::class,
         SessionMetadataEntity::class,
         KnownHostTrustEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AtermDatabase : RoomDatabase() {
     abstract fun hostDao(): HostDao
     abstract fun identityDao(): IdentityDao
     abstract fun snippetDao(): SnippetDao
+    abstract fun snippetExecutionHistoryDao(): SnippetExecutionHistoryDao
     abstract fun sessionMetadataDao(): SessionMetadataDao
     abstract fun knownHostTrustDao(): KnownHostTrustDao
 
     companion object {
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `snippet_execution_history` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `snippetId` INTEGER,
+                        `snippetTitle` TEXT NOT NULL,
+                        `targetKind` TEXT NOT NULL,
+                        `targetLabel` TEXT NOT NULL,
+                        `targetDetail` TEXT NOT NULL,
+                        `executedAtEpochMillis` INTEGER NOT NULL,
+                        FOREIGN KEY(`snippetId`) REFERENCES `snippets`(`id`) ON UPDATE CASCADE ON DELETE SET NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS `index_snippet_execution_history_snippetId`
+                    ON `snippet_execution_history` (`snippetId`)
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS `index_snippet_execution_history_executedAtEpochMillis`
+                    ON `snippet_execution_history` (`executedAtEpochMillis`)
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val MIGRATION_4_5: Migration = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -329,7 +364,7 @@ abstract class AtermDatabase : RoomDatabase() {
             context.applicationContext,
             AtermDatabase::class.java,
             "aterm.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
     }
 }

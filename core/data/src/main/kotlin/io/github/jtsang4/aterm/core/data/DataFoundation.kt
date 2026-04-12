@@ -35,7 +35,12 @@ fun buildLocalDataFoundation(
     return LocalDataFoundation(
         hostRepository = RoomHostRepository(database.hostDao()),
         identityRepository = RoomIdentityRepository(database, database.identityDao(), fieldCipher),
-        snippetRepository = RoomSnippetRepository(database, database.snippetDao(), fieldCipher),
+        snippetRepository = RoomSnippetRepository(
+            database,
+            database.snippetDao(),
+            database.snippetExecutionHistoryDao(),
+            fieldCipher,
+        ),
         sessionMetadataRepository = RoomSessionMetadataRepository(database.sessionMetadataDao()),
         knownHostTrustRepository = RoomKnownHostTrustRepository(database.knownHostTrustDao()),
         settingsRepository = PreferencesSettingsRepository(createUserPreferencesDataStore(context)),
