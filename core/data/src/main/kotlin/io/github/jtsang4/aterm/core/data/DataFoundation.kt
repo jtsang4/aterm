@@ -25,6 +25,7 @@ data class LocalDataFoundation(
     val knownHostTrustRepository: KnownHostTrustRepository,
     val settingsRepository: SettingsRepository,
     val clearPersistentState: () -> Unit,
+    val close: () -> Unit,
 )
 
 fun buildLocalDataFoundation(
@@ -45,5 +46,6 @@ fun buildLocalDataFoundation(
         knownHostTrustRepository = RoomKnownHostTrustRepository(database.knownHostTrustDao()),
         settingsRepository = PreferencesSettingsRepository(createUserPreferencesDataStore(context)),
         clearPersistentState = { database.clearAllTables() },
+        close = { database.close() },
     )
 }

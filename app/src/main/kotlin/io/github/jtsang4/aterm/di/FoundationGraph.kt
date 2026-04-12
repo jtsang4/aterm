@@ -20,6 +20,7 @@ data class AppFoundationGraph(
     val settingsRepository: SettingsRepository,
     val fieldCipher: SecretFieldCipher,
     val clearPersistentState: () -> Unit,
+    val close: () -> Unit,
 )
 
 fun buildAppFoundationGraph(context: Context): AppFoundationGraph {
@@ -34,5 +35,6 @@ fun buildAppFoundationGraph(context: Context): AppFoundationGraph {
         settingsRepository = localDataFoundation.settingsRepository,
         fieldCipher = fieldCipher,
         clearPersistentState = localDataFoundation.clearPersistentState,
+        close = localDataFoundation.close,
     )
 }

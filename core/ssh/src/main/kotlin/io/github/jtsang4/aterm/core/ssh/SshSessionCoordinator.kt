@@ -31,6 +31,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -101,6 +102,25 @@ class SshSessionCoordinator(
         )
         emitTerminalState(canSendInput = false)
         restorePersistedSessionTruth()
+    }
+
+    fun close() {
+        runBlocking {
+            stateMutex.withLock {
+                val attempt = currentAttempt
+                currentAttempt = null
+                attempt?.cancel()
+            }
+            disconnectInternal(
+                state = SessionConnectionState.DISCONNECTED,
+                statusMessage = null,
+                lastError = null,
+                clearTranscript = false,
+                reconnectRequired = false,
+                disconnectReason = null,
+            )
+        }
+        ioScope.cancel()
     }
 
     override fun observeUiState(): StateFlow<SessionUiState> = uiState.asStateFlow()

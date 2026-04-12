@@ -18,6 +18,20 @@ data class AppDependencySnapshot(
 class AppContainer private constructor(
     private val foundationGraphFactory: (() -> AppFoundationGraph)?,
 ) {
+    private val foundationGraphDelegate = lazy {
+        checkNotNull(foundationGraphFactory) {
+            "AppFoundationGraph is only available from a context-backed container."
+        }.invoke()
+    }
+    private val sshSessionCoordinatorDelegate = lazy {
+        SshSessionCoordinator(
+            hostRepository = foundationGraph.hostRepository,
+            identityRepository = foundationGraph.identityRepository,
+            knownHostTrustRepository = foundationGraph.knownHostTrustRepository,
+            sessionMetadataRepository = foundationGraph.sessionMetadataRepository,
+        )
+    }
+
     val topLevelDestinations: List<AppDestination> = AppDestination.topLevel
 
     val dependencySnapshot = AppDependencySnapshot(
@@ -27,19 +41,19 @@ class AppContainer private constructor(
         terminal = TerminalModuleMarker.description,
     )
 
-    val foundationGraph: AppFoundationGraph by lazy {
-        checkNotNull(foundationGraphFactory) {
-            "AppFoundationGraph is only available from a context-backed container."
-        }.invoke()
-    }
+    val foundationGraph: AppFoundationGraph
+        get() = foundationGraphDelegate.value
 
-    val sshSessionCoordinator: SshSessionCoordinator by lazy {
-        SshSessionCoordinator(
-            hostRepository = foundationGraph.hostRepository,
-            identityRepository = foundationGraph.identityRepository,
-            knownHostTrustRepository = foundationGraph.knownHostTrustRepository,
-            sessionMetadataRepository = foundationGraph.sessionMetadataRepository,
-        )
+    val sshSessionCoordinator: SshSessionCoordinator
+        get() = sshSessionCoordinatorDelegate.value
+
+    fun close() {
+        if (sshSessionCoordinatorDelegate.isInitialized()) {
+            sshSessionCoordinator.close()
+        }
+        if (foundationGraphDelegate.isInitialized()) {
+            foundationGraph.close()
+        }
     }
 
     companion object {
