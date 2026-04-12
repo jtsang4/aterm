@@ -44,7 +44,9 @@ import io.github.jtsang4.aterm.core.domain.model.publicKeyPreview
 import io.github.jtsang4.aterm.core.domain.model.secretStatusLabel
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import java.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 object IdentitiesEntryPoint {
     const val route = "identities"
@@ -432,7 +434,7 @@ private fun PasswordIdentityEditorScreen(
                             return@Button
                         }
 
-                        coroutineScope.launch {
+                        coroutineScope.launch(Dispatchers.Main.immediate) {
                             runCatching {
                                 identityRepository.upsert(
                                     identity = Identity(
@@ -457,12 +459,16 @@ private fun PasswordIdentityEditorScreen(
                                     },
                                 )
                             }.onSuccess { savedIdentity ->
-                                onSaved(savedIdentity)
+                                withContext(Dispatchers.Main.immediate) {
+                                    onSaved(savedIdentity)
+                                }
                             }.onFailure { throwable ->
-                                saveError = when (throwable) {
-                                    is SecretMaterialUnavailableException ->
-                                        "Stored password is unavailable. Re-enter it to repair this identity."
-                                    else -> throwable.message ?: "Unable to save the identity."
+                                withContext(Dispatchers.Main.immediate) {
+                                    saveError = when (throwable) {
+                                        is SecretMaterialUnavailableException ->
+                                            "Stored password is unavailable. Re-enter it to repair this identity."
+                                        else -> throwable.message ?: "Unable to save the identity."
+                                    }
                                 }
                             }
                         }
@@ -764,7 +770,7 @@ private fun KeyIdentityEditorScreen(
                             return@Button
                         }
 
-                        coroutineScope.launch {
+                        coroutineScope.launch(Dispatchers.Main.immediate) {
                             val existing = identity
                             val parsed = if (requiresKeyEditor) {
                                 when (mode) {
@@ -839,12 +845,16 @@ private fun KeyIdentityEditorScreen(
                                             },
                                         )
                                     }.onSuccess { savedIdentity ->
-                                        onSaved(savedIdentity)
+                                        withContext(Dispatchers.Main.immediate) {
+                                            onSaved(savedIdentity)
+                                        }
                                     }.onFailure { throwable ->
-                                        saveError = when (throwable) {
-                                            is SecretMaterialUnavailableException ->
-                                                "Stored secret material is unavailable. Replace it to repair this identity."
-                                            else -> throwable.message ?: "Unable to save the key identity."
+                                        withContext(Dispatchers.Main.immediate) {
+                                            saveError = when (throwable) {
+                                                is SecretMaterialUnavailableException ->
+                                                    "Stored secret material is unavailable. Replace it to repair this identity."
+                                                else -> throwable.message ?: "Unable to save the key identity."
+                                            }
                                         }
                                     }
                                 }
@@ -903,9 +913,11 @@ private fun DeleteIdentityScreen(
                 }
                 Button(
                     onClick = {
-                        coroutineScope.launch {
+                        coroutineScope.launch(Dispatchers.Main.immediate) {
                             identityRepository.deleteIdentity(identity.id)
-                            onDeleted()
+                            withContext(Dispatchers.Main.immediate) {
+                                onDeleted()
+                            }
                         }
                     },
                     modifier = Modifier.testTag("identity_delete_confirm"),

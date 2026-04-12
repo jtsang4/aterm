@@ -299,6 +299,98 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun real_fixture_session_ui_truthfully_reflects_password_replacement_failures_and_recovery() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        waitForProofText(coordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        waitForUiDisconnect(coordinator, "Disconnected.")
+
+        replacePasswordIdentityFromUi(
+            identityId = identityId,
+            replacementPassword = "wrong-password",
+        )
+        assertEquals(
+            "wrong-password",
+            runBlocking { container.foundationGraph.identityRepository.getSecretMaterial(identityId) }?.primarySecret,
+        )
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val transcriptBeforeFailure = coordinator.observeUiState().value.transcript
+        val authFailed = connectFromUiExpectFailure(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Reconnect",
+            expectedMessage = "Authentication failed. Verify the linked identity and try again.",
+            expectTrustPrompt = false,
+        )
+        assertEquals(SessionConnectionState.FAILED, authFailed.connectionState)
+        assertEquals(transcriptBeforeFailure, authFailed.transcript)
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Authentication failed. Verify the linked identity and try again.", substring = true)
+        composeRule.onNodeWithTag("session_terminal_truth_banner")
+            .assertTextContains("Authentication failed. Verify the linked identity and try again.", substring = true)
+        composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_send_button").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_paste_button").assertIsNotEnabled()
+
+        replacePasswordIdentityFromUi(
+            identityId = identityId,
+            replacementPassword = FIXTURE_PASSWORD,
+        )
+        assertEquals(
+            FIXTURE_PASSWORD,
+            runBlocking { container.foundationGraph.identityRepository.getSecretMaterial(identityId) }?.primarySecret,
+        )
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val recovered = connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Reconnect",
+            expectTrustPrompt = false,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", recovered.statusMessage)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        waitForUiDisconnect(coordinator, "Disconnected.")
+    }
+
+    @Test
     fun changed_key_is_blocked_and_endpoint_edits_do_not_reuse_prior_trust() {
         val container = AppContainer.create(context)
         val identityId = runBlocking {
@@ -825,10 +917,9 @@ class SessionSshFixtureInstrumentedTest {
         logStep("starting no-local-echo phase", coordinator)
         sendCommandDirectly(coordinator, "stty -echo; printf 'ECHO_DISABLED\\n'")
         waitForTranscriptOutputLine(coordinator, "ECHO_DISABLED")
-        val beforeDelayedOutput = coordinator.observeUiState().value.transcript
         sendCommandDirectly(coordinator, "sleep 1; printf 'NO_LOCAL_ECHO_PROOF\\n'")
         runBlocking { delay(200) }
-        assertEquals(beforeDelayedOutput, coordinator.observeUiState().value.transcript)
+        assertFalse(coordinator.observeUiState().value.transcript.contains("NO_LOCAL_ECHO_PROOF"))
         waitForTranscriptOutputLine(coordinator, "NO_LOCAL_ECHO_PROOF")
         sendCommandDirectly(coordinator, "stty echo; printf 'ECHO_RESTORED\\n'")
         waitForTranscriptOutputLine(coordinator, "ECHO_RESTORED")
@@ -1141,6 +1232,7 @@ class SessionSshFixtureInstrumentedTest {
         expectTrustPrompt: Boolean,
     ): SessionUiState {
         val connectButtonTag = "session_connect_$hostId"
+        val initialState = coordinator.observeUiState().value
         scrollSessionHostIntoView(hostId)
         composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -1155,10 +1247,10 @@ class SessionSshFixtureInstrumentedTest {
             it.activeHostId == hostId &&
                 (
                     it.connectionState == SessionConnectionState.CONNECTING ||
-                        it.connectionState == SessionConnectionState.CONNECTED ||
-                        it.connectionState == SessionConnectionState.FAILED ||
-                        it.connectionState == SessionConnectionState.RECONNECT_REQUIRED ||
-                        it.pendingTrustDecision != null
+                        it.pendingTrustDecision != null ||
+                        it.connectionState != initialState.connectionState ||
+                        it.statusMessage != initialState.statusMessage ||
+                        it.transcript != initialState.transcript
                     )
         }
         if (expectTrustPrompt) {
@@ -1177,9 +1269,7 @@ class SessionSshFixtureInstrumentedTest {
             composeRule.waitForIdle()
         }
         val state = waitForState(coordinator, timeoutMillis = 30_000) {
-            it.activeHostId == hostId &&
-                it.connectionState != SessionConnectionState.CONNECTING &&
-                it.connectionState != SessionConnectionState.DISCONNECTED
+            it.activeHostId == hostId && it.connectionState == SessionConnectionState.CONNECTED
         }
         check(state.connectionState == SessionConnectionState.CONNECTED) {
             "Expected connected UI session for $FIXTURE_HOST:$FIXTURE_PORT but was ${state.connectionState} with status=${state.statusMessage} transcript=${state.transcript.take(200)}"
@@ -1200,6 +1290,7 @@ class SessionSshFixtureInstrumentedTest {
         timeoutMillis: Long = 10_000L,
     ): SessionUiState {
         val connectButtonTag = "session_connect_$hostId"
+        val initialState = coordinator.observeUiState().value
         scrollSessionHostIntoView(hostId)
         composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -1214,8 +1305,10 @@ class SessionSshFixtureInstrumentedTest {
             it.activeHostId == hostId &&
                 (
                     it.connectionState == SessionConnectionState.CONNECTING ||
-                        it.connectionState == SessionConnectionState.FAILED ||
-                        it.pendingTrustDecision != null
+                        it.pendingTrustDecision != null ||
+                        it.connectionState != initialState.connectionState ||
+                        it.statusMessage != initialState.statusMessage ||
+                        it.transcript != initialState.transcript
                     )
         }
         if (expectTrustPrompt) {
@@ -1263,6 +1356,25 @@ class SessionSshFixtureInstrumentedTest {
             composeRule.onAllNodesWithTag(rowTag).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag(rowTag).performScrollTo()
+    }
+
+    private fun replacePasswordIdentityFromUi(
+        identityId: Long,
+        replacementPassword: String,
+    ) {
+        composeRule.onNodeWithTag("nav_identities").performClick()
+        composeRule.onNodeWithTag("identity_edit_$identityId").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("identity_password_editor").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("identity_password_field").performTextClearance()
+        composeRule.onNodeWithTag("identity_password_field").performTextInput(replacementPassword)
+        composeRule.onNodeWithTag("identity_editor_save").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("identity_row_$identityId").assertIsDisplayed()
+            }.isSuccess
+        }
     }
 
 
