@@ -195,18 +195,11 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("host_row_$hostId").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav_session").performClick()
-        firstCoordinator.connect(hostId)
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            runCatching {
-                composeRule.onNodeWithTag("session_trust_prompt").assertIsDisplayed()
-            }.isSuccess
-        }
-        composeRule.onNodeWithTag("session_trust_endpoint")
-            .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
-        firstCoordinator.submitHostTrustDecision(true)
-        val firstConnected = waitForState(firstCoordinator) {
-            it.connectionState == SessionConnectionState.CONNECTED
-        }
+        val firstConnected = connectFromUi(
+            coordinator = firstCoordinator,
+            hostId = hostId,
+            expectTrustPrompt = true,
+        )
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", firstConnected.statusMessage)
         composeRule.onNodeWithTag("session_active_endpoint")
             .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
@@ -245,10 +238,11 @@ class SessionSshFixtureInstrumentedTest {
                     .assertTextContains("Renamed fixture password", substring = true)
             }.isSuccess
         }
-        firstCoordinator.connect(hostId)
-        val reconnectedAfterEdit = waitForState(firstCoordinator) {
-            it.connectionState == SessionConnectionState.CONNECTED
-        }
+        val reconnectedAfterEdit = connectFromUi(
+            coordinator = firstCoordinator,
+            hostId = hostId,
+            expectTrustPrompt = false,
+        )
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnectedAfterEdit.statusMessage)
         waitForProofText(firstCoordinator, FIXTURE_PORT)
         composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
@@ -256,17 +250,15 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("session_disconnect_button").performClick()
         waitForUiDisconnect(firstCoordinator, "Disconnected.")
 
-        val relaunchedContainer = AppContainer.create(context)
-        application.replaceAppContainerForTesting(relaunchedContainer)
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
 
         val relaunchedIdentity = runBlocking {
-            relaunchedContainer.foundationGraph.identityRepository.getIdentity(identityId)
+            firstContainer.foundationGraph.identityRepository.getIdentity(identityId)
         }
         assertEquals("Renamed fixture password", relaunchedIdentity?.name)
         assertNotNull(
-            runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId) },
+            runBlocking { firstContainer.foundationGraph.identityRepository.getSecretMaterial(identityId) },
         )
 
         composeRule.onNodeWithTag("nav_session").performClick()
@@ -279,11 +271,18 @@ class SessionSshFixtureInstrumentedTest {
         }
         assertEquals(
             1,
-            runBlocking { relaunchedContainer.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
+            runBlocking { firstContainer.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
         )
-        composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
-        composeRule.onNodeWithTag("session_connect_$hostId").assertIsDisplayed()
+        val relaunchedConnected = connectFromUi(
+            coordinator = firstCoordinator,
+            hostId = hostId,
+            expectTrustPrompt = false,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", relaunchedConnected.statusMessage)
+        waitForProofText(firstCoordinator, FIXTURE_PORT)
         composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        waitForUiDisconnect(firstCoordinator, "Disconnected.")
     }
 
     @Test
@@ -849,7 +848,7 @@ class SessionSshFixtureInstrumentedTest {
         coordinator: SshSessionCoordinator,
         hostId: Long,
         expectTrustPrompt: Boolean,
-    ) {
+    ): SessionUiState {
         composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
         composeRule.onNodeWithTag("session_connect_$hostId").assertIsDisplayed()
         coordinator.connect(hostId)
@@ -884,6 +883,7 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("session_status_message")
             .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
         assertProofEventually(coordinator, FIXTURE_PORT)
+        return state
     }
 
 
