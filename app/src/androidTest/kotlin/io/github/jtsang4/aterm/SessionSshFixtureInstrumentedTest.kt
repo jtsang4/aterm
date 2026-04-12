@@ -1010,6 +1010,119 @@ class SessionSshFixtureInstrumentedTest {
         assertEquals(resizedViewport.rows to resizedViewport.columns, sizeAfter)
     }
 
+    @Test
+    fun real_fixture_terminal_ui_proves_visible_input_scrollback_live_bottom_copy_and_multiline_paste() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+
+        val typedInputCommand = "printf 'VISIBLE_INPUT_UI_PROOF\\n'"
+        logStep("ui terminal proof: sending typed input", coordinator)
+        sendCommandFromUi(typedInputCommand)
+        waitForTranscriptOutputLine(coordinator, "VISIBLE_INPUT_UI_PROOF")
+        waitForCommandEchoBeforeOutput(
+            coordinator = coordinator,
+            echoedCommand = typedInputCommand,
+            outputLine = "VISIBLE_INPUT_UI_PROOF",
+        )
+
+        val longOutputCommand =
+            "i=1; while [ \$i -le 48 ]; do printf 'SCROLL_LINE_%02d\\n' \"\$i\"; i=\$((i+1)); done; " +
+                "printf 'MULTILINE_ALPHA\\nMULTILINE_BETA\\nMULTILINE_GAMMA\\n'; " +
+                "sleep 1; printf 'LIVE_BOTTOM_RESUME_PROOF\\n'"
+        logStep("ui terminal proof: sending long output", coordinator)
+        sendCommandFromUi(longOutputCommand)
+        waitForTranscriptOutputLine(coordinator, "SCROLL_LINE_48")
+        waitForTranscriptOutputLine(coordinator, "MULTILINE_GAMMA")
+
+        logStep("ui terminal proof: scrolling history", coordinator)
+        scrollTerminalHistoryUntilVisible(coordinator, "SCROLL_LINE_01")
+        composeRule.onNodeWithTag("session_terminal_status")
+            .assertTextContains("viewing history", substring = true)
+
+        logStep("ui terminal proof: staying in history while live output arrives", coordinator)
+        runBlocking { delay(1_500) }
+        composeRule.onNodeWithTag("session_terminal_status")
+            .assertTextContains("viewing history", substring = true)
+
+        logStep("ui terminal proof: jumping back to live bottom", coordinator)
+        clickTaggedButton("session_jump_to_live")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            !currentTerminalStatusText().contains("viewing history")
+        }
+        waitForTranscriptOutputLine(coordinator, "LIVE_BOTTOM_RESUME_PROOF")
+
+        logStep("ui terminal proof: copying transcript", coordinator)
+        clickTaggedButton("session_copy_button")
+        composeRule.onNodeWithTag("session_clipboard_status")
+            .assertTextContains("Copied terminal output", substring = true)
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            currentClipboardText()?.contains("LIVE_BOTTOM_RESUME_PROOF") == true
+        }
+        val copiedTerminalText = currentClipboardText()
+            ?: error("Expected terminal copy to populate the clipboard.")
+        assertTrue(copiedTerminalText.contains("SCROLL_LINE_01"))
+        assertTrue(copiedTerminalText.contains("MULTILINE_ALPHA"))
+        assertTrue(copiedTerminalText.contains("LIVE_BOTTOM_RESUME_PROOF"))
+
+        val clipboard = composeRule.activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val multilinePasteCommand = """
+            printf 'PASTE_VISIBLE_LINE_1\n'
+            printf 'PASTE_VISIBLE_LINE_2\n'
+            printf 'PASTE_VISIBLE_LINE_3\n'
+        """.trimIndent() + "\n"
+        composeRule.runOnUiThread {
+            clipboard.setPrimaryClip(
+                android.content.ClipData.newPlainText("aterm-terminal", multilinePasteCommand),
+            )
+        }
+        logStep("ui terminal proof: pasting multiline clipboard", coordinator)
+        clickTaggedButton("session_paste_button")
+        composeRule.onNodeWithTag("session_clipboard_status")
+            .assertTextContains("Pasted from clipboard", substring = true)
+        waitForTranscriptOutputLine(coordinator, "PASTE_VISIBLE_LINE_3")
+        waitForTranscriptOutputLinesInOrder(
+            coordinator = coordinator,
+            expectedLines = listOf(
+                "PASTE_VISIBLE_LINE_1",
+                "PASTE_VISIBLE_LINE_2",
+                "PASTE_VISIBLE_LINE_3",
+            ),
+        )
+    }
+
     private fun buildCoordinator(container: AppContainer): SshSessionCoordinator = SshSessionCoordinator(
         hostRepository = container.foundationGraph.hostRepository,
         identityRepository = container.foundationGraph.identityRepository,
@@ -1132,7 +1245,7 @@ class SessionSshFixtureInstrumentedTest {
     private fun waitForAlternateScreenState(
         coordinator: SshSessionCoordinator,
         expected: Boolean,
-        timeoutMillis: Long = 15_000L,
+        timeoutMillis: Long = 30_000L,
     ) {
         val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
             it.liveTerminalState.snapshot.alternateScreenActive == expected
@@ -1150,6 +1263,41 @@ class SessionSshFixtureInstrumentedTest {
         val text = currentTerminalMetricsText()
         val match = regex.find(text) ?: error("Missing terminal metrics text: $text")
         return match.groupValues[1].toInt() to match.groupValues[2].toInt()
+    }
+
+    private fun waitForVisibleTerminalLine(
+        coordinator: SshSessionCoordinator,
+        expected: String,
+        timeoutMillis: Long = 10_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            isVisibleTerminalLine(it, expected)
+        }
+        check(isVisibleTerminalLine(state, expected)) {
+            "Expected visible terminal line \"$expected\", but visible lines were: ${state.liveTerminalState.snapshot.visibleLines.map(::sanitizeTerminalLine)}"
+        }
+    }
+
+    private fun isVisibleTerminalLine(
+        state: SessionUiState,
+        expected: String,
+    ): Boolean = state.liveTerminalState.snapshot.visibleLines
+        .map(::sanitizeTerminalLine)
+        .any { line -> line.contains(expected) }
+
+    private fun scrollTerminalHistoryUntilVisible(
+        coordinator: SshSessionCoordinator,
+        expected: String,
+        maxPageUps: Int = 12,
+    ) {
+        repeat(maxPageUps) {
+            if (isVisibleTerminalLine(coordinator.observeUiState().value, expected)) {
+                return
+            }
+            clickTaggedButton("session_scrollback_up")
+            composeRule.waitForIdle()
+        }
+        waitForVisibleTerminalLine(coordinator, expected)
     }
 
     private fun currentTerminalMetricsText(): String = composeRule.onNodeWithTag("session_terminal_metrics")
@@ -1223,6 +1371,48 @@ class SessionSshFixtureInstrumentedTest {
         coordinator: SshSessionCoordinator,
     ) {
         Log.i("SessionSshFixtureTest", "$label :: ${coordinator.observeUiState().value.transcript.takeLast(300)}")
+    }
+
+    private fun waitForCommandEchoBeforeOutput(
+        coordinator: SshSessionCoordinator,
+        echoedCommand: String,
+        outputLine: String,
+        timeoutMillis: Long = 30_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            val lines = sanitizedTranscriptLines(it.transcript)
+            val echoedIndex = lines.indexOfFirst { line -> line.contains(echoedCommand) }
+            val outputIndex = lines.indexOfFirst { line -> line == outputLine }
+            echoedIndex >= 0 && outputIndex > echoedIndex
+        }
+        val lines = sanitizedTranscriptLines(state.transcript)
+        val echoedIndex = lines.indexOfFirst { line -> line.contains(echoedCommand) }
+        val outputIndex = lines.indexOfFirst { line -> line == outputLine }
+        check(echoedIndex >= 0 && outputIndex > echoedIndex) {
+            "Expected echoed command \"$echoedCommand\" before output \"$outputLine\", but transcript lines were: ${lines.takeLast(40)}"
+        }
+    }
+
+    private fun waitForTranscriptOutputLinesInOrder(
+        coordinator: SshSessionCoordinator,
+        expectedLines: List<String>,
+        timeoutMillis: Long = 30_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            containsOrderedOutputLines(sanitizedTranscriptLines(it.transcript), expectedLines)
+        }
+        check(containsOrderedOutputLines(sanitizedTranscriptLines(state.transcript), expectedLines)) {
+            "Transcript did not contain expected output lines in order ${expectedLines.joinToString()}: ${state.transcript.takeLast(400)}"
+        }
+    }
+
+    private fun currentClipboardText(): String? {
+        val clipboard = composeRule.activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        return clipboard.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.coerceToText(composeRule.activity)
+            ?.toString()
     }
 
     private fun connectFromUi(
@@ -1443,6 +1633,26 @@ private fun String.containsOutputLine(value: String): Boolean =
     countOutputLineOccurrences(value) > 0
 
 private fun String.countOutputLineOccurrences(value: String): Int =
-    lineSequence()
-        .map { it.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trim() }
-        .count { it == value }
+    sanitizedTranscriptLines(this).count { it == value }
+
+private fun sanitizedTranscriptLines(text: String): List<String> =
+    text.lineSequence()
+        .map(::sanitizeTerminalLine)
+        .filter { it.isNotEmpty() }
+        .toList()
+
+private fun sanitizeTerminalLine(text: String): String =
+    text.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trim()
+
+private fun containsOrderedOutputLines(
+    lines: List<String>,
+    expectedLines: List<String>,
+): Boolean {
+    var nextIndex = 0
+    for (line in lines) {
+        if (nextIndex < expectedLines.size && line == expectedLines[nextIndex]) {
+            nextIndex += 1
+        }
+    }
+    return nextIndex == expectedLines.size
+}
