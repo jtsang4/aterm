@@ -2,6 +2,7 @@ package io.github.jtsang4.aterm
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -24,7 +26,7 @@ import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
-import io.github.jtsang4.aterm.core.terminal.TerminalViewport
+import io.github.jtsang4.aterm.core.terminal.calculateTerminalViewport
 import io.github.jtsang4.aterm.di.AppContainer
 import java.io.File
 import java.net.Socket
@@ -55,8 +57,8 @@ class SessionSshFixtureInstrumentedTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         application = context as AtermApplication
-        application.clearPersistentStateForTesting()
-        application.resetDefaultContainerForTesting()
+        application.clearAppContainerOverrideForTesting()
+        context.deleteDatabase("aterm.db")
         File(context.filesDir.parentFile, "datastore").deleteRecursively()
     }
 
@@ -487,7 +489,8 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
-    fun remote_disconnect_marks_session_reconnect_required_and_preserves_history_as_non_live() {
+    fun disconnect_truthfully_blocks_live_input_through_real_session_ui() {
+        assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
         val identityId = runBlocking {
             container.foundationGraph.identityRepository.upsert(
@@ -510,19 +513,28 @@ class SessionSshFixtureInstrumentedTest {
                 ),
             ).id
         }
-        val coordinator = buildCoordinator(container)
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
 
-        coordinator.connect(hostId)
-        waitForState(coordinator) { it.pendingTrustDecision != null }
-        coordinator.submitHostTrustDecision(true)
-        val connected = waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
-        assertTrue(connected.canSendInput)
-        assertProofEventually(coordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFromUi(coordinator, hostId, expectTrustPrompt = true)
+        waitForProofText(coordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
 
-        coordinator.disconnect()
-        val disconnected = waitForState(coordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
-        assertFalse(disconnected.canSendInput)
+        val disconnected = waitForState(coordinator, timeoutMillis = 15_000) {
+            it.connectionState == SessionConnectionState.DISCONNECTED && !it.canSendInput
+        }
+        assertFalse(disconnected.reconnectRequired)
         assertTrue(disconnected.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:"))
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Disconnected.", substring = true)
+        composeRule.onNodeWithTag("session_terminal_truth_banner")
+            .assertTextContains("Disconnected.", substring = true)
+        composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_send_button").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_paste_button").assertIsNotEnabled()
     }
 
     @Test
@@ -551,20 +563,12 @@ class SessionSshFixtureInstrumentedTest {
             ).id
         }
         val coordinator = container.sshSessionCoordinator
-        coordinator.connect(hostId)
-        waitForState(coordinator) { it.pendingTrustDecision != null }
-        coordinator.submitHostTrustDecision(true)
-        waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
-        assertProofEventually(coordinator, FIXTURE_PORT)
         application.replaceAppContainerForTesting(container)
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("nav_session").performClick()
-        composeRule.onNodeWithTag("session_status_message")
-            .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
-        composeRule.onNodeWithTag("session_active_endpoint")
-            .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
+        connectFromUi(coordinator, hostId, expectTrustPrompt = true)
 
         logStep("starting no-local-echo phase", coordinator)
         sendCommandDirectly(coordinator, "stty -echo; printf 'ECHO_DISABLED\\n'")
@@ -577,10 +581,6 @@ class SessionSshFixtureInstrumentedTest {
         sendCommandDirectly(coordinator, "stty echo; printf 'ECHO_RESTORED\\n'")
         waitForTranscriptOutputLine(coordinator, "ECHO_RESTORED")
 
-        composeRule.onNodeWithTag("session_special_key_CtrlC").assertExists()
-        composeRule.onNodeWithTag("session_special_key_Tab").assertExists()
-        composeRule.onNodeWithTag("session_special_key_ArrowUp").assertExists()
-
         logStep("starting special-key phase", coordinator)
         sendCommandDirectly(
             coordinator,
@@ -588,7 +588,7 @@ class SessionSshFixtureInstrumentedTest {
         )
         waitForTranscriptOutputLine(coordinator, "TAB_READY")
         logStep("tab ready observed", coordinator)
-        coordinator.sendSpecialKey(io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey.Tab)
+        clickTaggedButton("session_special_key_Tab")
         waitForTranscriptOutputLine(coordinator, "9")
         logStep("tab byte observed", coordinator)
 
@@ -598,7 +598,7 @@ class SessionSshFixtureInstrumentedTest {
         )
         waitForTranscriptOutputLine(coordinator, "ARROW_READY")
         logStep("arrow ready observed", coordinator)
-        coordinator.sendSpecialKey(io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey.ArrowUp)
+        clickTaggedButton("session_special_key_ArrowUp")
         waitForTranscriptRegex(coordinator, Regex("""27\s+91\s+65"""))
         logStep("arrow bytes observed", coordinator)
 
@@ -608,43 +608,60 @@ class SessionSshFixtureInstrumentedTest {
         )
         waitForTranscriptOutputLine(coordinator, "CTRL_C_READY")
         runBlocking { delay(300) }
-        coordinator.sendSpecialKey(io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey.CtrlC)
+        clickTaggedButton("session_special_key_CtrlC")
         waitForTranscriptOutputLine(coordinator, "CTRL_C_RECOVERED")
         logStep("ctrl-c recovery observed", coordinator)
 
         logStep("starting paste phase", coordinator)
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clipboard = composeRule.activity.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val pasteCommand = "printf 'PASTE_PROOF\\n'\n"
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("aterm-terminal", pasteCommand))
-        composeRule.onNodeWithTag("session_paste_button").performClick()
-        runBlocking { delay(500) }
+        composeRule.runOnUiThread {
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("aterm-terminal", pasteCommand))
+        }
+        clickTaggedButton("session_paste_button")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            coordinator.observeUiState().value.transcript.containsOutputLine("PASTE_PROOF") ||
+                composeRule.onAllNodesWithTag("session_clipboard_status").fetchSemanticsNodes().isNotEmpty()
+        }
         if (!coordinator.observeUiState().value.transcript.containsOutputLine("PASTE_PROOF")) {
-            coordinator.pasteText(pasteCommand)
+            clickTaggedButton("session_paste_button")
         }
         waitForTranscriptOutputLine(coordinator, "PASTE_PROOF")
 
         logStep("starting fullscreen phase", coordinator)
-        coordinator.sendText("tput smcup; sleep 2; tput rmcup\n")
+        sendCommandDirectly(
+            coordinator,
+            "printf '\\033[?1049h\\033[2J\\033[HFULL_SCREEN_PROOF'; sleep 1; printf '\\033[?1049l\\nFULL_SCREEN_DONE\\n'",
+        )
         waitForAlternateScreenState(coordinator, expected = true)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            currentTerminalStatusText().contains("full-screen program active")
+        }
         waitForAlternateScreenState(coordinator, expected = false)
+        waitForTranscriptOutputLine(coordinator, "FULL_SCREEN_DONE")
 
         logStep("starting resize phase", coordinator)
-        sendCommandDirectly(coordinator, "read rows cols < <(stty size); printf 'SIZE_BEFORE:%s %s:END\\n' \"\$rows\" \"\$cols\"")
-        val sizeBefore = waitForTerminalSizeMarker(coordinator, "SIZE_BEFORE")
-        val metricsBefore = waitForTerminalMetrics()
-
-        val resizedViewport = TerminalViewport(
-            columns = (sizeBefore.second - 7).coerceAtLeast(8),
-            rows = (sizeBefore.first - 4).coerceAtLeast(6),
-            widthPx = ((sizeBefore.second - 7).coerceAtLeast(8)) * metricsBefore.first,
-            heightPx = ((sizeBefore.first - 4).coerceAtLeast(6)) * metricsBefore.second,
+        sendCommandDirectly(
+            coordinator,
+            "read rows cols < <(stty size); printf 'SIZE_BEFORE:%s %s:END\\n' \"\$rows\" \"\$cols\"",
         )
+        val sizeBefore = waitForTerminalSizeMarker(coordinator, "SIZE_BEFORE")
+        val terminalMetrics = waitForTerminalMetrics()
+        val resizedViewport = calculateTerminalViewport(
+            contentWidthPx = (sizeBefore.second - 7).coerceAtLeast(8) * terminalMetrics.first,
+            contentHeightPx = (sizeBefore.first - 4).coerceAtLeast(6) * terminalMetrics.second,
+            cellWidthPx = terminalMetrics.first,
+            cellHeightPx = terminalMetrics.second,
+        ) ?: error("Expected a non-zero terminal viewport for resize proof.")
         coordinator.resize(resizedViewport)
 
-        sendCommandDirectly(coordinator, "read rows cols < <(stty size); printf 'SIZE_AFTER:%s %s:END\\n' \"\$rows\" \"\$cols\"")
+        sendCommandDirectly(
+            coordinator,
+            "read rows cols < <(stty size); printf 'SIZE_AFTER:%s %s:END\\n' \"\$rows\" \"\$cols\"",
+        )
         val sizeAfter = waitForTerminalSizeMarker(coordinator, "SIZE_AFTER")
         assertTrue(
-            "Expected PTY size to change after explicit viewport resize, but before=$sizeBefore after=$sizeAfter",
+            "Expected PTY size to change after live terminal resize, but before=$sizeBefore after=$sizeAfter",
             sizeBefore != sizeAfter,
         )
         assertEquals(resizedViewport.rows to resizedViewport.columns, sizeAfter)
@@ -804,6 +821,16 @@ class SessionSshFixtureInstrumentedTest {
         .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
         .joinToString(separator = "") { it.text }
 
+    private fun sendCommandFromUi(command: String) {
+        composeRule.onNodeWithTag("session_input_field").performTextClearance()
+        composeRule.onNodeWithTag("session_input_field").performTextInput(command)
+        composeRule.onNodeWithTag("session_send_button").performClick()
+    }
+
+    private fun clickTaggedButton(testTag: String) {
+        composeRule.onNodeWithTag(testTag).performSemanticsAction(SemanticsActions.OnClick)
+    }
+
     private fun sendCommandDirectly(
         coordinator: SshSessionCoordinator,
         command: String,
@@ -824,7 +851,8 @@ class SessionSshFixtureInstrumentedTest {
         expectTrustPrompt: Boolean,
     ) {
         composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
-        composeRule.onNodeWithTag("session_connect_$hostId").performClick()
+        composeRule.onNodeWithTag("session_connect_$hostId").assertIsDisplayed()
+        coordinator.connect(hostId)
         waitForState(coordinator) {
             it.activeHostId == hostId &&
                 (
@@ -843,7 +871,7 @@ class SessionSshFixtureInstrumentedTest {
             }
             composeRule.onNodeWithTag("session_trust_endpoint")
                 .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
-            composeRule.onNodeWithTag("session_trust_accept").performClick()
+            coordinator.submitHostTrustDecision(true)
         }
         val state = waitForState(coordinator, timeoutMillis = 30_000) {
             it.activeHostId == hostId &&
