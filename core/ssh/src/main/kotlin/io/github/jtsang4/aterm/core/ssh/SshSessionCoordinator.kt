@@ -754,6 +754,12 @@ class SshSessionCoordinator(
         disconnectedAt: Instant? = null,
     ) {
         val repository = sessionMetadataRepository ?: return
+        currentSessionMetadataId?.let { existingId ->
+            val existing = repository.getSession(existingId)
+            if (existing == null) {
+                currentSessionMetadataId = null
+            }
+        }
         val persisted = repository.upsert(
             SessionMetadata(
                 id = currentSessionMetadataId ?: 0,
@@ -844,9 +850,9 @@ class SshSessionCoordinator(
 
     companion object {
         private val IMPORT_RESOURCE = NamedResource { "saved-private-key" }
-        private const val CONNECT_TIMEOUT_MILLIS = 5_000L
-        private const val AUTH_TIMEOUT_MILLIS = 5_000L
-        private const val CHANNEL_OPEN_TIMEOUT_MILLIS = 5_000L
+        private const val CONNECT_TIMEOUT_MILLIS = 20_000L
+        private const val AUTH_TIMEOUT_MILLIS = 20_000L
+        private const val CHANNEL_OPEN_TIMEOUT_MILLIS = 20_000L
         private const val TRUST_DECISION_TIMEOUT_MILLIS = 30_000L
         private const val DEFAULT_TERMINAL_COLUMNS = 80
         private const val DEFAULT_TERMINAL_ROWS = 24

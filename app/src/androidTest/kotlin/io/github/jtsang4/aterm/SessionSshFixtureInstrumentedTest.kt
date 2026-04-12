@@ -203,6 +203,7 @@ class SessionSshFixtureInstrumentedTest {
         val firstConnected = connectFromUi(
             coordinator = firstCoordinator,
             hostId = hostId,
+            expectedButtonLabel = "Connect",
             expectTrustPrompt = true,
         )
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", firstConnected.statusMessage)
@@ -246,6 +247,7 @@ class SessionSshFixtureInstrumentedTest {
         val reconnectedAfterEdit = connectFromUi(
             coordinator = firstCoordinator,
             hostId = hostId,
+            expectedButtonLabel = "Reconnect",
             expectTrustPrompt = false,
         )
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnectedAfterEdit.statusMessage)
@@ -281,6 +283,7 @@ class SessionSshFixtureInstrumentedTest {
         val relaunchedConnected = connectFromUi(
             coordinator = firstCoordinator,
             hostId = hostId,
+            expectedButtonLabel = "Reconnect",
             expectTrustPrompt = false,
         )
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", relaunchedConnected.statusMessage)
@@ -523,7 +526,12 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("nav_session").performClick()
-        connectFromUi(coordinator, hostId, expectTrustPrompt = true)
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
         waitForProofText(coordinator, FIXTURE_PORT)
         composeRule.onNodeWithTag("session_disconnect_button").performClick()
 
@@ -572,7 +580,12 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("nav_session").performClick()
-        connectFromUi(coordinator, hostId, expectTrustPrompt = true)
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
 
         logStep("starting no-local-echo phase", coordinator)
         sendCommandDirectly(coordinator, "stty -echo; printf 'ECHO_DISABLED\\n'")
@@ -852,11 +865,23 @@ class SessionSshFixtureInstrumentedTest {
     private fun connectFromUi(
         coordinator: SshSessionCoordinator,
         hostId: Long,
+        expectedButtonLabel: String,
         expectTrustPrompt: Boolean,
     ): SessionUiState {
-        composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
-        composeRule.onNodeWithTag("session_connect_$hostId").assertIsDisplayed()
-        coordinator.connect(hostId)
+        val connectButtonTag = "session_connect_$hostId"
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag(connectButtonTag).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("session_host_row_$hostId").performScrollTo()
+        composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag(connectButtonTag)
+                    .assertIsDisplayed()
+                    .assertTextContains(expectedButtonLabel, substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag(connectButtonTag).performClick()
         waitForState(coordinator) {
             it.activeHostId == hostId &&
                 (
@@ -875,7 +900,12 @@ class SessionSshFixtureInstrumentedTest {
             }
             composeRule.onNodeWithTag("session_trust_endpoint")
                 .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
-            coordinator.submitHostTrustDecision(true)
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithTag("session_trust_accept").fetchSemanticsNodes().isNotEmpty()
+            }
+            clickTaggedButton("session_trust_accept")
+            waitForState(coordinator, timeoutMillis = 10_000) { it.pendingTrustDecision == null }
+            composeRule.waitForIdle()
         }
         val state = waitForState(coordinator, timeoutMillis = 30_000) {
             it.activeHostId == hostId &&
