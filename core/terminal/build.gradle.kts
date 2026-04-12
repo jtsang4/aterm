@@ -36,5 +36,6 @@ dependencies {
     implementation(libs.androidx.foundation)
     implementation(libs.androidx.ui)
     implementation(libs.androidx.material3)
+    implementation(libs.termux.terminal.view)
     testImplementation(libs.junit4)
 }

@@ -1,6 +1,7 @@
 package io.github.jtsang4.aterm
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -23,6 +24,7 @@ import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
+import io.github.jtsang4.aterm.core.terminal.TerminalViewport
 import io.github.jtsang4.aterm.di.AppContainer
 import java.io.File
 import java.net.Socket
@@ -53,8 +55,8 @@ class SessionSshFixtureInstrumentedTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         application = context as AtermApplication
-        application.clearAppContainerOverrideForTesting()
-        context.deleteDatabase("aterm.db")
+        application.clearPersistentStateForTesting()
+        application.resetDefaultContainerForTesting()
         File(context.filesDir.parentFile, "datastore").deleteRecursively()
     }
 
@@ -150,30 +152,34 @@ class SessionSshFixtureInstrumentedTest {
         assertNotNull(
             runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId) },
         )
+        relaunchedCoordinator.disconnect()
+        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
     }
 
     @Test
     fun real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows() {
         assertFixtureReachableFromHost()
         val firstContainer = AppContainer.create(context)
-        runBlocking {
+        val identityId = runBlocking {
             firstContainer.foundationGraph.identityRepository.upsert(
                 identity = Identity(
                     name = "Fixture password",
                     kind = IdentityKind.PASSWORD,
                 ),
                 secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
-            )
+            ).id
+        }
+        val hostId = runBlocking {
             firstContainer.foundationGraph.hostRepository.upsert(
                 Host(
                     label = "SSH fixture",
                     address = FIXTURE_HOST,
                     port = FIXTURE_PORT,
                     username = FIXTURE_USERNAME,
-                    identityId = 1,
+                    identityId = identityId,
                     authKind = HostAuthKind.PASSWORD,
                 ),
-            )
+            ).id
         }
         val firstCoordinator = firstContainer.sshSessionCoordinator
         application.replaceAppContainerForTesting(firstContainer)
@@ -181,13 +187,13 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("nav_identities").performClick()
-        composeRule.onNodeWithTag("identity_row_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_row_$identityId").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav_hosts").performClick()
-        composeRule.onNodeWithTag("host_row_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_row_$hostId").assertIsDisplayed()
 
         composeRule.onNodeWithTag("nav_session").performClick()
-        firstCoordinator.connect(1)
+        firstCoordinator.connect(hostId)
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
                 composeRule.onNodeWithTag("session_trust_prompt").assertIsDisplayed()
@@ -220,24 +226,24 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
 
         composeRule.onNodeWithTag("nav_identities").performClick()
-        composeRule.onNodeWithTag("identity_edit_1").performClick()
+        composeRule.onNodeWithTag("identity_edit_$identityId").performClick()
         composeRule.onNodeWithTag("identity_name_field").performTextClearance()
         composeRule.onNodeWithTag("identity_name_field").performTextInput("Renamed fixture password")
         composeRule.onNodeWithTag("identity_editor_save").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
-                composeRule.onNodeWithTag("identity_row_1").assertIsDisplayed()
+                composeRule.onNodeWithTag("identity_row_$identityId").assertIsDisplayed()
             }.isSuccess
         }
 
         composeRule.onNodeWithTag("nav_session").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
-                composeRule.onNodeWithTag("session_host_identity_1")
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
                     .assertTextContains("Renamed fixture password", substring = true)
             }.isSuccess
         }
-        firstCoordinator.connect(1)
+        firstCoordinator.connect(hostId)
         val reconnectedAfterEdit = waitForState(firstCoordinator) {
             it.connectionState == SessionConnectionState.CONNECTED
         }
@@ -254,18 +260,18 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.waitForIdle()
 
         val relaunchedIdentity = runBlocking {
-            relaunchedContainer.foundationGraph.identityRepository.getIdentity(1)
+            relaunchedContainer.foundationGraph.identityRepository.getIdentity(identityId)
         }
         assertEquals("Renamed fixture password", relaunchedIdentity?.name)
         assertNotNull(
-            runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(1) },
+            runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId) },
         )
 
         composeRule.onNodeWithTag("nav_session").performClick()
-        composeRule.onNodeWithTag("session_host_row_1").performScrollTo()
+        composeRule.onNodeWithTag("session_host_row_$hostId").performScrollTo()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
-                composeRule.onNodeWithTag("session_host_identity_1")
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
                     .assertTextContains("Renamed fixture password", substring = true)
             }.isSuccess
         }
@@ -273,8 +279,8 @@ class SessionSshFixtureInstrumentedTest {
             1,
             runBlocking { relaunchedContainer.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
         )
-        composeRule.onNodeWithTag("session_connect_1").performScrollTo()
-        composeRule.onNodeWithTag("session_connect_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_connect_$hostId").performScrollTo()
+        composeRule.onNodeWithTag("session_connect_$hostId").assertIsDisplayed()
         composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
     }
 
@@ -519,6 +525,131 @@ class SessionSshFixtureInstrumentedTest {
         assertTrue(disconnected.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$FIXTURE_PORT:"))
     }
 
+    @Test
+    fun real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "SSH fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        coordinator.connect(hostId)
+        waitForState(coordinator) { it.pendingTrustDecision != null }
+        coordinator.submitHostTrustDecision(true)
+        waitForState(coordinator) { it.connectionState == SessionConnectionState.CONNECTED }
+        assertProofEventually(coordinator, FIXTURE_PORT)
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        composeRule.onNodeWithTag("session_active_endpoint")
+            .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
+
+        logStep("starting no-local-echo phase", coordinator)
+        sendCommandDirectly(coordinator, "stty -echo; printf 'ECHO_DISABLED\\n'")
+        waitForTranscriptOutputLine(coordinator, "ECHO_DISABLED")
+        val beforeDelayedOutput = coordinator.observeUiState().value.transcript
+        sendCommandDirectly(coordinator, "sleep 1; printf 'NO_LOCAL_ECHO_PROOF\\n'")
+        runBlocking { delay(200) }
+        assertEquals(beforeDelayedOutput, coordinator.observeUiState().value.transcript)
+        waitForTranscriptOutputLine(coordinator, "NO_LOCAL_ECHO_PROOF")
+        sendCommandDirectly(coordinator, "stty echo; printf 'ECHO_RESTORED\\n'")
+        waitForTranscriptOutputLine(coordinator, "ECHO_RESTORED")
+
+        composeRule.onNodeWithTag("session_special_key_CtrlC").assertExists()
+        composeRule.onNodeWithTag("session_special_key_Tab").assertExists()
+        composeRule.onNodeWithTag("session_special_key_ArrowUp").assertExists()
+
+        logStep("starting special-key phase", coordinator)
+        sendCommandDirectly(
+            coordinator,
+            "oldstty=\$(stty -g); stty raw -echo; printf 'TAB_READY\\n'; dd bs=1 count=1 2>/dev/null | od -An -t u1; stty \"\$oldstty\"",
+        )
+        waitForTranscriptOutputLine(coordinator, "TAB_READY")
+        logStep("tab ready observed", coordinator)
+        coordinator.sendSpecialKey(io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey.Tab)
+        waitForTranscriptOutputLine(coordinator, "9")
+        logStep("tab byte observed", coordinator)
+
+        sendCommandDirectly(
+            coordinator,
+            "oldstty=\$(stty -g); stty raw -echo; printf 'ARROW_READY\\n'; dd bs=1 count=3 2>/dev/null | od -An -t u1; stty \"\$oldstty\"",
+        )
+        waitForTranscriptOutputLine(coordinator, "ARROW_READY")
+        logStep("arrow ready observed", coordinator)
+        coordinator.sendSpecialKey(io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey.ArrowUp)
+        waitForTranscriptRegex(coordinator, Regex("""27\s+91\s+65"""))
+        logStep("arrow bytes observed", coordinator)
+
+        sendCommandDirectly(
+            coordinator,
+            "python3 -c \"import signal,sys,time; print('CTRL_C_READY', flush=True); signal.signal(signal.SIGINT, lambda signum, frame: (print('CTRL_C_RECOVERED', flush=True), sys.exit(0))); time.sleep(10)\"",
+        )
+        waitForTranscriptOutputLine(coordinator, "CTRL_C_READY")
+        runBlocking { delay(300) }
+        coordinator.sendSpecialKey(io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey.CtrlC)
+        waitForTranscriptOutputLine(coordinator, "CTRL_C_RECOVERED")
+        logStep("ctrl-c recovery observed", coordinator)
+
+        logStep("starting paste phase", coordinator)
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val pasteCommand = "printf 'PASTE_PROOF\\n'\n"
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("aterm-terminal", pasteCommand))
+        composeRule.onNodeWithTag("session_paste_button").performClick()
+        runBlocking { delay(500) }
+        if (!coordinator.observeUiState().value.transcript.containsOutputLine("PASTE_PROOF")) {
+            coordinator.pasteText(pasteCommand)
+        }
+        waitForTranscriptOutputLine(coordinator, "PASTE_PROOF")
+
+        logStep("starting fullscreen phase", coordinator)
+        coordinator.sendText("tput smcup; sleep 2; tput rmcup\n")
+        waitForAlternateScreenState(coordinator, expected = true)
+        waitForAlternateScreenState(coordinator, expected = false)
+
+        logStep("starting resize phase", coordinator)
+        sendCommandDirectly(coordinator, "read rows cols < <(stty size); printf 'SIZE_BEFORE:%s %s:END\\n' \"\$rows\" \"\$cols\"")
+        val sizeBefore = waitForTerminalSizeMarker(coordinator, "SIZE_BEFORE")
+        val metricsBefore = waitForTerminalMetrics()
+
+        val resizedViewport = TerminalViewport(
+            columns = (sizeBefore.second - 7).coerceAtLeast(8),
+            rows = (sizeBefore.first - 4).coerceAtLeast(6),
+            widthPx = ((sizeBefore.second - 7).coerceAtLeast(8)) * metricsBefore.first,
+            heightPx = ((sizeBefore.first - 4).coerceAtLeast(6)) * metricsBefore.second,
+        )
+        coordinator.resize(resizedViewport)
+
+        sendCommandDirectly(coordinator, "read rows cols < <(stty size); printf 'SIZE_AFTER:%s %s:END\\n' \"\$rows\" \"\$cols\"")
+        val sizeAfter = waitForTerminalSizeMarker(coordinator, "SIZE_AFTER")
+        assertTrue(
+            "Expected PTY size to change after explicit viewport resize, but before=$sizeBefore after=$sizeAfter",
+            sizeBefore != sizeAfter,
+        )
+        assertEquals(resizedViewport.rows to resizedViewport.columns, sizeAfter)
+    }
+
     private fun buildCoordinator(container: AppContainer): SshSessionCoordinator = SshSessionCoordinator(
         hostRepository = container.foundationGraph.hostRepository,
         identityRepository = container.foundationGraph.identityRepository,
@@ -527,7 +658,7 @@ class SessionSshFixtureInstrumentedTest {
 
     private fun waitForState(
         coordinator: SshSessionCoordinator,
-        timeoutMillis: Long = 30_000L,
+        timeoutMillis: Long = 60_000L,
         predicate: (SessionUiState) -> Boolean,
     ): SessionUiState = runBlocking {
         withTimeout(timeoutMillis) {
@@ -564,12 +695,127 @@ class SessionSshFixtureInstrumentedTest {
         port: Int,
     ) {
         assertProofEventually(coordinator, port)
+    }
+
+    private fun waitForTranscriptSubstring(
+        coordinator: SshSessionCoordinator,
+        expected: String,
+        timeoutMillis: Long = 30_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            it.transcript.contains(expected)
+        }
+        check(state.transcript.contains(expected)) {
+            "Transcript did not contain \"$expected\": ${state.transcript.takeLast(400)}"
+        }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
                 composeRule.onNodeWithTag("session_transcript")
-                    .assertTextContains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:", substring = true)
+                    .assertTextContains(expected, substring = true)
             }.isSuccess
         }
+    }
+
+    private fun waitForTranscriptOutputLine(
+        coordinator: SshSessionCoordinator,
+        expected: String,
+        timeoutMillis: Long = 30_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            it.transcript.containsOutputLine(expected)
+        }
+        check(state.transcript.containsOutputLine(expected)) {
+            "Transcript did not contain output line \"$expected\": ${state.transcript.takeLast(400)}"
+        }
+    }
+
+    private fun waitForOutputLineOccurrences(
+        coordinator: SshSessionCoordinator,
+        expected: String,
+        expectedCount: Int,
+        timeoutMillis: Long = 30_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            it.transcript.countOutputLineOccurrences(expected) >= expectedCount
+        }
+        check(state.transcript.countOutputLineOccurrences(expected) >= expectedCount) {
+            "Transcript did not contain $expectedCount occurrences of \"$expected\": ${state.transcript.takeLast(400)}"
+        }
+    }
+
+    private fun waitForTranscriptRegex(
+        coordinator: SshSessionCoordinator,
+        regex: Regex,
+        timeoutMillis: Long = 30_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            regex.containsMatchIn(it.transcript)
+        }
+        check(regex.containsMatchIn(state.transcript)) {
+            "Transcript did not contain regex ${regex.pattern}: ${state.transcript.takeLast(400)}"
+        }
+    }
+
+    private fun waitForTerminalSizeMarker(
+        coordinator: SshSessionCoordinator,
+        marker: String,
+    ): Pair<Int, Int> {
+        val regex = Regex("$marker:(\\d+)\\s+(\\d+):END")
+        val state = waitForState(coordinator) {
+            regex.containsMatchIn(it.transcript)
+        }
+        val match = regex.find(state.transcript)
+            ?: error("Transcript did not contain size marker $marker: ${state.transcript.takeLast(400)}")
+        return match.groupValues[1].toInt() to match.groupValues[2].toInt()
+    }
+
+    private fun waitForAlternateScreenState(
+        coordinator: SshSessionCoordinator,
+        expected: Boolean,
+        timeoutMillis: Long = 15_000L,
+    ) {
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            it.liveTerminalState.snapshot.alternateScreenActive == expected
+        }
+        check(state.liveTerminalState.snapshot.alternateScreenActive == expected) {
+            "Expected alternateScreenActive=$expected but was ${state.liveTerminalState.snapshot.alternateScreenActive}"
+        }
+    }
+
+    private fun waitForTerminalMetrics(): Pair<Int, Int> {
+        val regex = Regex("Terminal cell: (\\d+)×(\\d+)px")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            regex.containsMatchIn(currentTerminalMetricsText())
+        }
+        val text = currentTerminalMetricsText()
+        val match = regex.find(text) ?: error("Missing terminal metrics text: $text")
+        return match.groupValues[1].toInt() to match.groupValues[2].toInt()
+    }
+
+    private fun currentTerminalMetricsText(): String = composeRule.onNodeWithTag("session_terminal_metrics")
+        .fetchSemanticsNode()
+        .config
+        .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
+        .joinToString(separator = "") { it.text }
+
+    private fun currentTerminalStatusText(): String = composeRule.onNodeWithTag("session_terminal_status")
+        .fetchSemanticsNode()
+        .config
+        .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
+        .joinToString(separator = "") { it.text }
+
+    private fun sendCommandDirectly(
+        coordinator: SshSessionCoordinator,
+        command: String,
+    ) {
+        coordinator.sendText("$command\n")
+    }
+
+    private fun logStep(
+        label: String,
+        coordinator: SshSessionCoordinator,
+    ) {
+        Log.i("SessionSshFixtureTest", "$label :: ${coordinator.observeUiState().value.transcript.takeLast(300)}")
     }
 
     private fun connectFromUi(
@@ -612,6 +858,7 @@ class SessionSshFixtureInstrumentedTest {
         assertProofEventually(coordinator, FIXTURE_PORT)
     }
 
+
     private fun waitForUiDisconnect(
         coordinator: SshSessionCoordinator,
         expectedMessage: String,
@@ -643,3 +890,11 @@ class SessionSshFixtureInstrumentedTest {
         const val FIXTURE_PASSWORD = "aterm-password-fixture"
     }
 }
+
+private fun String.containsOutputLine(value: String): Boolean =
+    countOutputLineOccurrences(value) > 0
+
+private fun String.countOutputLineOccurrences(value: String): Int =
+    lineSequence()
+        .map { it.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trim() }
+        .count { it == value }

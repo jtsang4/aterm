@@ -11,7 +11,7 @@ import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import io.github.jtsang4.aterm.core.domain.repository.KnownHostTrustRepository
 import io.github.jtsang4.aterm.core.domain.repository.SessionMetadataRepository
 import io.github.jtsang4.aterm.core.domain.model.SessionMetadata
-import io.github.jtsang4.aterm.core.terminal.TerminalBuffer
+import io.github.jtsang4.aterm.core.terminal.AuthoritativeTerminalSession
 import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
 import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 import io.github.jtsang4.aterm.core.terminal.TerminalViewport
@@ -61,11 +61,18 @@ class SshSessionCoordinator(
     private val sessionMetadataRepository: SessionMetadataRepository? = null,
     private val ioScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : SessionController {
+    private val authoritativeTerminalSession = AuthoritativeTerminalSession(
+        TerminalViewport(
+            columns = DEFAULT_TERMINAL_COLUMNS,
+            rows = DEFAULT_TERMINAL_ROWS,
+            widthPx = DEFAULT_TERMINAL_COLUMNS * CELL_WIDTH_PIXELS,
+            heightPx = DEFAULT_TERMINAL_ROWS * CELL_HEIGHT_PIXELS,
+        ),
+    )
     private val connectMutex = Mutex()
     private val stateMutex = Mutex()
     private val uiState = MutableStateFlow(SessionUiState())
     private val terminalUiState = MutableStateFlow(TerminalUiState())
-    private val terminalBuffer = TerminalBuffer()
     private var runtimeConnection: RuntimeConnection? = null
     private var currentAttempt: ConnectAttempt? = null
     private var pendingDecisionAccepted: Boolean? = null
@@ -77,7 +84,21 @@ class SshSessionCoordinator(
     private var currentSessionMetadataId: Long? = null
 
     init {
-        terminalBuffer.resize(latestTerminalColumns, latestTerminalRows)
+        authoritativeTerminalSession.addListener(
+            object : AuthoritativeTerminalSession.Listener {
+                override fun onTerminalSnapshotChanged(snapshot: io.github.jtsang4.aterm.core.terminal.TerminalSnapshot) = Unit
+
+                override fun onTerminalTextChanged(text: String) {
+                    ioScope.launch {
+                        stateMutex.withLock {
+                            if (uiState.value.transcript != text) {
+                                uiState.value = uiState.value.copy(transcript = text)
+                            }
+                        }
+                    }
+                }
+            },
+        )
         emitTerminalState(canSendInput = false)
         restorePersistedSessionTruth()
     }
@@ -154,17 +175,17 @@ class SshSessionCoordinator(
     }
 
     override fun scrollPageUp() {
-        terminalBuffer.scrollPageUp()
+        authoritativeTerminalSession.scrollPageUp()
         emitTerminalState(canSendInput = uiState.value.canSendInput)
     }
 
     override fun scrollPageDown() {
-        terminalBuffer.scrollPageDown()
+        authoritativeTerminalSession.scrollPageDown()
         emitTerminalState(canSendInput = uiState.value.canSendInput)
     }
 
     override fun jumpToBottom() {
-        terminalBuffer.jumpToBottom()
+        authoritativeTerminalSession.jumpToBottom()
         emitTerminalState(canSendInput = uiState.value.canSendInput)
     }
 
@@ -175,7 +196,14 @@ class SshSessionCoordinator(
         latestTerminalRows = safeRows
         latestTerminalWidthPx = safeColumns * CELL_WIDTH_PIXELS
         latestTerminalHeightPx = safeRows * CELL_HEIGHT_PIXELS
-        terminalBuffer.resize(safeColumns, safeRows)
+        authoritativeTerminalSession.resize(
+            TerminalViewport(
+                columns = safeColumns,
+                rows = safeRows,
+                widthPx = latestTerminalWidthPx,
+                heightPx = latestTerminalHeightPx,
+            ),
+        )
         emitTerminalState(canSendInput = uiState.value.canSendInput)
         ioScope.launch {
             runtimeConnection?.sendResize(
@@ -194,7 +222,14 @@ class SshSessionCoordinator(
         latestTerminalRows = safeRows
         latestTerminalWidthPx = viewport.widthPx.coerceAtLeast(safeColumns)
         latestTerminalHeightPx = viewport.heightPx.coerceAtLeast(safeRows)
-        terminalBuffer.resize(safeColumns, safeRows)
+        authoritativeTerminalSession.resize(
+            TerminalViewport(
+                columns = safeColumns,
+                rows = safeRows,
+                widthPx = latestTerminalWidthPx,
+                heightPx = latestTerminalHeightPx,
+            ),
+        )
         emitTerminalState(canSendInput = uiState.value.canSendInput)
         ioScope.launch {
             runtimeConnection?.sendResize(
@@ -274,6 +309,7 @@ class SshSessionCoordinator(
 
             val channel = session.createShellChannel(
                 PtyChannelConfiguration().apply {
+                    ptyType = "xterm-256color"
                     ptyColumns = latestTerminalColumns
                     ptyLines = latestTerminalRows
                     ptyWidth = latestTerminalWidthPx
@@ -281,6 +317,13 @@ class SshSessionCoordinator(
                 },
                 emptyMap<String, Any>(),
             ).apply {
+                setUsePty(true)
+                setupSensibleDefaultPty()
+                ptyType = "xterm-256color"
+                ptyColumns = latestTerminalColumns
+                ptyLines = latestTerminalRows
+                ptyWidth = latestTerminalWidthPx
+                ptyHeight = latestTerminalHeightPx
                 setRedirectErrorStream(true)
                 val openFuture = open()
                 attempt.register(openFuture)
@@ -411,11 +454,11 @@ class SshSessionCoordinator(
     }
 
     private suspend fun appendTranscript(text: String) {
-        terminalBuffer.append(text)
+        authoritativeTerminalSession.appendRemoteText(text)
         emitTerminalState(canSendInput = uiState.value.canSendInput)
         stateMutex.withLock {
             uiState.value = uiState.value.copy(
-                transcript = uiState.value.transcript + text,
+                transcript = authoritativeTerminalSession.completeText(),
             )
         }
     }
@@ -635,9 +678,13 @@ class SshSessionCoordinator(
         "printf 'ATERM_REMOTE_PROOF:${host.address}:${host.port}:'; hostname"
 
     private fun emitTerminalState(canSendInput: Boolean) {
+        val rendererMetrics = authoritativeTerminalSession.rendererMetrics()
         val state = TerminalUiState(
-            snapshot = terminalBuffer.snapshot(),
+            snapshot = authoritativeTerminalSession.snapshot(),
             canSendInput = canSendInput,
+            authoritativeSession = authoritativeTerminalSession,
+            cellWidthPx = rendererMetrics.cellWidthPx.toInt().coerceAtLeast(1),
+            cellHeightPx = rendererMetrics.cellHeightPx.coerceAtLeast(1),
         )
         terminalUiState.value = state
         uiState.update { current ->
@@ -646,10 +693,16 @@ class SshSessionCoordinator(
     }
 
     private fun replaceTerminalContent(transcript: String) {
-        terminalBuffer.clear()
-        terminalBuffer.resize(latestTerminalColumns, latestTerminalRows)
+        authoritativeTerminalSession.reset(
+            TerminalViewport(
+                columns = latestTerminalColumns,
+                rows = latestTerminalRows,
+                widthPx = latestTerminalWidthPx,
+                heightPx = latestTerminalHeightPx,
+            ),
+        )
         if (transcript.isNotEmpty()) {
-            terminalBuffer.append(transcript)
+            authoritativeTerminalSession.appendRemoteText(transcript)
         }
         emitTerminalState(canSendInput = uiState.value.canSendInput)
     }

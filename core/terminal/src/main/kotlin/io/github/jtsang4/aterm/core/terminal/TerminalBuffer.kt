@@ -12,7 +12,11 @@ data class TerminalSnapshot(
     val alternateScreenActive: Boolean,
 ) {
     val visibleText: String = visibleLines.joinToString(separator = "\n") { it.trimEnd() }
+        .takeUnless(String::isBlank)
+        .orEmpty()
     val completeText: String = (scrollbackLines + visibleLines).joinToString(separator = "\n") { it.trimEnd() }
+        .takeUnless(String::isBlank)
+        .orEmpty()
 }
 
 class TerminalBuffer(

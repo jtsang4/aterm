@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.StateFlow
 data class TerminalUiState(
     val snapshot: TerminalSnapshot = TerminalBuffer().snapshot(),
     val canSendInput: Boolean = false,
+    val authoritativeSession: AuthoritativeTerminalSession? = null,
+    val cellWidthPx: Int = 9,
+    val cellHeightPx: Int = 18,
 )
 
 interface TerminalController {

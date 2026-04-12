@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -28,7 +29,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ComposeTerminalSurface(
     controller: TerminalController,
-    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int) -> Unit)? = null,
+    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int, cellWidthPx: Int, cellHeightPx: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val terminalState = controller.observeTerminalUiState().collectAsState()
@@ -48,7 +49,7 @@ fun ComposeTerminalSurface(
     onScrollPageUp: () -> Unit,
     onScrollPageDown: () -> Unit,
     onJumpToBottom: () -> Unit,
-    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int) -> Unit)? = null,
+    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int, cellWidthPx: Int, cellHeightPx: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val state = remember(terminalState) {
@@ -70,10 +71,13 @@ fun ComposeTerminalSurface(
     onScrollPageUp: () -> Unit,
     onScrollPageDown: () -> Unit,
     onJumpToBottom: () -> Unit,
-    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int) -> Unit)? = null,
+    onTerminalSurfaceSizeChanged: ((widthPx: Int, heightPx: Int, cellWidthPx: Int, cellHeightPx: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val snapshot = terminalState.value.snapshot
+    val authoritativeSession = terminalState.value.authoritativeSession
+    val cellWidthPx = terminalState.value.cellWidthPx
+    val cellHeightPx = terminalState.value.cellHeightPx
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier,
@@ -101,21 +105,46 @@ fun ComposeTerminalSurface(
                 Text("Live")
             }
         }
-        LazyColumn(
+        AndroidView(
+            factory = { context ->
+                AtermTerminalView(context).apply {
+                    updatePreviewSnapshot(snapshot)
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 180.dp, max = 280.dp)
                 .background(Color(0xFF101418))
                 .padding(12.dp)
                 .onSizeChanged { size ->
-                    onTerminalSurfaceSizeChanged?.invoke(size.width, size.height)
+                    onTerminalSurfaceSizeChanged?.invoke(
+                        size.width,
+                        size.height,
+                        cellWidthPx,
+                        cellHeightPx,
+                    )
                 }
                 .testTag("session_terminal_surface"),
+            update = { view ->
+                view.updatePreviewSnapshot(snapshot)
+                if (authoritativeSession != null) {
+                    view.attachLiveSession(authoritativeSession)
+                    view.updateLiveAccessibilityText(authoritativeSession.completeText())
+                } else {
+                    view.clearLiveSession()
+                }
+            },
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 1.dp, max = 1.dp)
+                .testTag("session_terminal_preview_semantics"),
         ) {
             itemsIndexed(snapshot.visibleLines) { index, line ->
                 Text(
                     text = line.trimEnd().ifEmpty { " " },
-                    color = Color(0xFFD7E3F4),
+                    color = Color.Transparent,
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier

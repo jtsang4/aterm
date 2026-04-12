@@ -317,12 +317,12 @@ private fun SessionTerminal(
             )
             ComposeTerminalSurface(
                 controller = coordinator,
-                onTerminalSurfaceSizeChanged = { widthPx, heightPx ->
+                onTerminalSurfaceSizeChanged = { widthPx, heightPx, cellWidthPx, cellHeightPx ->
                     val viewport = calculateTerminalViewport(
                         contentWidthPx = widthPx,
                         contentHeightPx = heightPx,
-                        cellWidthPx = CELL_WIDTH_PIXELS,
-                        cellHeightPx = CELL_HEIGHT_PIXELS,
+                        cellWidthPx = cellWidthPx,
+                        cellHeightPx = cellHeightPx,
                     ) ?: return@ComposeTerminalSurface
                     coordinator.resize(viewport)
                 },
@@ -420,9 +420,11 @@ private fun SessionTerminal(
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.testTag("session_transcript"),
             )
+            Text(
+                text = "Terminal cell: ${sessionState.liveTerminalState.cellWidthPx}×${sessionState.liveTerminalState.cellHeightPx}px",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("session_terminal_metrics"),
+            )
         }
     }
 }
-
-private const val CELL_WIDTH_PIXELS = 9
-private const val CELL_HEIGHT_PIXELS = 18

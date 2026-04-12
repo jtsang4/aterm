@@ -24,6 +24,7 @@ data class LocalDataFoundation(
     val sessionMetadataRepository: SessionMetadataRepository,
     val knownHostTrustRepository: KnownHostTrustRepository,
     val settingsRepository: SettingsRepository,
+    val clearPersistentState: () -> Unit,
 )
 
 fun buildLocalDataFoundation(
@@ -38,5 +39,6 @@ fun buildLocalDataFoundation(
         sessionMetadataRepository = RoomSessionMetadataRepository(database.sessionMetadataDao()),
         knownHostTrustRepository = RoomKnownHostTrustRepository(database.knownHostTrustDao()),
         settingsRepository = PreferencesSettingsRepository(createUserPreferencesDataStore(context)),
+        clearPersistentState = { database.clearAllTables() },
     )
 }
