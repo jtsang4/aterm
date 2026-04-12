@@ -13,8 +13,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.jtsang4.aterm.core.domain.model.Host
@@ -36,6 +38,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -487,6 +490,70 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun real_session_ui_surfaces_timeout_distinctly_from_other_failure_messages() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val timeoutHostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Timeout repro",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_TIMEOUT_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+
+        val dnsFailureMessage = "DNS lookup failed for nonexistent.invalid:$FIXTURE_PORT."
+        val unreachableFailureMessage = "Host is unreachable at $FIXTURE_HOST:65022."
+        val timeoutFailure = connectFromUiExpectFailure(
+            coordinator = coordinator,
+            hostId = timeoutHostId,
+            expectedButtonLabel = "Connect",
+            expectedMessage = "Connection timed out while reaching $FIXTURE_HOST:$FIXTURE_PORT.",
+            expectTrustPrompt = true,
+            expectedTrustEndpoint = "$FIXTURE_HOST:$FIXTURE_PORT",
+            timeoutMillis = 35_000,
+        )
+
+        assertNotEquals(dnsFailureMessage, timeoutFailure.statusMessage)
+        assertNotEquals(unreachableFailureMessage, timeoutFailure.statusMessage)
+        assertFalse(timeoutFailure.isConnecting)
+        assertFalse(timeoutFailure.isConnected)
+        assertFalse(timeoutFailure.canSendInput)
+        assertNull(timeoutFailure.pendingTrustDecision)
+        assertTrue(timeoutFailure.transcript.isEmpty())
+
+        composeRule.onNodeWithTag("session_status_message")
+            .assertTextContains("Connection timed out while reaching $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
+        composeRule.onAllNodesWithTag("session_terminal_truth_banner").assertCountEquals(1)
+        composeRule.onNodeWithTag("session_input_field").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_send_button").assertIsNotEnabled()
+        composeRule.onNodeWithTag("session_paste_button").assertIsNotEnabled()
+        composeRule.onAllNodesWithTag("session_disconnect_button").assertCountEquals(0)
+        scrollSessionHostIntoView(timeoutHostId)
+        composeRule.onNodeWithTag("session_connect_$timeoutHostId")
+            .assertTextContains("Reconnect", substring = true)
+    }
+
+    @Test
     fun canceling_during_real_connect_prompt_leaves_one_clean_disconnected_state() {
         val container = AppContainer.create(context)
         val identityId = runBlocking {
@@ -912,10 +979,7 @@ class SessionSshFixtureInstrumentedTest {
         expectTrustPrompt: Boolean,
     ): SessionUiState {
         val connectButtonTag = "session_connect_$hostId"
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodesWithTag(connectButtonTag).fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("session_host_row_$hostId").performScrollTo()
+        scrollSessionHostIntoView(hostId)
         composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
@@ -962,6 +1026,81 @@ class SessionSshFixtureInstrumentedTest {
             .assertTextContains("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", substring = true)
         assertProofEventually(coordinator, FIXTURE_PORT)
         return state
+    }
+
+    private fun connectFromUiExpectFailure(
+        coordinator: SshSessionCoordinator,
+        hostId: Long,
+        expectedButtonLabel: String,
+        expectedMessage: String,
+        expectTrustPrompt: Boolean,
+        expectedTrustEndpoint: String? = null,
+        timeoutMillis: Long = 10_000L,
+    ): SessionUiState {
+        val connectButtonTag = "session_connect_$hostId"
+        scrollSessionHostIntoView(hostId)
+        composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag(connectButtonTag)
+                    .assertIsDisplayed()
+                    .assertTextContains(expectedButtonLabel, substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag(connectButtonTag).performClick()
+        waitForState(coordinator) {
+            it.activeHostId == hostId &&
+                (
+                    it.connectionState == SessionConnectionState.CONNECTING ||
+                        it.connectionState == SessionConnectionState.FAILED ||
+                        it.pendingTrustDecision != null
+                    )
+        }
+        if (expectTrustPrompt) {
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("session_trust_prompt").assertIsDisplayed()
+                }.isSuccess
+            }
+            expectedTrustEndpoint?.let { endpoint ->
+                composeRule.onNodeWithTag("session_trust_endpoint")
+                    .assertTextContains(endpoint, substring = true)
+            }
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithTag("session_trust_accept").fetchSemanticsNodes().isNotEmpty()
+            }
+            clickTaggedButton("session_trust_accept")
+            waitForState(coordinator, timeoutMillis = 10_000) { it.pendingTrustDecision == null }
+            composeRule.waitForIdle()
+        }
+        val state = waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            it.activeHostId == hostId && it.connectionState == SessionConnectionState.FAILED
+        }
+        assertEquals(expectedMessage, state.statusMessage)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_status_message")
+                    .assertTextContains(expectedMessage, substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag(connectButtonTag).assertTextContains("Reconnect", substring = true)
+        return state
+    }
+
+    private fun scrollSessionHostIntoView(hostId: Long) {
+        val rowTag = "session_host_row_$hostId"
+        repeat(8) {
+            if (composeRule.onAllNodesWithTag(rowTag).fetchSemanticsNodes().isNotEmpty()) {
+                composeRule.onNodeWithTag(rowTag).performScrollTo()
+                return
+            }
+            composeRule.onNodeWithTag("session_host_list").performTouchInput { swipeUp() }
+            composeRule.waitForIdle()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag(rowTag).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag(rowTag).performScrollTo()
     }
 
 
