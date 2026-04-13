@@ -1,0 +1,22 @@
+{
+  "featureId": "snippet-history-and-state-coherence",
+  "reviewedAt": "2026-04-13T00:00:00Z",
+  "commitId": "a200cd22f567817d2e6cc6b0478d4201813c375b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature largely matches the requested persistence and UI behavior, but it can record false-positive successful snippet runs because history is persisted after any transcript change rather than evidence that the dispatched snippet actually reached the remote side.",
+    "issues": [
+      {
+        "file": "feature/snippets/src/main/kotlin/io/github/jtsang4/aterm/feature/snippets/SnippetsEntryPoint.kt",
+        "line": 1218,
+        "severity": "blocking",
+        "description": "Successful runs are recorded after any transcript delta, not after proof that the just-dispatched payload reached the remote side. `dispatchIntoCurrentSession()` snapshots the transcript, sends the snippet, then treats `state.transcript != transcriptBeforeDispatch` as success and immediately persists history with `markExecuted()`. Unrelated remote output arriving during that 5-second window would incorrectly create a recent-history entry and update `lastRunAt`, violating the architecture requirement that success be recorded only once the session transcript confirms the snippet run itself reached the remote side."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, skill, architecture docs, and commit `a200cd22f567817d2e6cc6b0478d4201813c375b`. I found one blocking correctness issue: snippet history persistence relies on any transcript mutation as proof of success, so unrelated remote output can produce false successful history entries."
+}

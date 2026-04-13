@@ -1,0 +1,47 @@
+{
+  "milestone": "snippets",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew testDebugUnitTest --max-workers=4",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew assembleDebug --max-workers=4",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew lintDebug --max-workers=4",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "snippet-execution-targeting-and-safety",
+      "snippet-history-and-state-coherence"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "snippet-execution-targeting-and-safety",
+      "severity": "blocking",
+      "description": "Database migration logic in core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/local/AtermDatabase.kt:343 rewrites snippets whose saved host was deleted to ACTIVE_SESSION, silently retargeting stale saved-host snippets instead of preserving a blocked repair-required state."
+    },
+    {
+      "featureId": "snippet-history-and-state-coherence",
+      "severity": "blocking",
+      "description": "Snippet history persistence in feature/snippets/src/main/kotlin/io/github/jtsang4/aterm/feature/snippets/SnippetsEntryPoint.kt:1218 treats any transcript mutation after dispatch as proof of success, so unrelated remote output can create false successful history entries."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": null
+}

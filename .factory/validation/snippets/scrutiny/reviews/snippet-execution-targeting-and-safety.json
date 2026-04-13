@@ -1,0 +1,22 @@
+{
+  "featureId": "snippet-execution-targeting-and-safety",
+  "reviewedAt": "2026-04-13T00:17:47.547578Z",
+  "commitId": "e8e49209b0a7ba3362ebabc5763a166c21b66f83",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature largely implements explicit runtime targeting, confirmation UX, duplicate-run protection, and transcript-confirmed success handling. However, the Room migration silently converts orphaned saved-host snippets into active-session snippets, which violates the feature requirement that stale targets must block for repair instead of being silently retargeted.",
+    "issues": [
+      {
+        "file": "core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/local/AtermDatabase.kt",
+        "line": 343,
+        "severity": "blocking",
+        "description": "The migration rewrites any snippet whose saved host no longer exists to `savedTarget = 'ACTIVE_SESSION'` while also nulling `hostId`. That silently retargets previously saved-host snippets to whatever live session exists after upgrade, instead of preserving the stale-target state and forcing repair. This contradicts both the feature requirement and the architecture invariant that snippet execution must never silently retarget when a saved target becomes stale or ambiguous."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed commit e8e49209b0a7ba3362ebabc5763a166c21b66f83, the worker handoff, and the transcript skeleton. I found one blocking correctness issue: database migration logic silently retargets orphaned saved-host snippets to active-session execution, and the updated migration test currently asserts that incorrect behavior."
+}
