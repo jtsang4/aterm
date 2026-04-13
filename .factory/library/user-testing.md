@@ -20,6 +20,7 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 - Use this surface for host/identity CRUD, trust prompts, real SSH connection, snippet execution, theme/font persistence, and repeat-use flows. For authenticated SSH end-to-end proof, prefer the repo-local fixture once it exists.
 - When filtering to app-only instrumentation classes, prefer `./gradlew :app:connectedDebugAndroidTest` so other modules do not try to load `:app` test classes
 - For any fixture-backed session instrumentation, start `ssh_fixture` first; otherwise fixture tests can fail with `ECONNREFUSED` to `10.0.2.2:3122`
+- Continuation mission note: the blocked snippets proof path should use `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest --max-workers=1` after the fixture is up, and the broader repeat-use contract including `VAL-CROSS-009` should still be validated on this emulator surface rather than a separate physical-device QA path.
 
 ### Surface 3: Manual terminal QA on emulator/device
 - Tools: manual QA plus screen capture/logs as evidence
@@ -72,4 +73,4 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 
 ## Known Coverage Gaps
 
-- Snippets milestone: `VAL-SNIPPET-008` through `VAL-SNIPPET-015` are not yet covered by runnable real-SSH fixture instrumentation against `10.0.2.2:3122`. Current repository coverage for those behaviors relies on `SnippetFakeSessionController` and/or seeded history state, which is useful for regression checks but not sufficient for a contract pass on the real user surface.
+- Snippets continuation milestone: `VAL-SNIPPET-008` through `VAL-SNIPPET-015` remain blocked until `SnippetRealFixtureExecutionInstrumentedTest` becomes stable on emulator `5554` and proves those behaviors against `10.0.2.2:3122`. Current repository coverage for those behaviors still relies partly on `SnippetFakeSessionController` and/or seeded history state, which is useful for regression checks but not sufficient for a contract pass on the real user surface.
