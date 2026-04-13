@@ -35,6 +35,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,6 +73,7 @@ class SshSessionCoordinator(
     )
     private val connectMutex = Mutex()
     private val stateMutex = Mutex()
+    private val inputWriteMutex = Mutex()
     private val uiState = MutableStateFlow(SessionUiState())
     private val terminalUiState = MutableStateFlow(TerminalUiState())
     private var runtimeConnection: RuntimeConnection? = null
@@ -182,10 +184,7 @@ class SshSessionCoordinator(
     override fun sendInput(input: String) {
         ioScope.launch {
             val connection = runtimeConnection ?: return@launch
-            runCatching {
-                connection.stdin.write(input.encodeToByteArray())
-                connection.stdin.flush()
-            }.onFailure { throwable ->
+            writeInput(connection, input).onFailure { throwable ->
                 failConnection(
                     host = connection.host,
                     message = "Input failed: ${throwable.message ?: "Unable to send input."}",
@@ -202,9 +201,7 @@ class SshSessionCoordinator(
                 uiState.value.disconnectReason ?: "The current session is no longer live.",
             )
         }
-        return runCatching {
-            connection.stdin.write(input.encodeToByteArray())
-            connection.stdin.flush()
+        return writeInput(connection, input).map {
             SessionDispatchResult.Success
         }.getOrElse { throwable ->
             failConnection(
@@ -215,6 +212,18 @@ class SshSessionCoordinator(
             SessionDispatchResult.Failure(
                 uiState.value.disconnectReason ?: "Unable to dispatch into the active session.",
             )
+        }
+    }
+
+    private suspend fun writeInput(
+        connection: RuntimeConnection,
+        input: String,
+    ): Result<Unit> = runCatching {
+        inputWriteMutex.withLock {
+            withContext(Dispatchers.IO) {
+                connection.stdin.write(input.encodeToByteArray())
+                connection.stdin.flush()
+            }
         }
     }
 
