@@ -1209,13 +1209,18 @@ private suspend fun dispatchIntoCurrentSession(
     return when (val dispatchResult = sessionController.dispatchToActiveSession(payload)) {
         is SessionDispatchResult.Failure -> SnippetExecutionResult.Failure(dispatchResult.message)
         SessionDispatchResult.Success -> {
-            val transcriptChanged = withTimeoutOrNull<Boolean>(5_000L) {
+            val transcriptConfirmed = withTimeoutOrNull<Boolean>(5_000L) {
                 while (true) {
                     val state = sessionController.observeUiState().value
                     if (!state.isTerminalLive) {
                         return@withTimeoutOrNull false
                     }
-                    if (state.transcript != transcriptBeforeDispatch) {
+                    if (transcriptShowsPayloadProof(
+                            transcriptBeforeDispatch = transcriptBeforeDispatch,
+                            transcriptAfterDispatch = state.transcript,
+                            payload = payload,
+                        )
+                    ) {
                         return@withTimeoutOrNull true
                     }
                     delay(100)
@@ -1223,7 +1228,7 @@ private suspend fun dispatchIntoCurrentSession(
                 error("Unreachable")
             } ?: false
 
-            if (!transcriptChanged) {
+            if (!transcriptConfirmed) {
                 SnippetExecutionResult.Failure(
                     "Snippet dispatch could not be confirmed in the live transcript, so no successful run was recorded.",
                 )
@@ -1241,6 +1246,111 @@ private suspend fun dispatchIntoCurrentSession(
 }
 
 private fun String.ensureTrailingNewline(): String = if (endsWith("\n")) this else "$this\n"
+
+private fun transcriptShowsPayloadProof(
+    transcriptBeforeDispatch: String,
+    transcriptAfterDispatch: String,
+    payload: String,
+): Boolean {
+    val expectedPayloadLineSets = payload.payloadProofLineSets()
+    if (expectedPayloadLineSets.isEmpty()) {
+        return false
+    }
+    val transcriptDelta = if (transcriptAfterDispatch.startsWith(transcriptBeforeDispatch)) {
+        transcriptAfterDispatch.removePrefix(transcriptBeforeDispatch)
+    } else {
+        transcriptAfterDispatch
+    }
+    val transcriptLines = sanitizedTranscriptLines(transcriptDelta)
+    return expectedPayloadLineSets.any { payloadLines ->
+        containsOrderedPayloadProofLines(
+            transcriptLines = transcriptLines,
+            payloadLines = payloadLines,
+        )
+    }
+}
+
+private fun String.payloadProofLineSets(): List<List<String>> {
+    val commandLines = lineSequence()
+        .map(String::trimEnd)
+        .filter { it.isNotBlank() }
+        .toList()
+    if (commandLines.isEmpty()) {
+        return emptyList()
+    }
+
+    val proofLineSets = mutableListOf(commandLines)
+    commandLines.printfOutputProofLinesOrNull()
+        ?.takeIf(List<String>::isNotEmpty)
+        ?.let(proofLineSets::add)
+    return proofLineSets
+}
+
+private fun List<String>.printfOutputProofLinesOrNull(): List<String>? {
+    val outputLines = mutableListOf<String>()
+    for (line in this) {
+        val parsedLines = parsePrintfOutputProofLines(line) ?: return null
+        outputLines += parsedLines
+    }
+    return outputLines
+}
+
+private fun parsePrintfOutputProofLines(commandLine: String): List<String>? {
+    val match = Regex("""^printf\s+'((?:\\.|[^'])*)';?$""").matchEntire(commandLine.trim())
+        ?: return null
+    return decodeSingleQuotedPrintfLiteral(match.groupValues[1])
+        .lineSequence()
+        .map(String::trimEnd)
+        .filter { it.isNotBlank() }
+        .toList()
+}
+
+private fun decodeSingleQuotedPrintfLiteral(value: String): String {
+    val builder = StringBuilder(value.length)
+    var index = 0
+    while (index < value.length) {
+        val current = value[index]
+        if (current == '\\' && index + 1 < value.length) {
+            when (val escaped = value[index + 1]) {
+                'n' -> builder.append('\n')
+                'r' -> builder.append('\r')
+                't' -> builder.append('\t')
+                '\\' -> builder.append('\\')
+                '\'' -> builder.append('\'')
+                else -> {
+                    builder.append('\\')
+                    builder.append(escaped)
+                }
+            }
+            index += 2
+        } else {
+            builder.append(current)
+            index += 1
+        }
+    }
+    return builder.toString()
+}
+
+private fun sanitizedTranscriptLines(text: String): List<String> = text.lineSequence()
+    .map(::sanitizeTerminalLine)
+    .filter { it.isNotBlank() }
+    .toList()
+
+private fun sanitizeTerminalLine(text: String): String =
+    text.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trimEnd()
+
+private fun containsOrderedPayloadProofLines(
+    transcriptLines: List<String>,
+    payloadLines: List<String>,
+): Boolean {
+    var nextPayloadLine = 0
+    for (line in transcriptLines) {
+        if (nextPayloadLine < payloadLines.size && line.endsWith(payloadLines[nextPayloadLine])) {
+            nextPayloadLine += 1
+        }
+    }
+    return nextPayloadLine == payloadLines.size
+}
 
 private fun SnippetExecutionHistoryEntry.historySummary(): String =
     buildString {

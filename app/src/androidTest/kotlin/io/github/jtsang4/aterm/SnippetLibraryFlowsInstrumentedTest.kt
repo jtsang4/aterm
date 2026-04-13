@@ -40,6 +40,7 @@ import io.github.jtsang4.aterm.core.ssh.SessionDispatchResult
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
+import java.util.concurrent.atomic.AtomicBoolean
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.delay
@@ -390,7 +391,7 @@ class SnippetLibraryFlowsInstrumentedTest {
     @Test
     fun failed_dispatch_does_not_record_success_and_duplicate_guard_disables_confirm() {
         val sessionController = SnippetFakeSessionController(
-            dispatchBehavior = { _ ->
+            dispatchBehavior = { _, _ ->
                 delay(200)
                 SessionDispatchResult.Failure("Fixture session dropped before dispatch.")
             },
@@ -433,6 +434,102 @@ class SnippetLibraryFlowsInstrumentedTest {
         assertEquals(1, sessionController.dispatchedInputs.size)
         assertNull(runBlocking { snippetRepository.getSnippet(1) }?.lastRunAt)
         composeRule.onAllNodesWithTag("snippet_execution_notice").assertCountEquals(0)
+    }
+
+    @Test
+    fun unrelated_transcript_churn_does_not_record_history_without_payload_proof() {
+        val unrelatedOutputInjected = AtomicBoolean(false)
+        val sessionController = SnippetFakeSessionController(
+            dispatchBehavior = { controller, _ ->
+                if (unrelatedOutputInjected.compareAndSet(false, true)) {
+                    controller.appendTranscriptLine("UNRELATED_REMOTE_OUTPUT")
+                }
+                SessionDispatchResult.Success
+            },
+            appendPayloadToTranscriptOnSuccess = false,
+        )
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Needs payload proof",
+                    hostId = null,
+                    savedTarget = SnippetSavedTarget.ACTIVE_SESSION,
+                ),
+            ),
+            initialBodies = mapOf(1L to "printf 'ACTUAL_SNIPPET_PROOF\\n'"),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = SnippetFakeHostRepository(),
+                sessionController = sessionController,
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_run_1").performClick()
+        composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("snippet_execution_error")
+                    .assertTextContains(
+                        "Snippet dispatch could not be confirmed in the live transcript",
+                        substring = true,
+                    )
+            }.isSuccess
+        }
+
+        assertEquals(listOf("printf 'ACTUAL_SNIPPET_PROOF\\n'\n"), sessionController.dispatchedInputs)
+        assertNull(runBlocking { snippetRepository.getSnippet(1) }?.lastRunAt)
+        assertEquals(0, runBlocking { snippetRepository.observeExecutionHistory().first().size })
+        composeRule.onAllNodesWithTag("snippet_execution_notice").assertCountEquals(0)
+    }
+
+    @Test
+    fun payload_specific_transcript_proof_records_recent_history() {
+        val sessionController = SnippetFakeSessionController(
+            dispatchBehavior = { controller, input ->
+                controller.appendTranscriptLine("UNRELATED_REMOTE_OUTPUT")
+                controller.appendTranscriptLine(input.trimEnd())
+                SessionDispatchResult.Success
+            },
+            appendPayloadToTranscriptOnSuccess = false,
+        )
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Payload proof snippet",
+                    hostId = null,
+                    savedTarget = SnippetSavedTarget.ACTIVE_SESSION,
+                ),
+            ),
+            initialBodies = mapOf(1L to "printf 'PROVEN_SNIPPET_PAYLOAD\\n'"),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = SnippetFakeHostRepository(),
+                sessionController = sessionController,
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_run_1").performClick()
+        composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking { snippetRepository.observeExecutionHistory().first().size == 1 }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("snippet_history_title_0")
+            .assertTextContains("Payload proof snippet", substring = true)
+        composeRule.onNodeWithTag("snippet_history_target_0")
+            .assertTextContains("Active session: Fixture live session (atermtester@10.0.2.2:3122)", substring = true)
+        assertEquals(1, runBlocking { snippetRepository.observeExecutionHistory().first().size })
     }
 
     @Test
@@ -737,9 +834,10 @@ private class SnippetFakeSessionController(
         endpoint = "atermtester@10.0.2.2:3122",
         connectionState = SessionConnectionState.CONNECTED,
     ),
-    private val dispatchBehavior: suspend (String) -> SessionDispatchResult = {
+    private val dispatchBehavior: suspend (SnippetFakeSessionController, String) -> SessionDispatchResult = { _, _ ->
         SessionDispatchResult.Success
     },
+    private val appendPayloadToTranscriptOnSuccess: Boolean = true,
 ) : SessionController {
     private val state = MutableStateFlow(
         initialState.copy(
@@ -764,11 +862,18 @@ private class SnippetFakeSessionController(
 
     override suspend fun dispatchToActiveSession(input: String): SessionDispatchResult {
         dispatchedInputs += input
-        return dispatchBehavior(input).also { result ->
+        return dispatchBehavior(this, input).also { result ->
             if (result is SessionDispatchResult.Success) {
-                state.value = state.value.copy(transcript = state.value.transcript + input)
+                if (appendPayloadToTranscriptOnSuccess) {
+                    state.value = state.value.copy(transcript = state.value.transcript + input)
+                }
             }
         }
+    }
+
+    fun appendTranscriptLine(line: String) {
+        val suffix = if (state.value.transcript.endsWith("\n") || state.value.transcript.isEmpty()) "" else "\n"
+        state.value = state.value.copy(transcript = state.value.transcript + suffix + line + "\n")
     }
 
     fun updateState(newState: SessionUiState) {
