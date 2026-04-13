@@ -1,0 +1,326 @@
+{
+  "milestone": "snippets",
+  "surface": "Android instrumentation on shared atermApi35 emulator (emulator-5554)",
+  "testedAt": "2026-04-13T06:24:12.094434+00:00",
+  "isolation": {
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/22b57ab5-2a87-4560-809e-6aa1092fff88",
+    "emulator": "atermApi35",
+    "deviceSerial": "emulator-5554",
+    "sshFixtureFromEmulator": "10.0.2.2:3122",
+    "boundary": "single shared emulator isolation boundary"
+  },
+  "toolsUsed": [
+    "Gradle :app:connectedDebugAndroidTest",
+    "adb",
+    "Android instrumentation on emulator",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    {
+      "command": "export JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH; adb -s emulator-5554 shell getprop sys.boot_completed; adb -s emulator-5554 shell getprop dev.bootcomplete; adb -s emulator-5554 shell 'toybox nc -z 10.0.2.2 3122; echo fixture_exit:$?'",
+      "exitCode": 0,
+      "observation": "The assigned emulator reported boot completion (sys.boot_completed=1, dev.bootcomplete=1) and the repo-local SSH fixture was reachable from the emulator at 10.0.2.2:3122 (fixture_exit:0)."
+    },
+    {
+      "command": "export JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH; /root/workspace/github/jtsang4/aterm/.factory/init.sh --check && /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetLibraryFlowsInstrumentedTest,io.github.jtsang4.aterm.SnippetHistoryStateCoherenceInstrumentedTest,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#deleted_saved_host_snippet_stays_blocked_and_does_not_fall_back_to_active_session",
+      "exitCode": 0,
+      "observation": "Focused :app connected instrumentation executed 15 snippet-related tests with 0 failures: SnippetLibraryFlowsInstrumentedTest (13 methods), SnippetHistoryStateCoherenceInstrumentedTest (1 method), and the real-fixture stale-target regression in SessionSshFixtureInstrumentedTest (1 method)."
+    }
+  ],
+  "assertionsTested": [
+    {
+      "id": "VAL-SNIPPET-001",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.empty_state_create_action_and_validation_errors_are_visible"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-001-empty-state.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "The empty-state instrumentation flow showed an explicit empty state, exposed a create CTA, and opened the snippet editor from that CTA."
+    },
+    {
+      "id": "VAL-SNIPPET-002",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.snippet_can_be_saved_and_rediscovered_after_relaunch"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-002-create-relaunch.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "A saved snippet persisted across navigation and relaunch and reappeared with the expected title, host metadata, tags, and body."
+    },
+    {
+      "id": "VAL-SNIPPET-003",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.whitespace_only_required_fields_are_blocked_and_multiline_body_reopens_exactly"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-003-whitespace-multiline.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "Whitespace-only title/body input was rejected, and the saved multiline body reopened with the original ordering and spacing intact."
+    },
+    {
+      "id": "VAL-SNIPPET-004",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.edit_cancel_delete_and_reopen_do_not_leak_stale_drafts"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-004-edit-cancel-delete.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "Edit-save, edit-cancel, create-after-cancel, and delete-confirmation behaviors all matched the expected reversible/destructive contract."
+    },
+    {
+      "id": "VAL-SNIPPET-005",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.search_uses_visible_metadata_and_clears_cleanly"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-005-search-metadata.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "Search filtered by visible metadata including tags and associated host labels, and the list metadata remained visible enough for rediscovery."
+    },
+    {
+      "id": "VAL-SNIPPET-006",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.execution_surface_makes_target_explicit_and_blocks_stale_saved_target_with_repair_path",
+          "SnippetLibraryFlowsInstrumentedTest.execution_confirmation_shows_target_and_body_and_cancel_dispatches_nothing",
+          "SnippetLibraryFlowsInstrumentedTest.saved_target_selection_is_persisted_and_requires_an_explicit_host_choice"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-006-target-block.logcat.txt",
+          "snippets/snippet-assertions/snippet-007-confirmation.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "The run surface rendered explicit active-session and saved-host labels, blocked stale saved-host execution with repair guidance, and required an explicit saved-host choice when configuring saved-host targeting."
+    },
+    {
+      "id": "VAL-SNIPPET-007",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.execution_confirmation_shows_target_and_body_and_cancel_dispatches_nothing"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-007-confirmation.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml"
+        ]
+      },
+      "notes": "The confirmation surface displayed the snippet title, the explicit target label, and a visible body preview before dispatch."
+    },
+    {
+      "id": "VAL-SNIPPET-008",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.execution_confirmation_shows_target_and_body_and_cancel_dispatches_nothing"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-007-confirmation.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "A compose instrumentation test verifies the cancel path against SnippetFakeSessionController, but no runnable real-SSH fixture test was found that proves an unchanged remote transcript and absence of a success record on the real 10.0.2.2:3122 target."
+    },
+    {
+      "id": "VAL-SNIPPET-009",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetHistoryStateCoherenceInstrumentedTest.history_survives_relaunch_uses_latest_saved_content_and_deletion_stays_non_broken"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-015-history-coherence-partial.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "Current snippet instrumentation previews saved-host targeting and latest content, but no runnable fixture-backed flow was found that dispatches a multiline snippet to a selected saved host and proves ordered remote output on the real SSH fixture."
+    },
+    {
+      "id": "VAL-SNIPPET-010",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.payload_specific_transcript_proof_records_recent_history"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-014-history-partial.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "The available active-session execution proof uses SnippetFakeSessionController rather than the real SSH fixture, so it does not satisfy the contract requirement to prove reuse of the actual live session transcript."
+    },
+    {
+      "id": "VAL-SNIPPET-011",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [],
+        "artifacts": [
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "Source inspection found no runnable snippet instrumentation that changes or removes the live session and then re-validates the snippet target surface against the real fixture."
+    },
+    {
+      "id": "VAL-SNIPPET-012",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.failed_dispatch_does_not_record_success_and_duplicate_guard_disables_confirm"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-012-duplicate-guard-partial.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "A fake-controller test disables the confirm button after the first tap, but no runnable real-SSH test was found that proves only one remote execution reaches the fixture transcript."
+    },
+    {
+      "id": "VAL-SNIPPET-013",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.failed_dispatch_does_not_record_success_and_duplicate_guard_disables_confirm",
+          "SnippetLibraryFlowsInstrumentedTest.unrelated_transcript_churn_does_not_record_history_without_payload_proof"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-012-duplicate-guard-partial.logcat.txt",
+          "snippets/snippet-assertions/snippet-013-unproven-payload-partial.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "Failure and unproven-payload handling are covered only with SnippetFakeSessionController; no runnable fixture-backed comparison case was found to prove the real SSH transcript gates recent-history success entries."
+    },
+    {
+      "id": "VAL-SNIPPET-014",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetLibraryFlowsInstrumentedTest.payload_specific_transcript_proof_records_recent_history",
+          "SnippetLibraryFlowsInstrumentedTest.successful_runs_show_recent_history_newest_first_and_keep_deleted_entries_stable"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-014-history-partial.logcat.txt",
+          "snippets/snippet-assertions/snippet-014-015-history-order-partial.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "Recent-history ordering and target labels are covered in compose instrumentation, but the available proof does not use the real fixture target required for snippet-history validation."
+    },
+    {
+      "id": "VAL-SNIPPET-015",
+      "status": "blocked",
+      "evidence": {
+        "mappedTests": [
+          "SnippetHistoryStateCoherenceInstrumentedTest.history_survives_relaunch_uses_latest_saved_content_and_deletion_stays_non_broken"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-015-history-coherence-partial.logcat.txt",
+          "snippets/snippet-assertions/coverage-notes.txt"
+        ]
+      },
+      "notes": "History persistence, latest-content preview, and deleted-entry stability are covered with seeded history state, but no runnable real-SSH execution flow was found that proves those behaviors from an actual successful fixture-backed run."
+    },
+    {
+      "id": "VAL-SNIPPET-016",
+      "status": "pass",
+      "evidence": {
+        "mappedTests": [
+          "SessionSshFixtureInstrumentedTest.deleted_saved_host_snippet_stays_blocked_and_does_not_fall_back_to_active_session",
+          "SnippetLibraryFlowsInstrumentedTest.deleted_saved_host_stays_repair_needed_and_never_silently_falls_back_to_active_session"
+        ],
+        "artifacts": [
+          "snippets/snippet-assertions/snippet-016-real-fixture.logcat.txt",
+          "snippets/snippet-assertions/snippet-016-fake-stale-target.logcat.txt",
+          "snippets/snippet-assertions/connected-snippet-suite.xml",
+          "snippets/snippet-assertions/emulator-fixture-readiness.txt"
+        ]
+      },
+      "notes": "A real SSH-fixture flow deleted the saved host, showed repair-needed UI, prevented confirmation from opening, and left the fixture transcript free of the blocked snippet payload."
+    }
+  ],
+  "overallStatus": "mixed",
+  "summary": "Validated 16 assigned snippet assertions: 8 passed, 0 failed, and 8 are currently blocked because the repository does not yet contain runnable real-SSH fixture instrumentation for those user-facing flows.",
+  "frictions": [
+    {
+      "description": "The connected Android instrumentation harness produces XML/logcat artifacts but not standalone screenshots for these snippet flows.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-SNIPPET-001",
+        "VAL-SNIPPET-002",
+        "VAL-SNIPPET-003",
+        "VAL-SNIPPET-004",
+        "VAL-SNIPPET-005",
+        "VAL-SNIPPET-006",
+        "VAL-SNIPPET-007",
+        "VAL-SNIPPET-008",
+        "VAL-SNIPPET-009",
+        "VAL-SNIPPET-010",
+        "VAL-SNIPPET-011",
+        "VAL-SNIPPET-012",
+        "VAL-SNIPPET-013",
+        "VAL-SNIPPET-014",
+        "VAL-SNIPPET-015",
+        "VAL-SNIPPET-016"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No runnable real-SSH fixture instrumentation was found for snippet assertions VAL-SNIPPET-008 through VAL-SNIPPET-015. Existing partial coverage for those behaviors uses SnippetFakeSessionController and/or seeded history state instead of real transcript/output proof from 10.0.2.2:3122.",
+      "affectedAssertions": [
+        "VAL-SNIPPET-008",
+        "VAL-SNIPPET-009",
+        "VAL-SNIPPET-010",
+        "VAL-SNIPPET-011",
+        "VAL-SNIPPET-012",
+        "VAL-SNIPPET-013",
+        "VAL-SNIPPET-014",
+        "VAL-SNIPPET-015"
+      ],
+      "quickFixAttempted": "Searched all app androidTest sources, mapped every snippet-related test, and ran the full existing snippet instrumentation set plus the only real-fixture stale-target snippet test."
+    }
+  ],
+  "evidenceFiles": [
+    "snippets/snippet-assertions/emulator-fixture-readiness.txt",
+    "snippets/snippet-assertions/connected-snippet-suite.xml",
+    "snippets/snippet-assertions/coverage-notes.txt",
+    "snippets/snippet-assertions/snippet-001-empty-state.logcat.txt",
+    "snippets/snippet-assertions/snippet-002-create-relaunch.logcat.txt",
+    "snippets/snippet-assertions/snippet-003-whitespace-multiline.logcat.txt",
+    "snippets/snippet-assertions/snippet-004-edit-cancel-delete.logcat.txt",
+    "snippets/snippet-assertions/snippet-005-search-metadata.logcat.txt",
+    "snippets/snippet-assertions/snippet-006-target-block.logcat.txt",
+    "snippets/snippet-assertions/snippet-007-confirmation.logcat.txt",
+    "snippets/snippet-assertions/snippet-012-duplicate-guard-partial.logcat.txt",
+    "snippets/snippet-assertions/snippet-013-unproven-payload-partial.logcat.txt",
+    "snippets/snippet-assertions/snippet-014-history-partial.logcat.txt",
+    "snippets/snippet-assertions/snippet-014-015-history-order-partial.logcat.txt",
+    "snippets/snippet-assertions/snippet-015-history-coherence-partial.logcat.txt",
+    "snippets/snippet-assertions/snippet-016-fake-stale-target.logcat.txt",
+    "snippets/snippet-assertions/snippet-016-real-fixture.logcat.txt"
+  ]
+}

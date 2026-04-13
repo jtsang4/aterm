@@ -69,3 +69,7 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 - Prefer screenshots/recordings plus instrumented assertions for user-visible flows
 - For SSH correctness, always include proof of remote execution from the intended target rather than only local UI state
 - For repeat-use flows, capture relaunch/reopen steps to prove persistence and local-only behavior
+
+## Known Coverage Gaps
+
+- Snippets milestone: `VAL-SNIPPET-008` through `VAL-SNIPPET-015` are not yet covered by runnable real-SSH fixture instrumentation against `10.0.2.2:3122`. Current repository coverage for those behaviors relies on `SnippetFakeSessionController` and/or seeded history state, which is useful for regression checks but not sufficient for a contract pass on the real user surface.

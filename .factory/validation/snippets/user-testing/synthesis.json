@@ -1,0 +1,64 @@
+{
+  "milestone": "snippets",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 16,
+    "passed": 8,
+    "failed": 0,
+    "blocked": 8
+  },
+  "passedAssertions": [
+    "VAL-SNIPPET-001",
+    "VAL-SNIPPET-002",
+    "VAL-SNIPPET-003",
+    "VAL-SNIPPET-004",
+    "VAL-SNIPPET-005",
+    "VAL-SNIPPET-006",
+    "VAL-SNIPPET-007",
+    "VAL-SNIPPET-016"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-SNIPPET-008",
+      "blockedBy": "A compose instrumentation test verifies the cancel path against SnippetFakeSessionController, but no runnable real-SSH fixture test was found that proves an unchanged remote transcript and absence of a success record on the real 10.0.2.2:3122 target."
+    },
+    {
+      "id": "VAL-SNIPPET-009",
+      "blockedBy": "Current snippet instrumentation previews saved-host targeting and latest content, but no runnable fixture-backed flow was found that dispatches a multiline snippet to a selected saved host and proves ordered remote output on the real SSH fixture."
+    },
+    {
+      "id": "VAL-SNIPPET-010",
+      "blockedBy": "The available active-session execution proof uses SnippetFakeSessionController rather than the real SSH fixture, so it does not satisfy the contract requirement to prove reuse of the actual live session transcript."
+    },
+    {
+      "id": "VAL-SNIPPET-011",
+      "blockedBy": "Source inspection found no runnable snippet instrumentation that changes or removes the live session and then re-validates the snippet target surface against the real fixture."
+    },
+    {
+      "id": "VAL-SNIPPET-012",
+      "blockedBy": "A fake-controller test disables the confirm button after the first tap, but no runnable real-SSH test was found that proves only one remote execution reaches the fixture transcript."
+    },
+    {
+      "id": "VAL-SNIPPET-013",
+      "blockedBy": "Failure and unproven-payload handling are covered only with SnippetFakeSessionController; no runnable fixture-backed comparison case was found to prove the real SSH transcript gates recent-history success entries."
+    },
+    {
+      "id": "VAL-SNIPPET-014",
+      "blockedBy": "Recent-history ordering and target labels are covered in compose instrumentation, but the available proof does not use the real fixture target required for snippet-history validation."
+    },
+    {
+      "id": "VAL-SNIPPET-015",
+      "blockedBy": "History persistence, latest-content preview, and deleted-entry stability are covered with seeded history state, but no runnable real-SSH execution flow was found that proves those behaviors from an actual successful fixture-backed run."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented that VAL-SNIPPET-008 through VAL-SNIPPET-015 currently lack runnable real-SSH fixture instrumentation and remain covered only by fake-controller or seeded-history tests.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
