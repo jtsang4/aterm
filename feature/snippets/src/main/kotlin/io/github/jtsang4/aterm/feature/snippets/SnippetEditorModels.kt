@@ -104,7 +104,7 @@ internal data class SnippetExecutionTargetSnapshot(
     val summary: String = when (mode) {
         SnippetExecutionTargetMode.SAVED_HOST -> snippetHostMetadata?.let { metadata ->
             "Saved host: ${metadata.label} (${metadata.detail})"
-        } ?: "Saved host target unavailable"
+        } ?: "Saved host target needs repair"
 
         SnippetExecutionTargetMode.ACTIVE_SESSION -> activeSessionTarget?.let { session ->
             "Active session: ${session.hostLabel} (${session.endpoint})"
@@ -112,10 +112,10 @@ internal data class SnippetExecutionTargetSnapshot(
     }
 
     fun invalidReason(): String? = when (mode) {
-        SnippetExecutionTargetMode.SAVED_HOST -> when {
-            snippetHostId == null -> "This snippet has no saved host target. Choose the current active session or edit the snippet to assign a host."
-            snippetHostMetadata == null -> "The saved host target is missing or stale. Repair the snippet target before running it."
-            else -> null
+        SnippetExecutionTargetMode.SAVED_HOST -> if (snippetHostMetadata == null) {
+            "The saved host target is missing or stale. Repair the snippet target before running it."
+        } else {
+            null
         }
 
         SnippetExecutionTargetMode.ACTIVE_SESSION -> when {

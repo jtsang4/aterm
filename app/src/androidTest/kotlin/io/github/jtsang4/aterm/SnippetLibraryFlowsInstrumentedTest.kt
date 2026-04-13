@@ -332,7 +332,7 @@ class SnippetLibraryFlowsInstrumentedTest {
         }
 
         composeRule.onNodeWithTag("snippet_run_target_1")
-            .assertTextContains("Saved host target unavailable", substring = true)
+            .assertTextContains("Saved host target needs repair", substring = true)
         composeRule.onNodeWithTag("snippet_target_warning_1")
             .assertTextContains("saved host target is missing or stale", substring = true)
 
@@ -538,6 +538,63 @@ class SnippetLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("snippet_target_error")
             .assertTextContains("Choose a saved host target", substring = true)
         assertNull(runBlocking { snippetRepository.getSnippet(1) })
+    }
+
+    @Test
+    fun deleted_saved_host_stays_repair_needed_and_never_silently_falls_back_to_active_session() {
+        val sessionController = SnippetFakeSessionController()
+        val snippetRepository = FakeSnippetRepository(
+            initialSnippets = listOf(
+                Snippet(
+                    id = 1,
+                    title = "Repair me",
+                    hostId = 44,
+                    savedTarget = SnippetSavedTarget.SAVED_HOST,
+                ),
+            ),
+            initialBodies = mapOf(1L to "printf 'should stay blocked\\n'"),
+        )
+        val hostRepository = SnippetFakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 44,
+                    label = "Fixture host",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "atermtester",
+                    identityId = 1,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            SnippetsScreen(
+                snippetRepository = snippetRepository,
+                hostRepository = hostRepository,
+                sessionController = sessionController,
+            )
+        }
+
+        composeRule.onNodeWithTag("snippet_run_target_1")
+            .assertTextContains("Saved host: Fixture host (atermtester@10.0.2.2:3122)", substring = true)
+
+        runBlocking { hostRepository.deleteHost(44) }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("snippet_run_target_1")
+            .assertTextContains("Saved host target needs repair", substring = true)
+        composeRule.onNodeWithTag("snippet_target_warning_1")
+            .assertTextContains("saved host target is missing or stale", substring = true)
+
+        composeRule.onNodeWithTag("snippet_run_1").performClick()
+
+        composeRule.onNodeWithTag("snippet_execution_blocked").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_execution_block_reason")
+            .assertTextContains("saved host target is missing or stale", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_repair").assertIsDisplayed()
+        assertEquals(0, sessionController.dispatchedInputs.size)
+        assertNull(runBlocking { snippetRepository.getSnippet(1) }?.lastRunAt)
     }
 
     private fun navigateToSnippets() {

@@ -15,6 +15,9 @@ interface SnippetDao {
     @Query("SELECT * FROM snippets WHERE id = :id")
     suspend fun getById(id: Long): SnippetEntity?
 
+    @Query("SELECT * FROM snippets WHERE hostId = :hostId AND savedTarget = 'SAVED_HOST'")
+    suspend fun getSavedHostTargeting(hostId: Long): List<SnippetEntity>
+
     @Insert
     suspend fun insert(entity: SnippetEntity): Long
 

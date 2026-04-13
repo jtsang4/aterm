@@ -1,6 +1,9 @@
 package io.github.jtsang4.aterm.core.data.repository
 
+import androidx.room.withTransaction
+import io.github.jtsang4.aterm.core.data.local.AtermDatabase
 import io.github.jtsang4.aterm.core.data.local.dao.HostDao
+import io.github.jtsang4.aterm.core.data.local.dao.SnippetDao
 import io.github.jtsang4.aterm.core.data.local.mapper.toDomain
 import io.github.jtsang4.aterm.core.data.local.mapper.toEntity
 import io.github.jtsang4.aterm.core.domain.model.Host
@@ -10,7 +13,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class RoomHostRepository(
+    private val database: AtermDatabase,
     private val hostDao: HostDao,
+    private val snippetDao: SnippetDao,
 ) : HostRepository {
     override fun observeHosts(): Flow<List<Host>> = hostDao.observeAll().map { entities ->
         entities.map { it.toDomain() }
@@ -35,6 +40,11 @@ class RoomHostRepository(
     }
 
     override suspend fun deleteHost(id: Long) {
-        hostDao.deleteById(id)
+        database.withTransaction {
+            snippetDao.getSavedHostTargeting(id).forEach { snippet ->
+                snippetDao.update(snippet.copy(hostId = null))
+            }
+            hostDao.deleteById(id)
+        }
     }
 }

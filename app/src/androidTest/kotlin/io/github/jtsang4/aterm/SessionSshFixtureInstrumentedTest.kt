@@ -29,6 +29,8 @@ import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
+import io.github.jtsang4.aterm.core.domain.model.Snippet
+import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
@@ -309,6 +311,103 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
         composeRule.onNodeWithTag("session_disconnect_button").performClick()
         waitForUiDisconnect(firstCoordinator, "Disconnected.")
+    }
+
+    @Test
+    fun deleted_saved_host_snippet_stays_blocked_and_does_not_fall_back_to_active_session() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Snippet fixture host",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val snippetId = runBlocking {
+            container.foundationGraph.snippetRepository.upsert(
+                snippet = Snippet(
+                    title = "Deleted host snippet",
+                    hostId = hostId,
+                    savedTarget = SnippetSavedTarget.SAVED_HOST,
+                ),
+                body = "printf 'STALE_TARGET_SHOULD_NOT_RUN\\n'",
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        waitForProofText(coordinator, FIXTURE_PORT)
+        waitForState(coordinator, timeoutMillis = 5_000) {
+            !it.isConnecting &&
+                it.pendingTrustDecision == null &&
+                it.connectionState == SessionConnectionState.CONNECTED
+        }
+        val transcriptBeforeDelete = coordinator.observeUiState().value.transcript
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.onNodeWithTag("host_edit_$hostId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_editor_delete").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_delete_confirmation").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_delete_confirm").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking { container.foundationGraph.hostRepository.getHost(hostId) } == null
+        }
+
+        val staleSnippet = runBlocking { container.foundationGraph.snippetRepository.getSnippet(snippetId) }
+        assertNull(staleSnippet?.hostId)
+        assertEquals(SnippetSavedTarget.SAVED_HOST, staleSnippet?.savedTarget)
+
+        composeRule.onNodeWithTag("nav_snippets").performClick()
+        composeRule.onNodeWithTag("screen_snippets").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_run_target_$snippetId")
+            .assertTextContains("Saved host target needs repair", substring = true)
+        composeRule.onNodeWithTag("snippet_target_warning_$snippetId")
+            .assertTextContains("saved host target is missing or stale", substring = true)
+
+        composeRule.onNodeWithTag("snippet_run_$snippetId").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("snippet_execution_blocked").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("snippet_execution_blocked").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("snippet_execution_confirmation").assertCountEquals(0)
+        composeRule.onNodeWithTag("snippet_execution_block_reason")
+            .assertTextContains("saved host target is missing or stale", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_repair").assertIsDisplayed()
+
+        val transcriptAfterBlockedRun = coordinator.observeUiState().value.transcript
+        assertEquals(
+            transcriptBeforeDelete.contains("STALE_TARGET_SHOULD_NOT_RUN"),
+            transcriptAfterBlockedRun.contains("STALE_TARGET_SHOULD_NOT_RUN"),
+        )
+        assertFalse(transcriptAfterBlockedRun.contains("STALE_TARGET_SHOULD_NOT_RUN"))
     }
 
     @Test

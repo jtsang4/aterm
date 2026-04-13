@@ -37,7 +37,11 @@ class HostRepositoryInstrumentedTest {
             .allowMainThreadQueries()
             .build()
         cipher = KeystoreAesGcmCipher("host.repo.test.${UUID.randomUUID()}")
-        hostRepository = RoomHostRepository(database.hostDao())
+        hostRepository = RoomHostRepository(
+            database = database,
+            hostDao = database.hostDao(),
+            snippetDao = database.snippetDao(),
+        )
         identityRepository = RoomIdentityRepository(database, database.identityDao(), cipher)
     }
 

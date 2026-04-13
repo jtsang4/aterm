@@ -112,10 +112,7 @@ abstract class AtermDatabase : RoomDatabase() {
                         `description`,
                         `tagsSerialized`,
                         `hostId`,
-                        CASE
-                            WHEN `hostId` IS NOT NULL THEN 'SAVED_HOST'
-                            ELSE 'ACTIVE_SESSION'
-                        END,
+                        `savedTarget`,
                         `bodyCipherText`,
                         `bodyIv`,
                         `createdAtEpochMillis`,
@@ -341,9 +338,7 @@ abstract class AtermDatabase : RoomDatabase() {
                             ELSE NULL
                         END,
                         CASE
-                            WHEN `hostId` IS NOT NULL
-                                AND EXISTS(SELECT 1 FROM `hosts` WHERE `hosts`.`id` = `snippets`.`hostId`)
-                                THEN 'SAVED_HOST'
+                            WHEN `hostId` IS NOT NULL THEN 'SAVED_HOST'
                             ELSE 'ACTIVE_SESSION'
                         END,
                         `bodyCipherText`,

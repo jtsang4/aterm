@@ -67,7 +67,11 @@ class FoundationRepositoriesInstrumentedTest {
             .allowMainThreadQueries()
             .build()
         cipher = KeystoreAesGcmCipher("repo.test.${UUID.randomUUID()}")
-        hostRepository = RoomHostRepository(database.hostDao())
+        hostRepository = RoomHostRepository(
+            database = database,
+            hostDao = database.hostDao(),
+            snippetDao = database.snippetDao(),
+        )
         identityRepository = RoomIdentityRepository(database, database.identityDao(), cipher)
         snippetRepository = RoomSnippetRepository(
             database,
@@ -296,7 +300,11 @@ class FoundationRepositoriesInstrumentedTest {
             persistentDatabase.identityDao(),
             persistentCipher,
         )
-        val persistentHostRepository = RoomHostRepository(persistentDatabase.hostDao())
+        val persistentHostRepository = RoomHostRepository(
+            database = persistentDatabase,
+            hostDao = persistentDatabase.hostDao(),
+            snippetDao = persistentDatabase.snippetDao(),
+        )
 
         try {
             val identity = persistentIdentityRepository.upsert(
@@ -437,6 +445,7 @@ class FoundationRepositoriesInstrumentedTest {
         assertNull(sessionRepository.getSession(session.id))
         assertNull(hostRepository.getHost(host.id))
         assertNull(snippetRepository.getSnippet(snippet.id)?.hostId)
+        assertEquals(SnippetSavedTarget.SAVED_HOST, snippetRepository.getSnippet(snippet.id)?.savedTarget)
     }
 
     @Test
@@ -624,7 +633,7 @@ class FoundationRepositoriesInstrumentedTest {
         assertEquals(0, orphanedSessionCount)
         assertNull(orphanedSnippetHostId)
         assertEquals("SAVED_HOST", linkedSnippetSavedTarget)
-        assertEquals("ACTIVE_SESSION", orphanedSnippetSavedTarget)
+        assertEquals("SAVED_HOST", orphanedSnippetSavedTarget)
         assertEquals("KEY", linkedHostAuthKind)
         assertEquals("UNKNOWN", orphanedHostAuthKind)
 
