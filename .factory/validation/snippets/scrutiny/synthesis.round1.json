@@ -1,7 +1,7 @@
 {
   "milestone": "snippets",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,19 +20,28 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
-    "passed": 2,
-    "failed": 0,
-    "failedFeatures": []
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "snippet-execution-targeting-and-safety",
+      "snippet-history-and-state-coherence"
+    ]
   },
-  "blockingIssues": [],
-  "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [],
-  "rejectedObservations": [
+  "blockingIssues": [
     {
-      "observation": "The snippet/SSH instrumentation suite still appears to have intermittent flakes that required targeted reruns before the full connected suite passed.",
-      "reason": "ambiguous: this was reported from a single fix handoff and lacks enough repeated evidence to justify documenting it as shared repository guidance yet."
+      "featureId": "snippet-execution-targeting-and-safety",
+      "severity": "blocking",
+      "description": "Database migration logic in core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/local/AtermDatabase.kt:343 rewrites snippets whose saved host was deleted to ACTIVE_SESSION, silently retargeting stale saved-host snippets instead of preserving a blocked repair-required state."
+    },
+    {
+      "featureId": "snippet-history-and-state-coherence",
+      "severity": "blocking",
+      "description": "Snippet history persistence in feature/snippets/src/main/kotlin/io/github/jtsang4/aterm/feature/snippets/SnippetsEntryPoint.kt:1218 treats any transcript mutation after dispatch as proof of success, so unrelated remote output can create false successful history entries."
     }
   ],
-  "previousRound": ".factory/validation/snippets/scrutiny/synthesis.round1.json"
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": null
 }

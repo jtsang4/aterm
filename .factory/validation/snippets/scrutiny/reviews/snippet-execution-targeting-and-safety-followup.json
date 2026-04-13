@@ -1,0 +1,21 @@
+{
+  "featureId": "snippet-execution-targeting-and-safety-followup",
+  "reviewedAt": "2026-04-13T14:05:00Z",
+  "commitId": "cdcc706d90897b254a60f8d207c0e049e89604be",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The original regression in commit e8e49209b0a7ba3362ebabc5763a166c21b66f83 came from migration code that rewrote orphaned saved-host snippets to ACTIVE_SESSION. The follow-up commit fixes both persistence paths: MIGRATION_4_5 now preserves SAVED_HOST while nulling only the missing host reference, and host deletion now transactionally detaches saved-host snippets without changing their savedTarget. The snippet UI/runtime already treats SAVED_HOST with missing host metadata as repair-needed and blocked, so the fixed data model now prevents any silent fallback to active-session execution after deletion or relaunch. Updated migration, repository, Compose, and real-SSH instrumentation coverage directly exercises the stale-target scenario and shows the payload never dispatches when the saved host is gone.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The snippet/SSH instrumentation suite still appears to have intermittent flakes that required targeted reruns before the full connected suite passed, but this flakiness is not captured in AGENTS.md or the shared library docs.",
+      "evidence": "Fix handoff verification for worker session 2be950f3-91bf-456a-8881-f79258ed19e8 records isolated reruns of SnippetLibraryFlowsInstrumentedTest#failed_dispatch_does_not_record_success_and_duplicate_guard_disables_confirm and SessionSshFixtureInstrumentedTest#real_fixture_terminal_surface_proves_no_local_echo_paste_resize_and_full_screen_state after earlier suite failures, then reports the full connectedDebugAndroidTest suite passed on rerun."
+    }
+  ],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/snippets/scrutiny/reviews/snippet-execution-targeting-and-safety.json",
+  "summary": "Reviewed the original failing diff and the fix diff, plus the fix worker transcript skeleton and handoff. The follow-up adequately resolves the prior blocking issue: stale saved-host snippets now remain explicitly repair-needed through migration and host deletion, execution stays blocked unless the user intentionally retargets, and the added tests provide direct evidence that no silent fallback to active-session execution occurs."
+}

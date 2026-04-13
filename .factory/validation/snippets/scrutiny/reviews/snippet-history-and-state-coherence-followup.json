@@ -1,0 +1,15 @@
+{
+  "featureId": "snippet-history-and-state-coherence-followup",
+  "reviewedAt": "2026-04-13T05:56:47Z",
+  "commitId": "efaa994c2ec20d8c284924b0868bdb2e08bf1b47",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The follow-up fixes the prior blocking history regression. Instead of treating any transcript mutation as success, snippet history is now recorded only after the post-dispatch transcript delta contains ordered payload-specific proof derived from the dispatched snippet body, and the updated instrumentation covers both the prior false-churn case and a real payload-proof success path while the original coherence tests still cover relaunch, latest-content, ordering, and deletion behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/snippets/scrutiny/reviews/snippet-history-and-state-coherence.json",
+  "summary": "Reviewed the prior failed feature diff (`a200cd22f567817d2e6cc6b0478d4201813c375b`), the follow-up fix diff (`efaa994c2ec20d8c284924b0868bdb2e08bf1b47`), the prior review, mission guidance, architecture, skill, and the fix feature transcript skeleton. The follow-up adequately addresses the original blocking issue: `dispatchIntoCurrentSession()` now waits for payload-specific transcript proof before calling `markExecuted()`, and the new instrumentation explicitly proves unrelated transcript churn no longer creates false successful history entries."
+}
