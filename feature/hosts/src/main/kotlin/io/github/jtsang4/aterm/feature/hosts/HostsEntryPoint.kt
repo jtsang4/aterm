@@ -3,17 +3,17 @@ package io.github.jtsang4.aterm.feature.hosts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -66,11 +66,13 @@ private sealed interface HostsDestination {
 fun HostsScreen(
     hostRepository: HostRepository,
     identityRepository: IdentityRepository,
+    onOpenRecentHost: (Long) -> Unit = {},
     importedKeyImportService: ImportedKeyImportService = ImportedKeyImportService(),
     generatedKeyIdentityService: GeneratedKeyIdentityService = GeneratedKeyIdentityService(),
 ) {
     val hosts by hostRepository.observeHosts().collectAsState(initial = emptyList())
     val identities by identityRepository.observeIdentities().collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
     var destination by remember { mutableStateOf<HostsDestination>(HostsDestination.Library) }
 
     when (val currentDestination = destination) {
@@ -92,6 +94,12 @@ fun HostsScreen(
                     HostEditorDraft.from(host = host, identities = identities),
                 )
             },
+            onToggleFavorite = { host, isFavorite ->
+                coroutineScope.launch {
+                    hostRepository.setFavorite(host.id, isFavorite)
+                }
+            },
+            onOpenRecentHost = onOpenRecentHost,
         )
 
         is HostsDestination.Editor -> HostEditorScreen(
@@ -149,9 +157,16 @@ private fun HostsLibraryScreen(
     onCreateHost: () -> Unit,
     onEditHost: (Host) -> Unit,
     onRepairHost: (Host) -> Unit,
+    onToggleFavorite: (Host, Boolean) -> Unit,
+    onOpenRecentHost: (Long) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     val filteredHosts = remember(hosts, query) { hosts.filteredBy(query) }
+    val favoriteHosts = remember(hosts) { hosts.filter(Host::isFavorite).sortedBy(Host::label) }
+    val recentHosts = remember(hosts) {
+        hosts.filter { it.lastUsedAt != null }
+            .sortedWith(compareByDescending<Host> { it.lastUsedAt }.thenBy(Host::label))
+    }
 
     AppScreenScaffold(
         title = "Hosts",
@@ -159,7 +174,9 @@ private fun HostsLibraryScreen(
         modifier = Modifier.testTag("screen_hosts"),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Button(
@@ -193,6 +210,43 @@ private fun HostsLibraryScreen(
                 )
             }
 
+
+            if (favoriteHosts.isNotEmpty()) {
+                DiscoverySurfaceSection(
+                    title = "Favorites",
+                    supportingText = "Quickly reopen the same saved hosts you starred.",
+                    modifier = Modifier.testTag("favorite_hosts_section"),
+                ) {
+                    favoriteHosts.forEachIndexed { index, host ->
+                        DiscoveryChip(
+                            host = host,
+                            index = index,
+                            containerTagPrefix = "favorite_host_item",
+                            markerTagPrefix = "favorite_host_marker",
+                            onClick = { onEditHost(host) },
+                        )
+                    }
+                }
+            }
+
+            if (recentHosts.isNotEmpty()) {
+                DiscoverySurfaceSection(
+                    title = "Recents",
+                    supportingText = "Newest successful connections stay available for quick reconnect.",
+                    modifier = Modifier.testTag("recent_hosts_section"),
+                ) {
+                    recentHosts.forEachIndexed { index, host ->
+                        DiscoveryChip(
+                            host = host,
+                            index = index,
+                            containerTagPrefix = "recent_host_item",
+                            markerTagPrefix = "recent_host_marker",
+                            rowTagPrefix = "recent_host_row",
+                            onClick = { onOpenRecentHost(host.id) },
+                        )
+                    }
+                }
+            }
             if (hosts.isEmpty()) {
                 Card(
                     modifier = Modifier
@@ -228,19 +282,20 @@ private fun HostsLibraryScreen(
                     )
                 }
             } else {
-                LazyColumn(
+                Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("host_list"),
                 ) {
-                    items(filteredHosts, key = Host::id) { host ->
+                    filteredHosts.forEach { host ->
                         val linkedIdentity = identities.firstOrNull { it.id == host.identityId }
                         HostRow(
                             host = host,
                             linkedIdentity = linkedIdentity,
                             onEditHost = onEditHost,
                             onRepairHost = onRepairHost,
+                            onToggleFavorite = onToggleFavorite,
                         )
                     }
                 }
@@ -255,6 +310,7 @@ private fun HostRow(
     linkedIdentity: Identity?,
     onEditHost: (Host) -> Unit,
     onRepairHost: (Host) -> Unit,
+    onToggleFavorite: (Host, Boolean) -> Unit,
 ) {
     val needsRepair = linkedIdentity == null || !linkedIdentity.isAuthenticationReady
     Card(
@@ -290,6 +346,12 @@ private fun HostRow(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = { onToggleFavorite(host, !host.isFavorite) },
+                    modifier = Modifier.testTag("host_favorite_toggle_${host.id}"),
+                ) {
+                    Text(if (host.isFavorite) "Unfavorite" else "Favorite")
+                }
                 TextButton(
                     onClick = { onEditHost(host) },
                     modifier = Modifier.testTag("host_edit_${host.id}"),
@@ -834,6 +896,65 @@ private fun List<Host>.filteredBy(query: String): List<Host> {
 private fun HostAuthMode.toDomain(): HostAuthKind = when (this) {
     HostAuthMode.PASSWORD -> HostAuthKind.PASSWORD
     HostAuthMode.KEY -> HostAuthKind.KEY
+}
+
+@Composable
+private fun DiscoverySurfaceSection(
+    title: String,
+    supportingText: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            content = {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(text = supportingText)
+                content()
+            },
+        )
+    }
+}
+
+@Composable
+private fun DiscoveryChip(
+    host: Host,
+    index: Int,
+    containerTagPrefix: String,
+    markerTagPrefix: String,
+    rowTagPrefix: String? = null,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (rowTagPrefix != null) {
+                    Modifier.testTag("${rowTagPrefix}_${host.id}")
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
+        FilterChip(
+            selected = false,
+            onClick = onClick,
+            label = {
+                Text(
+                    text = "${host.label} · ${host.username}@${host.address}:${host.port}",
+                    modifier = Modifier.testTag("${markerTagPrefix}_${host.id}"),
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("${containerTagPrefix}_${index}_${host.id}"),
+        )
+    }
 }
 
 @Composable

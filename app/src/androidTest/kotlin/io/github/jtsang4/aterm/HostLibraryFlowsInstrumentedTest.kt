@@ -214,6 +214,152 @@ class HostLibraryFlowsInstrumentedTest {
     }
 
     @Test
+    fun favorite_host_toggle_persists_after_relaunch_and_deletion_clears_favorite_surface() {
+        val firstContainer = AppContainer.create(context)
+        val seededIdentity: Identity
+        val seededHost: Host
+        var hostRepository: HostRepository by mutableStateOf(firstContainer.foundationGraph.hostRepository)
+        var identityRepository: IdentityRepository by mutableStateOf(firstContainer.foundationGraph.identityRepository)
+        runBlocking {
+            seededIdentity = firstContainer.foundationGraph.identityRepository.upsert(
+                identity = readyIdentity(
+                    id = 0,
+                    name = "Favorite password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = "favorite-secret"),
+            )
+            seededHost = firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    id = 0,
+                    label = "Favorite host",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "fixture",
+                    identityId = seededIdentity.id,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            )
+        }
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_favorite_toggle_${seededHost.id}").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_favorite_toggle_${seededHost.id}")
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").assertCountEquals(1)
+        assertEquals(
+            true,
+            runBlocking { firstContainer.foundationGraph.hostRepository.getHost(seededHost.id) }?.isFavorite,
+        )
+
+        composeRule.onNodeWithTag("host_favorite_toggle_${seededHost.id}")
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").fetchSemanticsNodes().isEmpty()
+        }
+        assertEquals(
+            false,
+            runBlocking { firstContainer.foundationGraph.hostRepository.getHost(seededHost.id) }?.isFavorite,
+        )
+
+        composeRule.onNodeWithTag("host_favorite_toggle_${seededHost.id}")
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").assertCountEquals(1)
+
+        val relaunchedContainer = AppContainer.create(context)
+        composeRule.runOnIdle {
+            hostRepository = relaunchedContainer.foundationGraph.hostRepository
+            identityRepository = relaunchedContainer.foundationGraph.identityRepository
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").assertCountEquals(1)
+        composeRule.onNodeWithTag("favorite_host_item_0_${seededHost.id}").performClick()
+        composeRule.onNodeWithTag("host_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_label_field").assertTextContains("Favorite host")
+        composeRule.onNodeWithTag("host_address_field").assertTextContains("10.0.2.2")
+        composeRule.onNodeWithTag("host_editor_delete").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_delete_confirm").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_${seededHost.id}").fetchSemanticsNodes().isEmpty()
+        }
+        assertEquals(
+            null,
+            runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(seededHost.id) },
+        )
+    }
+
+    @Test
+    fun recent_surface_reuses_saved_host_id_when_selected() {
+        val identity = readyIdentity(id = 30, name = "Recent password", kind = IdentityKind.PASSWORD)
+        val identityRepository = HostTestFakeIdentityRepository(
+            initialIdentities = listOf(identity),
+            initialSecrets = mapOf(30L to IdentitySecretMaterial(primarySecret = "recent-secret")),
+        )
+        val hostRepository = HostTestFakeHostRepository(
+            initialHosts = listOf(
+                Host(
+                    id = 1,
+                    label = "Recent alpha",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "fixture",
+                    identityId = 30,
+                    authKind = HostAuthKind.PASSWORD,
+                    isFavorite = true,
+                    lastUsedAt = Instant.parse("2026-04-10T02:00:00Z"),
+                ),
+                Host(
+                    id = 2,
+                    label = "Recent beta",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "fixture",
+                    identityId = 30,
+                    authKind = HostAuthKind.PASSWORD,
+                    lastUsedAt = Instant.parse("2026-04-10T01:00:00Z"),
+                ),
+            ),
+        )
+        var selectedRecentHostId: Long? by mutableStateOf(null)
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+                onOpenRecentHost = { selectedRecentHostId = it },
+            )
+        }
+
+        composeRule.onAllNodesWithTag("recent_host_row_1").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_item_0_1").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_item_1_2").assertCountEquals(1)
+        composeRule.onNodeWithTag("recent_host_item_0_1").performClick()
+
+        assertEquals(1L, selectedRecentHostId)
+    }
+
+    @Test
     fun blank_address_and_blank_username_block_save_until_corrected_end_to_end() {
         val firstContainer = AppContainer.create(context)
         runBlocking {
@@ -799,7 +945,17 @@ private class HostTestFakeHostRepository(
         return persisted
     }
 
-    override suspend fun markUsed(id: Long, usedAt: Instant) = Unit
+    override suspend fun setFavorite(id: Long, isFavorite: Boolean) {
+        hosts.value = hosts.value.map { host ->
+            if (host.id == id) host.copy(isFavorite = isFavorite) else host
+        }.sortedBy(Host::id)
+    }
+
+    override suspend fun markUsed(id: Long, usedAt: Instant) {
+        hosts.value = hosts.value.map { host ->
+            if (host.id == id) host.copy(lastUsedAt = usedAt) else host
+        }.sortedBy(Host::id)
+    }
 
     override suspend fun deleteHost(id: Long) {
         hosts.value = hosts.value.filterNot { it.id == id }

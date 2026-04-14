@@ -8,6 +8,7 @@ interface HostRepository {
     fun observeHosts(): Flow<List<Host>>
     suspend fun getHost(id: Long): Host?
     suspend fun upsert(host: Host): Host
+    suspend fun setFavorite(id: Long, isFavorite: Boolean)
     suspend fun markUsed(id: Long, usedAt: Instant = Instant.now())
     suspend fun deleteHost(id: Long)
 }

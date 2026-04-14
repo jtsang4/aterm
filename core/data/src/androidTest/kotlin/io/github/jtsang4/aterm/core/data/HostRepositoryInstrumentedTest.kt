@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -108,5 +109,31 @@ class HostRepositoryInstrumentedTest {
         assertEquals("Primary host", persistedFirstHost?.label)
         assertEquals("Secondary host", persistedSecondHost?.label)
         assertEquals(HostAuthKind.KEY, persistedFirstHost?.authKind)
+    }
+
+    @Test
+    fun observeFavoritesAndRecents_reflectTogglesAndLastUseOrdering() = runTest {
+        val identity = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, name = "Repeat-use"),
+            IdentitySecretMaterial(primarySecret = "repeat-secret"),
+        )
+        val alpha = hostRepository.upsert(
+            sampleHost(id = 0, identityId = identity.id).copy(label = "Alpha", isFavorite = false),
+        )
+        val beta = hostRepository.upsert(
+            sampleHost(id = 0, identityId = identity.id).copy(label = "Beta", isFavorite = false),
+        )
+
+        hostRepository.setFavorite(alpha.id, true)
+        hostRepository.markUsed(beta.id, java.time.Instant.parse("2026-04-10T01:00:00Z"))
+        hostRepository.markUsed(alpha.id, java.time.Instant.parse("2026-04-10T02:00:00Z"))
+
+        val favorites = database.hostDao().observeFavorites().first().map { it.label }
+        val recents = database.hostDao().observeRecents().first().map { it.label }
+        val persistedAlpha = hostRepository.getHost(alpha.id)
+
+        assertEquals(listOf("Alpha"), favorites)
+        assertEquals(listOf("Alpha", "Beta"), recents)
+        assertTrue(persistedAlpha?.isFavorite == true)
     }
 }

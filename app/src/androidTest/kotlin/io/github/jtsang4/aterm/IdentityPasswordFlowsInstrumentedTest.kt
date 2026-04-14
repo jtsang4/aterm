@@ -859,6 +859,12 @@ private class FakeHostRepository : HostRepository {
         return persisted
     }
 
+    override suspend fun setFavorite(id: Long, isFavorite: Boolean) {
+        hosts.value = hosts.value.map { host ->
+            if (host.id == id) host.copy(isFavorite = isFavorite) else host
+        }
+    }
+
     override suspend fun markUsed(id: Long, usedAt: Instant) = Unit
 
     override suspend fun deleteHost(id: Long) {

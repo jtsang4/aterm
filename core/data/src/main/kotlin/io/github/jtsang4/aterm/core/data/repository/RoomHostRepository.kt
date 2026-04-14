@@ -34,9 +34,24 @@ class RoomHostRepository(
         return requireNotNull(getHost(id)) { "Host $id was not persisted." }
     }
 
+    override suspend fun setFavorite(id: Long, isFavorite: Boolean) {
+        val existing = requireNotNull(hostDao.getById(id)) { "Host $id was not found." }
+        hostDao.update(
+            existing.copy(
+                isFavorite = isFavorite,
+                updatedAtEpochMillis = Instant.now().toEpochMilli(),
+            ),
+        )
+    }
+
     override suspend fun markUsed(id: Long, usedAt: Instant) {
         val existing = requireNotNull(hostDao.getById(id)) { "Host $id was not found." }
-        hostDao.update(existing.copy(lastUsedAtEpochMillis = usedAt.toEpochMilli()))
+        hostDao.update(
+            existing.copy(
+                lastUsedAtEpochMillis = usedAt.toEpochMilli(),
+                updatedAtEpochMillis = usedAt.toEpochMilli(),
+            ),
+        )
     }
 
     override suspend fun deleteHost(id: Long) {

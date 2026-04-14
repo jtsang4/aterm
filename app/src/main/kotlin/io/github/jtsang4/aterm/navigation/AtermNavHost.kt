@@ -2,6 +2,7 @@ package io.github.jtsang4.aterm.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import io.github.jtsang4.aterm.di.AppContainer
@@ -24,6 +25,16 @@ fun AtermNavHost(
             HostsScreen(
                 hostRepository = appContainer.foundationGraph.hostRepository,
                 identityRepository = appContainer.foundationGraph.identityRepository,
+                onOpenRecentHost = { hostId ->
+                    navController.navigate(AppDestination.Session.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                    appContainer.sshSessionCoordinator.connect(hostId)
+                },
             )
         }
         composable(AppDestination.Identities.route) {

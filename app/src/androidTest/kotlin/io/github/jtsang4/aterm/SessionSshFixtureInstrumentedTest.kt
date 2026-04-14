@@ -314,6 +314,123 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun favorites_and_recents_survive_successful_connections_without_duplicate_recent_hosts() {
+        assertFixtureReachableFromHost()
+        val firstContainer = AppContainer.create(context)
+        val primaryIdentityId = runBlocking {
+            firstContainer.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Recent fixture password A",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val secondaryIdentityId = runBlocking {
+            firstContainer.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Recent fixture password B",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val alphaHostId = runBlocking {
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Fixture Alpha",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = primaryIdentityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val betaHostId = runBlocking {
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Fixture Beta",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = secondaryIdentityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val firstCoordinator = firstContainer.sshSessionCoordinator
+        application.replaceAppContainerForTesting(firstContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("host_favorite_toggle_$alphaHostId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_favorite_toggle_$alphaHostId")
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_$alphaHostId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("favorite_host_item_0_$alphaHostId").assertIsDisplayed()
+
+        firstCoordinator.connect(alphaHostId)
+        waitForState(firstCoordinator) { it.pendingTrustDecision != null }
+        firstCoordinator.submitHostTrustDecision(true)
+        waitForState(firstCoordinator, timeoutMillis = 30_000) {
+            it.activeHostId == alphaHostId && it.connectionState == SessionConnectionState.CONNECTED
+        }
+        waitForProofText(firstCoordinator, FIXTURE_PORT)
+        firstCoordinator.disconnect()
+        waitForState(firstCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+        firstCoordinator.connect(betaHostId)
+        waitForState(firstCoordinator, timeoutMillis = 30_000) {
+            it.activeHostId == betaHostId && it.connectionState == SessionConnectionState.CONNECTED
+        }
+        waitForProofText(firstCoordinator, FIXTURE_PORT)
+        firstCoordinator.disconnect()
+        waitForState(firstCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+        firstCoordinator.connect(alphaHostId)
+        waitForState(firstCoordinator, timeoutMillis = 30_000) {
+            it.activeHostId == alphaHostId && it.connectionState == SessionConnectionState.CONNECTED
+        }
+        waitForProofText(firstCoordinator, FIXTURE_PORT)
+        firstCoordinator.disconnect()
+        waitForState(firstCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("recent_host_item_0_$alphaHostId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("recent_host_item_0_$alphaHostId").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_item_1_$betaHostId").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_row_$alphaHostId").assertCountEquals(1)
+
+        val alphaPersisted = runBlocking { firstContainer.foundationGraph.hostRepository.getHost(alphaHostId) }
+        val betaPersisted = runBlocking { firstContainer.foundationGraph.hostRepository.getHost(betaHostId) }
+        assertTrue(alphaPersisted?.isFavorite == true)
+        assertNotNull(alphaPersisted?.lastUsedAt)
+        assertNotNull(betaPersisted?.lastUsedAt)
+        assertTrue(requireNotNull(alphaPersisted?.lastUsedAt).isAfter(requireNotNull(betaPersisted?.lastUsedAt)))
+
+        val relaunchedContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(relaunchedContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_$alphaHostId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("favorite_host_item_0_$alphaHostId").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_item_0_$alphaHostId").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_item_1_$betaHostId").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("recent_host_row_$alphaHostId").assertCountEquals(1)
+    }
+
+    @Test
     fun deleted_saved_host_snippet_stays_blocked_and_does_not_fall_back_to_active_session() {
         assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
