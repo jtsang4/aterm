@@ -34,6 +34,8 @@ interface SessionController : TerminalController {
 
     override fun pasteText(text: String) = sendInput(text)
 
+    override fun setTerminalFontScale(scale: Float) = Unit
+
     override fun observeTerminalUiState(): StateFlow<TerminalUiState> = observeUiState().let { flow ->
         object : StateFlow<TerminalUiState> {
             override val replayCache: List<TerminalUiState>

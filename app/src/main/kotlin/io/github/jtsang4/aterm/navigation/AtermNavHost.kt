@@ -8,7 +8,7 @@ import androidx.navigation.compose.composable
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.hosts.HostsScreen
 import io.github.jtsang4.aterm.feature.session.SessionsScreen
-import io.github.jtsang4.aterm.feature.settings.SettingsPlaceholder
+import io.github.jtsang4.aterm.feature.settings.SettingsScreen
 import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
 
 @Composable
@@ -56,7 +56,9 @@ fun AtermNavHost(
             )
         }
         composable(AppDestination.Settings.route) {
-            SettingsPlaceholder()
+            SettingsScreen(
+                settingsRepository = appContainer.foundationGraph.settingsRepository,
+            )
         }
     }
 }

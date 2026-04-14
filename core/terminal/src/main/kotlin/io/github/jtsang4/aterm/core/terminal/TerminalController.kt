@@ -8,10 +8,12 @@ data class TerminalUiState(
     val authoritativeSession: AuthoritativeTerminalSession? = null,
     val cellWidthPx: Int = 9,
     val cellHeightPx: Int = 18,
+    val fontScale: Float = 1f,
 )
 
 interface TerminalController {
     fun observeTerminalUiState(): StateFlow<TerminalUiState>
+    fun setTerminalFontScale(scale: Float)
     fun sendText(text: String)
     fun sendSpecialKey(key: TerminalSpecialKey)
     fun pasteText(text: String)

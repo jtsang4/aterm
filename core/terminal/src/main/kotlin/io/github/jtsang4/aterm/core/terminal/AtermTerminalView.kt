@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.util.TypedValue
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.max
@@ -14,7 +15,6 @@ class AtermTerminalView @JvmOverloads constructor(
 ) : View(context, attrs) {
     private val previewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFD7E3F4.toInt()
-        textSize = 28f
         typeface = Typeface.MONOSPACE
     }
     private val previewLineHeight: Float
@@ -43,6 +43,7 @@ class AtermTerminalView @JvmOverloads constructor(
     init {
         setBackgroundColor(0xFF101418.toInt())
         isFocusable = false
+        setTerminalFontScale(1f)
     }
 
     internal fun attachLiveSession(session: AuthoritativeTerminalSession) {
@@ -63,6 +64,16 @@ class AtermTerminalView @JvmOverloads constructor(
 
     internal fun updateLiveAccessibilityText(text: String) {
         contentDescription = text.ifBlank { "No terminal transcript yet." }
+        invalidate()
+    }
+
+    fun setTerminalFontScale(scale: Float) {
+        val normalized = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE)
+        previewPaint.textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            DEFAULT_TEXT_SIZE_SP * normalized,
+            resources.displayMetrics,
+        )
         invalidate()
     }
 
@@ -90,5 +101,11 @@ class AtermTerminalView @JvmOverloads constructor(
                 return
             }
         }
+    }
+
+    private companion object {
+        private const val DEFAULT_TEXT_SIZE_SP = 14f
+        private const val MIN_FONT_SCALE = 0.75f
+        private const val MAX_FONT_SCALE = 2f
     }
 }

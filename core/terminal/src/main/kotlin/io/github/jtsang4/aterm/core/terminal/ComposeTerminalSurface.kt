@@ -78,6 +78,7 @@ fun ComposeTerminalSurface(
     val authoritativeSession = terminalState.value.authoritativeSession
     val cellWidthPx = terminalState.value.cellWidthPx
     val cellHeightPx = terminalState.value.cellHeightPx
+    val fontScale = terminalState.value.fontScale
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier,
@@ -108,6 +109,7 @@ fun ComposeTerminalSurface(
         AndroidView(
             factory = { context ->
                 AtermTerminalView(context).apply {
+                    setTerminalFontScale(fontScale)
                     updatePreviewSnapshot(snapshot)
                 }
             },
@@ -126,6 +128,7 @@ fun ComposeTerminalSurface(
                 }
                 .testTag("session_terminal_surface"),
             update = { view ->
+                view.setTerminalFontScale(fontScale)
                 view.updatePreviewSnapshot(snapshot)
                 if (authoritativeSession != null) {
                     view.attachLiveSession(authoritativeSession)

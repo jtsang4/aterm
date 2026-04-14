@@ -15,6 +15,7 @@ import io.github.jtsang4.aterm.core.terminal.AuthoritativeTerminalSession
 import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
 import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 import io.github.jtsang4.aterm.core.terminal.TerminalViewport
+import io.github.jtsang4.aterm.core.terminal.calculateTerminalViewport
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,6 +87,8 @@ class SshSessionCoordinator(
     private var latestTerminalWidthPx: Int = DEFAULT_TERMINAL_COLUMNS * CELL_WIDTH_PIXELS
     private var latestTerminalHeightPx: Int = DEFAULT_TERMINAL_ROWS * CELL_HEIGHT_PIXELS
     private var currentSessionMetadataId: Long? = null
+    @Volatile
+    private var pendingResizeJob: Job? = null
 
     init {
         authoritativeTerminalSession.addListener(
@@ -219,6 +223,7 @@ class SshSessionCoordinator(
         connection: RuntimeConnection,
         input: String,
     ): Result<Unit> = runCatching {
+        pendingResizeJob?.join()
         inputWriteMutex.withLock {
             withContext(Dispatchers.IO) {
                 connection.stdin.write(input.encodeToByteArray())
@@ -258,13 +263,19 @@ class SshSessionCoordinator(
             ),
         )
         emitTerminalState(canSendInput = uiState.value.canSendInput)
-        ioScope.launch {
+        val resizeJob = ioScope.launch {
             runtimeConnection?.sendResize(
                 columns = safeColumns,
                 rows = safeRows,
                 widthPx = latestTerminalWidthPx,
                 heightPx = latestTerminalHeightPx,
             )
+        }
+        pendingResizeJob = resizeJob
+        resizeJob.invokeOnCompletion {
+            if (pendingResizeJob === resizeJob) {
+                pendingResizeJob = null
+            }
         }
     }
 
@@ -284,13 +295,19 @@ class SshSessionCoordinator(
             ),
         )
         emitTerminalState(canSendInput = uiState.value.canSendInput)
-        ioScope.launch {
+        val resizeJob = ioScope.launch {
             runtimeConnection?.sendResize(
                 columns = safeColumns,
                 rows = safeRows,
                 widthPx = latestTerminalWidthPx,
                 heightPx = latestTerminalHeightPx,
             )
+        }
+        pendingResizeJob = resizeJob
+        resizeJob.invokeOnCompletion {
+            if (pendingResizeJob === resizeJob) {
+                pendingResizeJob = null
+            }
         }
     }
 
@@ -299,6 +316,18 @@ class SshSessionCoordinator(
     override fun sendSpecialKey(key: TerminalSpecialKey) = sendInput(key.encoded)
 
     override fun pasteText(text: String) = sendInput(text)
+
+    override fun setTerminalFontScale(scale: Float) {
+        authoritativeTerminalSession.updateFontScale(scale)
+        emitTerminalState(canSendInput = uiState.value.canSendInput)
+        val viewport = calculateTerminalViewport(
+            contentWidthPx = latestTerminalWidthPx,
+            contentHeightPx = latestTerminalHeightPx,
+            cellWidthPx = terminalUiState.value.cellWidthPx,
+            cellHeightPx = terminalUiState.value.cellHeightPx,
+        ) ?: return
+        resize(viewport)
+    }
 
     private suspend fun connectInternal(hostId: Long, attempt: ConnectAttempt) {
         val result = runCatching {
@@ -738,6 +767,7 @@ class SshSessionCoordinator(
             authoritativeSession = authoritativeTerminalSession,
             cellWidthPx = rendererMetrics.cellWidthPx.toInt().coerceAtLeast(1),
             cellHeightPx = rendererMetrics.cellHeightPx.coerceAtLeast(1),
+            fontScale = authoritativeTerminalSession.currentFontScale(),
         )
         terminalUiState.value = state
         uiState.update { current ->
@@ -835,12 +865,14 @@ class SshSessionCoordinator(
         heightPx: Int,
     ) {
         runCatching {
-            channel.sendWindowChange(
-                columns,
-                rows,
-                widthPx,
-                heightPx,
-            )
+            inputWriteMutex.withLock {
+                channel.sendWindowChange(
+                    columns,
+                    rows,
+                    widthPx,
+                    heightPx,
+                )
+            }
         }.onFailure { throwable ->
             failConnection(
                 host = host,

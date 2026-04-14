@@ -6,6 +6,7 @@ import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalOutput
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalRenderer
+import kotlin.math.roundToInt
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -15,7 +16,8 @@ class AuthoritativeTerminalSession(
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val terminalOutput = UiTerminalOutput()
     private val emulatorClient = UiTerminalSessionClient()
-    private val renderer by lazy { TerminalRenderer(DEFAULT_TEXT_SIZE_SP, Typeface.MONOSPACE) }
+    private var fontScale: Float = 1f
+    private var renderer: TerminalRenderer = createRenderer(fontScale)
 
     private var viewport: TerminalViewport = normalizeViewport(initialViewport)
     private var emulator: TerminalEmulator? = null
@@ -67,6 +69,16 @@ class AuthoritativeTerminalSession(
         viewport = normalized
         activeEmulator().resize(normalized.columns, normalized.rows)
         topRow = topRow.coerceIn(minTopRow(), 0)
+        notifyContentChanged()
+    }
+
+    fun updateFontScale(scale: Float) {
+        val normalized = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE)
+        if (normalized == fontScale) {
+            return
+        }
+        fontScale = normalized
+        renderer = createRenderer(fontScale)
         notifyContentChanged()
     }
 
@@ -139,6 +151,8 @@ class AuthoritativeTerminalSession(
         cellWidthPx = renderer.fontWidth,
         cellHeightPx = renderer.fontLineSpacing,
     )
+
+    fun currentFontScale(): Float = fontScale
 
     private fun notifyContentChanged() {
         if (emulator == null) return
@@ -231,8 +245,15 @@ class AuthoritativeTerminalSession(
 
     companion object {
         private const val DEFAULT_TEXT_SIZE_SP = 28
+        private const val MIN_FONT_SCALE = 0.75f
+        private const val MAX_FONT_SCALE = 2f
         private const val DEFAULT_TRANSCRIPT_ROWS = 2_000
         private val DEFAULT_VIEWPORT = TerminalViewport(columns = 80, rows = 24, widthPx = 720, heightPx = 432)
+
+        private fun createRenderer(fontScale: Float): TerminalRenderer = TerminalRenderer(
+            (DEFAULT_TEXT_SIZE_SP * fontScale).roundToInt().coerceAtLeast(1),
+            Typeface.MONOSPACE,
+        )
     }
 }
 

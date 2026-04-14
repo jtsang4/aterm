@@ -44,6 +44,12 @@ class AppContainer private constructor(
     val foundationGraph: AppFoundationGraph
         get() = foundationGraphDelegate.value
 
+    val settingsRepositoryOrNull
+        get() = foundationGraphFactory?.let { foundationGraph.settingsRepository }
+
+    val sshSessionCoordinatorOrNull
+        get() = foundationGraphFactory?.let { sshSessionCoordinator }
+
     val sshSessionCoordinator: SshSessionCoordinator
         get() = sshSessionCoordinatorDelegate.value
 

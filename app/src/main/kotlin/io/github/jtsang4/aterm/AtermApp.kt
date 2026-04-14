@@ -8,19 +8,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import io.github.jtsang4.aterm.core.designsystem.AtermTheme
+import io.github.jtsang4.aterm.core.domain.model.ThemePreference
+import io.github.jtsang4.aterm.core.domain.model.UserPreferences
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.identities.IdentitiesScreen
 import io.github.jtsang4.aterm.di.LocalAppContainer
@@ -34,10 +43,30 @@ fun AtermApp(
     appContainer: AppContainer = AppContainer.preview(),
     identitiesScreen: @Composable (() -> Unit)? = null,
 ) {
-    AtermTheme {
+    val settingsRepository = appContainer.settingsRepositoryOrNull
+    val preferences by settingsRepository
+        ?.observePreferences()
+        ?.collectAsState(initial = UserPreferences())
+        ?: remember {
+            mutableStateOf(UserPreferences())
+        }
+    val darkTheme = when (preferences.themePreference) {
+        ThemePreference.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+        ThemePreference.LIGHT -> false
+        ThemePreference.DARK -> true
+    }
+    val sshSessionCoordinator = appContainer.sshSessionCoordinatorOrNull
+
+    AtermTheme(darkTheme = darkTheme) {
         CompositionLocalProvider(LocalAppContainer provides appContainer) {
             val appState = rememberAtermAppState()
             val currentDestination = appState.currentDestination()
+            LaunchedEffect(currentDestination) {
+                settingsRepository?.updateLastViewedArea(currentDestination.featureArea)
+            }
+            LaunchedEffect(preferences.terminalFontScale) {
+                sshSessionCoordinator?.setTerminalFontScale(preferences.terminalFontScale)
+            }
 
             Scaffold(
                 modifier = Modifier.testTag("app_shell"),
@@ -49,6 +78,10 @@ fun AtermApp(
                                 modifier = Modifier.testTag("app_title"),
                             )
                         },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
                     )
                 },
                 bottomBar = {
