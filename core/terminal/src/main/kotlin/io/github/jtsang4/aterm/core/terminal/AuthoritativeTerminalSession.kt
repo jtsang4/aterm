@@ -17,6 +17,7 @@ class AuthoritativeTerminalSession(
     private val terminalOutput = UiTerminalOutput()
     private val emulatorClient = UiTerminalSessionClient()
     private var fontScale: Float = 1f
+    private var colorPalette: TerminalColorPalette = TerminalColorPalette.Default
     private var renderer: TerminalRenderer = createRenderer(fontScale)
 
     private var viewport: TerminalViewport = normalizeViewport(initialViewport)
@@ -33,12 +34,14 @@ class AuthoritativeTerminalSession(
             DEFAULT_TRANSCRIPT_ROWS,
             emulatorClient,
         )
+        applyColorPalette(colorPalette)
     }
 
     fun reset(newViewport: TerminalViewport = viewport) {
         viewport = normalizeViewport(newViewport)
         activeEmulator().reset()
         activeEmulator().resize(viewport.columns, viewport.rows)
+        applyColorPalette(colorPalette)
         topRow = 0
         notifyContentChanged()
     }
@@ -79,6 +82,15 @@ class AuthoritativeTerminalSession(
         }
         fontScale = normalized
         renderer = createRenderer(fontScale)
+        notifyContentChanged()
+    }
+
+    fun updateColorPalette(palette: TerminalColorPalette) {
+        if (palette == colorPalette) {
+            return
+        }
+        colorPalette = palette
+        applyColorPalette(palette)
         notifyContentChanged()
     }
 
@@ -130,6 +142,7 @@ class AuthoritativeTerminalSession(
     fun completeText(): String = snapshot().completeText
 
     fun renderInto(canvas: Canvas) {
+        canvas.drawColor(colorPalette.backgroundArgb)
         val emulator = activeEmulator()
         renderer.render(
             emulator,
@@ -153,6 +166,8 @@ class AuthoritativeTerminalSession(
     )
 
     fun currentFontScale(): Float = fontScale
+
+    fun currentColorPalette(): TerminalColorPalette = colorPalette
 
     private fun notifyContentChanged() {
         if (emulator == null) return
@@ -179,6 +194,27 @@ class AuthoritativeTerminalSession(
     private fun activeEmulator(): TerminalEmulator = checkNotNull(emulator)
 
     private fun minTopRow(): Int = -activeEmulator().screen.activeTranscriptRows
+
+    private fun applyColorPalette(palette: TerminalColorPalette) {
+        val emulator = activeEmulator()
+        emulator.mColors.mCurrentColors[DEFAULT_FOREGROUND_INDEX] = palette.foregroundArgb
+        emulator.mColors.mCurrentColors[DEFAULT_BACKGROUND_INDEX] = palette.backgroundArgb
+        emulator.mColors.mCurrentColors[DEFAULT_CURSOR_INDEX] = palette.cursorArgb
+        setTerminalEmulatorField(emulator, "mForeColor", palette.foregroundArgb)
+        setTerminalEmulatorField(emulator, "mBackColor", palette.backgroundArgb)
+    }
+
+    private fun setTerminalEmulatorField(
+        emulator: TerminalEmulator,
+        fieldName: String,
+        value: Int,
+    ) {
+        runCatching {
+            val field = TerminalEmulator::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            field.setInt(emulator, value)
+        }
+    }
 
     private inner class UiTerminalOutput : TerminalOutput() {
         override fun write(data: ByteArray, offset: Int, count: Int) {
@@ -248,6 +284,9 @@ class AuthoritativeTerminalSession(
         private const val MIN_FONT_SCALE = 0.75f
         private const val MAX_FONT_SCALE = 2f
         private const val DEFAULT_TRANSCRIPT_ROWS = 2_000
+        private const val DEFAULT_FOREGROUND_INDEX = 256
+        private const val DEFAULT_BACKGROUND_INDEX = 257
+        private const val DEFAULT_CURSOR_INDEX = 258
         private val DEFAULT_VIEWPORT = TerminalViewport(columns = 80, rows = 24, widthPx = 720, heightPx = 432)
 
         private fun createRenderer(fontScale: Float): TerminalRenderer = TerminalRenderer(

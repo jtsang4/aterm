@@ -20,6 +20,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.testTag
@@ -79,6 +80,7 @@ fun ComposeTerminalSurface(
     val cellWidthPx = terminalState.value.cellWidthPx
     val cellHeightPx = terminalState.value.cellHeightPx
     val fontScale = terminalState.value.fontScale
+    val colorPalette = terminalColorPalette()
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier,
@@ -110,13 +112,14 @@ fun ComposeTerminalSurface(
             factory = { context ->
                 AtermTerminalView(context).apply {
                     setTerminalFontScale(fontScale)
+                    setTerminalColorPalette(colorPalette)
                     updatePreviewSnapshot(snapshot)
                 }
             },
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 180.dp, max = 280.dp)
-                .background(Color(0xFF101418))
+                .background(Color(colorPalette.backgroundArgb))
                 .padding(12.dp)
                 .onSizeChanged { size ->
                     onTerminalSurfaceSizeChanged?.invoke(
@@ -129,6 +132,7 @@ fun ComposeTerminalSurface(
                 .testTag("session_terminal_surface"),
             update = { view ->
                 view.setTerminalFontScale(fontScale)
+                view.setTerminalColorPalette(colorPalette)
                 view.updatePreviewSnapshot(snapshot)
                 if (authoritativeSession != null) {
                     view.attachLiveSession(authoritativeSession)
@@ -169,8 +173,22 @@ fun ComposeTerminalSurface(
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("session_terminal_status"),
         )
+        Text(
+            text = "fg=${colorPalette.foregroundArgb.toUInt().toString(16)} bg=${colorPalette.backgroundArgb.toUInt().toString(16)}",
+            color = Color.Transparent,
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("session_terminal_palette"),
+        )
     }
 }
+
+@Composable
+fun terminalColorPalette(): TerminalColorPalette = TerminalColorPalette(
+    foregroundArgb = MaterialTheme.colorScheme.onSurface.toArgb(),
+    backgroundArgb = MaterialTheme.colorScheme.surface.toArgb(),
+    cursorArgb = MaterialTheme.colorScheme.onSurface.toArgb(),
+)
 
 @Composable
 fun TerminalSpecialKeyBar(

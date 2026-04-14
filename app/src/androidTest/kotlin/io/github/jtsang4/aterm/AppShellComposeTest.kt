@@ -20,6 +20,7 @@ import io.github.jtsang4.aterm.core.domain.model.ThemePreference
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
+import io.github.jtsang4.aterm.core.terminal.TerminalColorPalette
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -162,6 +163,73 @@ class AppShellComposeTest {
         }
     }
 
+    @Test
+    fun terminal_theme_updates_open_and_restored_sessions_without_regressing_font_scale() {
+        val firstContainer = AppContainer.create(context)
+        val fixture = seedPreferenceFixture(firstContainer)
+        application.replaceAppContainerForTesting(firstContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        val coordinator = firstContainer.sshSessionCoordinator
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFixtureSession(
+            coordinator = coordinator,
+            hostId = fixture.hostId,
+            expectTrustPrompt = true,
+        )
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_theme_option_dark").performClick()
+        waitForThemeMarker("dark")
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            terminalPaletteText() != TerminalColorPalette.Default.let {
+                "fg=${it.foregroundArgb.toUInt().toString(16)} bg=${it.backgroundArgb.toUInt().toString(16)}"
+            }
+        }
+        val darkPalette = terminalPaletteText()
+        val darkMetrics = terminalMetricsText()
+
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_theme_option_light").performClick()
+        waitForThemeMarker("light")
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            terminalPaletteText() != darkPalette
+        }
+        val lightPalette = terminalPaletteText()
+        assertNotEquals(darkPalette, lightPalette)
+        assertEquals(darkMetrics, terminalMetricsText())
+
+        val restoredContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(restoredContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_state_label")
+                    .assertTextContains("reconnect required", substring = true)
+            }.isSuccess
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            terminalPaletteText() == lightPalette
+        }
+        assertEquals(lightPalette, terminalPaletteText())
+        assertEquals(darkMetrics, terminalMetricsText())
+
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_theme_option_dark").performClick()
+        waitForThemeMarker("dark")
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            terminalPaletteText() == darkPalette
+        }
+        assertEquals(darkPalette, terminalPaletteText())
+        assertEquals(darkMetrics, terminalMetricsText())
+    }
+
     private fun seedPreferenceFixture(container: AppContainer): PreferenceFixture = runBlocking {
         container.foundationGraph.settingsRepository.updateTheme(ThemePreference.LIGHT)
         container.foundationGraph.settingsRepository.updateTerminalFontScale(1f)
@@ -198,6 +266,12 @@ class AppShellComposeTest {
     }
 
     private fun terminalMetricsText(): String = composeRule.onNodeWithTag("session_terminal_metrics")
+        .fetchSemanticsNode()
+        .config
+        .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }
+        .joinToString(separator = "") { it.text }
+
+    private fun terminalPaletteText(): String = composeRule.onNodeWithTag("session_terminal_palette")
         .fetchSemanticsNode()
         .config
         .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }

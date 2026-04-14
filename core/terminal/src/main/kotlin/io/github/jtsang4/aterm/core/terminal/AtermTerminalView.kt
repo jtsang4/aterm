@@ -14,7 +14,7 @@ class AtermTerminalView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
     private val previewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFD7E3F4.toInt()
+        color = TerminalColorPalette.Default.foregroundArgb
         typeface = Typeface.MONOSPACE
     }
     private val previewLineHeight: Float
@@ -24,6 +24,7 @@ class AtermTerminalView @JvmOverloads constructor(
 
     private var previewSnapshot: TerminalSnapshot = TerminalBuffer().snapshot()
     private var liveSession: AuthoritativeTerminalSession? = null
+    private var terminalColorPalette: TerminalColorPalette = TerminalColorPalette.Default
     private val liveListener = object : AuthoritativeTerminalSession.Listener {
         override fun onTerminalSnapshotChanged(snapshot: TerminalSnapshot) {
             post {
@@ -41,17 +42,19 @@ class AtermTerminalView @JvmOverloads constructor(
     }
 
     init {
-        setBackgroundColor(0xFF101418.toInt())
+        setBackgroundColor(TerminalColorPalette.Default.backgroundArgb)
         isFocusable = false
         setTerminalFontScale(1f)
     }
 
     internal fun attachLiveSession(session: AuthoritativeTerminalSession) {
         if (liveSession === session) {
+            session.updateColorPalette(terminalColorPalette)
             return
         }
         liveSession?.removeListener(liveListener)
         liveSession = session
+        session.updateColorPalette(terminalColorPalette)
         session.addListener(liveListener)
         invalidate()
     }
@@ -74,6 +77,17 @@ class AtermTerminalView @JvmOverloads constructor(
             DEFAULT_TEXT_SIZE_SP * normalized,
             resources.displayMetrics,
         )
+        invalidate()
+    }
+
+    fun setTerminalColorPalette(palette: TerminalColorPalette) {
+        if (terminalColorPalette == palette) {
+            return
+        }
+        terminalColorPalette = palette
+        previewPaint.color = palette.foregroundArgb
+        setBackgroundColor(palette.backgroundArgb)
+        liveSession?.updateColorPalette(palette)
         invalidate()
     }
 
