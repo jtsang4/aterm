@@ -247,135 +247,142 @@ private fun SnippetsLibraryScreen(
         supportingText = "Save local command snippets with optional host metadata, then run them only against an explicit saved host or the current live session.",
         modifier = Modifier.testTag("screen_snippets"),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("snippet_list"),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Button(
-                onClick = onCreateSnippet,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("snippet_create_action"),
-            ) {
-                Text("Create snippet")
-            }
-
-            notice?.let { currentNotice ->
-                Card(
+            item {
+                Button(
+                    onClick = onCreateSnippet,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("snippet_execution_notice"),
+                        .testTag("snippet_create_action"),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = if (currentNotice.isError) "Snippet run failed" else "Snippet run sent",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = if (currentNotice.isError) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                        )
-                        Text(currentNotice.message)
-                        TextButton(
-                            onClick = onDismissNotice,
-                            modifier = Modifier.testTag("snippet_execution_notice_dismiss"),
-                        ) {
-                            Text("Dismiss")
-                        }
-                    }
+                    Text("Create snippet")
                 }
             }
 
-            if (snippets.isNotEmpty()) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Search snippets") },
-                    supportingText = { Text("Search by title, description, tags, or associated host.") },
-                    trailingIcon = {
-                        if (query.isNotBlank()) {
-                            TextButton(
-                                onClick = { query = "" },
-                                modifier = Modifier.testTag("snippet_search_clear"),
-                            ) {
-                                Text("Clear")
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("snippet_search_field"),
-                )
-            }
-
-            if (history.isNotEmpty()) {
-                RecentSnippetHistoryCard(history = history)
-            }
-
-            when {
-                snippets.isEmpty() -> {
+            notice?.let { currentNotice ->
+                item {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("snippet_empty_state"),
+                            .testTag("snippet_execution_notice"),
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                text = "No snippets saved yet",
+                                text = if (currentNotice.isError) "Snippet run failed" else "Snippet run sent",
                                 style = MaterialTheme.typography.titleMedium,
+                                color = if (currentNotice.isError) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
                             )
-                            Text("Create your first saved command snippet so you can find and reuse it later from this local library.")
+                            Text(currentNotice.message)
+                            TextButton(
+                                onClick = onDismissNotice,
+                                modifier = Modifier.testTag("snippet_execution_notice_dismiss"),
+                            ) {
+                                Text("Dismiss")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (snippets.isNotEmpty()) {
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Search snippets") },
+                        supportingText = { Text("Search by title, description, tags, or associated host.") },
+                        trailingIcon = {
+                            if (query.isNotBlank()) {
+                                TextButton(
+                                    onClick = { query = "" },
+                                    modifier = Modifier.testTag("snippet_search_clear"),
+                                ) {
+                                    Text("Clear")
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("snippet_search_field"),
+                    )
+                }
+            }
+
+            if (history.isNotEmpty()) {
+                item {
+                    RecentSnippetHistoryCard(history = history)
+                }
+            }
+
+            when {
+                snippets.isEmpty() -> {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("snippet_empty_state"),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = "No snippets saved yet",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text("Create your first saved command snippet so you can find and reuse it later from this local library.")
+                            }
                         }
                     }
                 }
 
                 filteredSnippets.isEmpty() -> {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("snippet_search_empty_state"),
-                    ) {
-                        Text(
-                            text = "No snippets match \"$query\". Clear search to restore the full library.",
-                            modifier = Modifier.padding(16.dp),
-                        )
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("snippet_search_empty_state"),
+                        ) {
+                            Text(
+                                text = "No snippets match \"$query\". Clear search to restore the full library.",
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        }
                     }
                 }
 
                 else -> {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("snippet_list"),
-                    ) {
-                        items(filteredSnippets, key = Snippet::id) { snippet ->
-                            val selectedTargetMode = targetModes[snippet.id]
-                                ?: defaultExecutionTargetMode(snippet)
-                            val targetSnapshot = buildTargetSnapshot(
-                                snippet = snippet,
-                                targetMode = selectedTargetMode,
-                                hostMetadataById = hostMetadataById,
-                                sessionState = sessionState,
-                            )
-                            SnippetRow(
-                                snippet = snippet,
-                                hostMetadata = snippet.hostId?.let(hostMetadataById::get),
-                                targetSnapshot = targetSnapshot,
-                                onSelectTargetMode = { mode ->
-                                    targetModes[snippet.id] = mode
-                                },
-                                onEditSnippet = onEditSnippet,
-                                onRunSnippet = { onRunSnippet(snippet, selectedTargetMode) },
-                            )
-                        }
+                    items(filteredSnippets, key = Snippet::id) { snippet ->
+                        val selectedTargetMode = targetModes[snippet.id]
+                            ?: defaultExecutionTargetMode(snippet)
+                        val targetSnapshot = buildTargetSnapshot(
+                            snippet = snippet,
+                            targetMode = selectedTargetMode,
+                            hostMetadataById = hostMetadataById,
+                            sessionState = sessionState,
+                        )
+                        SnippetRow(
+                            snippet = snippet,
+                            hostMetadata = snippet.hostId?.let(hostMetadataById::get),
+                            targetSnapshot = targetSnapshot,
+                            onSelectTargetMode = { mode ->
+                                targetModes[snippet.id] = mode
+                            },
+                            onEditSnippet = onEditSnippet,
+                            onRunSnippet = { onRunSnippet(snippet, selectedTargetMode) },
+                        )
                     }
                 }
             }
