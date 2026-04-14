@@ -66,6 +66,7 @@ private sealed interface HostsDestination {
 fun HostsScreen(
     hostRepository: HostRepository,
     identityRepository: IdentityRepository,
+    onOpenFavoriteHost: ((Long) -> Unit)? = null,
     onOpenRecentHost: (Long) -> Unit = {},
     importedKeyImportService: ImportedKeyImportService = ImportedKeyImportService(),
     generatedKeyIdentityService: GeneratedKeyIdentityService = GeneratedKeyIdentityService(),
@@ -99,6 +100,7 @@ fun HostsScreen(
                     hostRepository.setFavorite(host.id, isFavorite)
                 }
             },
+            onOpenFavoriteHost = onOpenFavoriteHost,
             onOpenRecentHost = onOpenRecentHost,
         )
 
@@ -158,6 +160,7 @@ private fun HostsLibraryScreen(
     onEditHost: (Host) -> Unit,
     onRepairHost: (Host) -> Unit,
     onToggleFavorite: (Host, Boolean) -> Unit,
+    onOpenFavoriteHost: ((Long) -> Unit)?,
     onOpenRecentHost: (Long) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -223,7 +226,9 @@ private fun HostsLibraryScreen(
                             index = index,
                             containerTagPrefix = "favorite_host_item",
                             markerTagPrefix = "favorite_host_marker",
-                            onClick = { onEditHost(host) },
+                            onClick = {
+                                onOpenFavoriteHost?.invoke(host.id) ?: onEditHost(host)
+                            },
                         )
                     }
                 }

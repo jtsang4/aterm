@@ -25,6 +25,16 @@ fun AtermNavHost(
             HostsScreen(
                 hostRepository = appContainer.foundationGraph.hostRepository,
                 identityRepository = appContainer.foundationGraph.identityRepository,
+                onOpenFavoriteHost = { hostId ->
+                    navController.navigate(AppDestination.Session.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                    appContainer.sshSessionCoordinator.connect(hostId)
+                },
                 onOpenRecentHost = { hostId ->
                     navController.navigate(AppDestination.Session.route) {
                         popUpTo(navController.graph.findStartDestination().id) {
@@ -35,6 +45,8 @@ fun AtermNavHost(
                     }
                     appContainer.sshSessionCoordinator.connect(hostId)
                 },
+                importedKeyImportService = appContainer.importedKeyImportService,
+                generatedKeyIdentityService = appContainer.generatedKeyIdentityService,
             )
         }
         composable(AppDestination.Identities.route) {

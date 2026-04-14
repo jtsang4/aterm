@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -36,6 +37,8 @@ import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
 import io.github.jtsang4.aterm.core.terminal.calculateTerminalViewport
 import io.github.jtsang4.aterm.di.AppContainer
+import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
+import io.github.jtsang4.aterm.feature.identities.GeneratedKeyMaterial
 import java.io.File
 import java.net.Socket
 import kotlinx.coroutines.delay
@@ -431,6 +434,99 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun favorite_repeat_use_flow_reconnects_and_runs_saved_snippet_without_any_login_or_sync_gate() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Favorite repeat password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Favorite repeat host",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                    isFavorite = true,
+                ),
+            ).id
+        }
+        val snippetId = runBlocking {
+            container.foundationGraph.snippetRepository.upsert(
+                snippet = Snippet(
+                    title = "Favorite repeat snippet",
+                    hostId = hostId,
+                    savedTarget = SnippetSavedTarget.SAVED_HOST,
+                ),
+                body = "printf 'FAVORITE_REPEAT_SNIPPET_OK\\n'",
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        connectFromUi(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        waitForProofText(coordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        waitForUiDisconnect(coordinator, "Disconnected.")
+
+        val relaunchedContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(relaunchedContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("favorite_host_item_0_$hostId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("favorite_host_item_0_$hostId").performClick()
+        val relaunchedCoordinator = relaunchedContainer.sshSessionCoordinator
+        val reconnected = waitForState(relaunchedCoordinator, timeoutMillis = 30_000) {
+            it.activeHostId == hostId && it.connectionState == SessionConnectionState.CONNECTED
+        }
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnected.statusMessage)
+        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
+
+        composeRule.onNodeWithTag("nav_snippets").performClick()
+        composeRule.onNodeWithTag("screen_snippets").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_run_target_$snippetId")
+            .assertTextContains("Saved host: Favorite repeat host", substring = true)
+        composeRule.onNodeWithTag("snippet_run_$snippetId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("snippet_execution_confirmation").assertIsDisplayed()
+        composeRule.onNodeWithTag("snippet_execution_target")
+            .assertTextContains("Saved host: Favorite repeat host", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
+
+        waitForTranscriptOutputLine(relaunchedCoordinator, "FAVORITE_REPEAT_SNIPPET_OK")
+        waitForSnippetHistoryRecord(
+            snippetRepository = relaunchedContainer.foundationGraph.snippetRepository,
+            expectedLabel = "Favorite repeat host",
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", relaunchedCoordinator.observeUiState().value.statusMessage)
+        composeRule.onAllNodesWithText("Login", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("Sync", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("Team", substring = true).assertCountEquals(0)
+
+        relaunchedCoordinator.disconnect()
+        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+    }
+
+    @Test
     fun deleted_saved_host_snippet_stays_blocked_and_does_not_fall_back_to_active_session() {
         assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
@@ -525,6 +621,236 @@ class SessionSshFixtureInstrumentedTest {
             transcriptAfterBlockedRun.contains("STALE_TARGET_SHOULD_NOT_RUN"),
         )
         assertFalse(transcriptAfterBlockedRun.contains("STALE_TARGET_SHOULD_NOT_RUN"))
+    }
+
+    @Test
+    fun edited_password_host_and_saved_snippet_target_reconnect_with_updated_fixture_port_after_relaunch() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Port edit password",
+                    kind = IdentityKind.PASSWORD,
+                ),
+                secrets = IdentitySecretMaterial(primarySecret = FIXTURE_PASSWORD),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Port edit host",
+                    address = FIXTURE_HOST,
+                    port = HOST_SSH_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = identityId,
+                    authKind = HostAuthKind.PASSWORD,
+                ),
+            ).id
+        }
+        val snippetId = runBlocking {
+            container.foundationGraph.snippetRepository.upsert(
+                snippet = Snippet(
+                    title = "Port edit snippet",
+                    hostId = hostId,
+                    savedTarget = SnippetSavedTarget.SAVED_HOST,
+                ),
+                body = "printf 'UPDATED_PORT_SNIPPET_OK\\n'",
+            ).id
+        }
+        val coordinator = container.sshSessionCoordinator
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val initialFailure = connectFromUiExpectFailure(
+            coordinator = coordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectedMessage = "Authentication failed. Verify the linked identity and try again.",
+            expectTrustPrompt = true,
+            expectedTrustEndpoint = "$FIXTURE_HOST:$HOST_SSH_PORT",
+            timeoutMillis = 35_000,
+        )
+        assertEquals(SessionConnectionState.FAILED, initialFailure.connectionState)
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.onNodeWithTag("host_edit_$hostId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_port_field").performTextClearance()
+        composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking { container.foundationGraph.hostRepository.getHost(hostId) }?.port == FIXTURE_PORT
+        }
+
+        val relaunchedContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(relaunchedContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val relaunchedCoordinator = relaunchedContainer.sshSessionCoordinator
+        val reconnected = connectFromUi(
+            coordinator = relaunchedCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Reconnect",
+            expectTrustPrompt = true,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnected.statusMessage)
+        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
+
+        composeRule.onNodeWithTag("nav_snippets").performClick()
+        composeRule.onNodeWithTag("snippet_run_target_$snippetId")
+            .assertTextContains("Saved host: Port edit host", substring = true)
+        composeRule.onNodeWithTag("snippet_run_$snippetId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("snippet_execution_target")
+            .assertTextContains("Saved host: Port edit host", substring = true)
+        composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
+
+        waitForTranscriptOutputLine(relaunchedCoordinator, "UPDATED_PORT_SNIPPET_OK")
+        waitForSnippetHistoryRecord(
+            snippetRepository = relaunchedContainer.foundationGraph.snippetRepository,
+            expectedLabel = "Port edit host",
+        )
+        assertEquals(FIXTURE_PORT, runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(hostId) }?.port)
+        assertEquals(hostId, runBlocking { relaunchedContainer.foundationGraph.snippetRepository.getSnippet(snippetId) }?.hostId)
+
+        relaunchedCoordinator.disconnect()
+        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+    }
+
+    @Test
+    fun imported_key_identity_survives_relaunch_and_reaches_real_terminal_session() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val privateKeyMaterial = File(FIXTURE_CLIENT_PRIVATE_KEY_PATH).readText()
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_identities").performClick()
+        composeRule.onNodeWithTag("identity_import_key_action").performClick()
+        composeRule.onNodeWithTag("identity_import_name_field").performTextInput("Fixture imported key")
+        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(privateKeyMaterial)
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                container.foundationGraph.identityRepository.observeIdentities().first().any { it.kind == IdentityKind.IMPORTED_KEY }
+            }
+        }
+        val importedIdentityId = runBlocking {
+            container.foundationGraph.identityRepository.observeIdentities().first().first { it.kind == IdentityKind.IMPORTED_KEY }.id
+        }
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.onNodeWithTag("host_create_action").performClick()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Imported key fixture")
+        composeRule.onNodeWithTag("host_address_field").performTextInput(FIXTURE_HOST)
+        composeRule.onNodeWithTag("host_port_field").performTextClearance()
+        composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
+        composeRule.onNodeWithTag("host_username_field").performTextInput(FIXTURE_USERNAME)
+        composeRule.onNodeWithTag("host_auth_mode_key").performClick()
+        composeRule.onNodeWithTag("host_identity_option_$importedIdentityId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.observeHosts().first().first { it.label == "Imported key fixture" }.id
+        }
+        val relaunchedContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(relaunchedContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val relaunchedCoordinator = relaunchedContainer.sshSessionCoordinator
+        val connected = connectFromUi(
+            coordinator = relaunchedCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
+        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
+        sendCommandDirectly(relaunchedCoordinator, "printf 'IMPORTED_KEY_SESSION_OK\\n'")
+        waitForTranscriptOutputLine(relaunchedCoordinator, "IMPORTED_KEY_SESSION_OK")
+        assertEquals(
+            FIXTURE_USERNAME,
+            runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(hostId) }?.username,
+        )
+
+        relaunchedCoordinator.disconnect()
+        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+    }
+
+    @Test
+    fun generated_key_identity_survives_relaunch_and_reaches_real_terminal_session() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(
+            applicationContext = context,
+            generatedKeyIdentityService = FixtureGeneratedKeyIdentityService(),
+        )
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_identities").performClick()
+        composeRule.onNodeWithTag("identity_generate_key_action").performClick()
+        composeRule.onNodeWithTag("identity_import_name_field").performTextInput("Fixture generated key")
+        composeRule.onNodeWithTag("identity_generate_execute").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("identity_public_key_preview").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                container.foundationGraph.identityRepository.observeIdentities().first().any { it.kind == IdentityKind.GENERATED_KEY }
+            }
+        }
+        val generatedIdentityId = runBlocking {
+            container.foundationGraph.identityRepository.observeIdentities().first().first { it.kind == IdentityKind.GENERATED_KEY }.id
+        }
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.onNodeWithTag("host_create_action").performClick()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("Generated key fixture")
+        composeRule.onNodeWithTag("host_address_field").performTextInput(FIXTURE_HOST)
+        composeRule.onNodeWithTag("host_port_field").performTextClearance()
+        composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
+        composeRule.onNodeWithTag("host_username_field").performTextInput(FIXTURE_USERNAME)
+        composeRule.onNodeWithTag("host_auth_mode_key").performClick()
+        composeRule.onNodeWithTag("host_identity_option_$generatedIdentityId").performScrollTo().performClick()
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.observeHosts().first().first { it.label == "Generated key fixture" }.id
+        }
+        val relaunchedContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(relaunchedContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val relaunchedCoordinator = relaunchedContainer.sshSessionCoordinator
+        val connected = connectFromUi(
+            coordinator = relaunchedCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
+        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
+        sendCommandDirectly(relaunchedCoordinator, "printf 'GENERATED_KEY_SESSION_OK\\n'")
+        waitForTranscriptOutputLine(relaunchedCoordinator, "GENERATED_KEY_SESSION_OK")
+        assertEquals(
+            FIXTURE_USERNAME,
+            runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(hostId) }?.username,
+        )
+
+        relaunchedCoordinator.disconnect()
+        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
     }
 
     @Test
@@ -1975,6 +2301,19 @@ class SessionSshFixtureInstrumentedTest {
         runBlocking { delay(250) }
     }
 
+    private fun waitForSnippetHistoryRecord(
+        snippetRepository: io.github.jtsang4.aterm.core.domain.repository.SnippetRepository,
+        expectedLabel: String,
+    ) {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                snippetRepository.observeExecutionHistory().first().any { entry ->
+                    entry.targetLabel == expectedLabel
+                }
+            }
+        }
+    }
+
     private fun rotateSessionActivity(orientation: Int) {
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.requestedOrientation = orientation
@@ -2032,8 +2371,16 @@ class SessionSshFixtureInstrumentedTest {
         const val FIXTURE_TIMEOUT_USERNAME = "atermtimeout"
         const val FIXTURE_PASSWORD = "aterm-password-fixture"
         const val FIXTURE_DISCONNECT_COMMAND = "aterm-fixture-disconnect"
+        const val FIXTURE_CLIENT_PRIVATE_KEY_PATH = "/data/local/tmp/aterm-fixture-client_key"
         const val APP_PACKAGE = "io.github.jtsang4.aterm"
     }
+}
+
+private class FixtureGeneratedKeyIdentityService : GeneratedKeyIdentityService() {
+    override fun generate(): GeneratedKeyMaterial = GeneratedKeyMaterial(
+        privateKeyMaterial = File("/data/local/tmp/aterm-fixture-client_key").readText(),
+        publicKey = File("/data/local/tmp/aterm-fixture-client_key.pub").readText().trim(),
+    )
 }
 
 private fun String.containsOutputLine(value: String): Boolean =

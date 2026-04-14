@@ -6,6 +6,8 @@ import io.github.jtsang4.aterm.core.security.SecurityModuleMarker
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
 import io.github.jtsang4.aterm.core.ssh.SshModuleMarker
 import io.github.jtsang4.aterm.core.terminal.TerminalModuleMarker
+import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
+import io.github.jtsang4.aterm.feature.identities.ImportedKeyImportService
 import io.github.jtsang4.aterm.navigation.AppDestination
 
 data class AppDependencySnapshot(
@@ -17,6 +19,8 @@ data class AppDependencySnapshot(
 
 class AppContainer private constructor(
     private val foundationGraphFactory: (() -> AppFoundationGraph)?,
+    val importedKeyImportService: ImportedKeyImportService,
+    val generatedKeyIdentityService: GeneratedKeyIdentityService,
 ) {
     private val foundationGraphDelegate = lazy {
         checkNotNull(foundationGraphFactory) {
@@ -63,10 +67,20 @@ class AppContainer private constructor(
     }
 
     companion object {
-        fun create(applicationContext: Context): AppContainer = AppContainer(
+        fun create(
+            applicationContext: Context,
+            importedKeyImportService: ImportedKeyImportService = ImportedKeyImportService(),
+            generatedKeyIdentityService: GeneratedKeyIdentityService = GeneratedKeyIdentityService(),
+        ): AppContainer = AppContainer(
             foundationGraphFactory = { buildAppFoundationGraph(applicationContext.applicationContext) },
+            importedKeyImportService = importedKeyImportService,
+            generatedKeyIdentityService = generatedKeyIdentityService,
         )
 
-        fun preview(): AppContainer = AppContainer(foundationGraphFactory = null)
+        fun preview(): AppContainer = AppContainer(
+            foundationGraphFactory = null,
+            importedKeyImportService = ImportedKeyImportService(),
+            generatedKeyIdentityService = GeneratedKeyIdentityService(),
+        )
     }
 }

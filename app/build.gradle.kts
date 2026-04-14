@@ -96,6 +96,28 @@ val startSshFixture by tasks.registering(Exec::class) {
     commandLine("sh", "./tools/sshfixture/start.sh")
 }
 
+val prepareFixtureClientKeyForAndroidTests by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Pushes the SSH fixture client keypair onto the emulator for fixture-backed Android tests."
+    dependsOn(startSshFixture)
+    workingDir = rootDir
+    commandLine(
+        "sh",
+        "-c",
+        """
+        JAVA_HOME=/root/.local/share/aterm-jdk-17 \
+        ANDROID_SDK_ROOT=/root/Android/Sdk \
+        PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
+        adb -s emulator-5554 push ./tools/sshfixture/runtime/client_key /data/local/tmp/aterm-fixture-client_key >/dev/null && \
+        JAVA_HOME=/root/.local/share/aterm-jdk-17 \
+        ANDROID_SDK_ROOT=/root/Android/Sdk \
+        PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
+        adb -s emulator-5554 push ./tools/sshfixture/runtime/client_key.pub /data/local/tmp/aterm-fixture-client_key.pub >/dev/null
+        """.trimIndent(),
+    )
+}
+
 tasks.matching { it.name == "connectedDebugAndroidTest" }.configureEach {
     dependsOn(startSshFixture)
+    dependsOn(prepareFixtureClientKeyForAndroidTests)
 }

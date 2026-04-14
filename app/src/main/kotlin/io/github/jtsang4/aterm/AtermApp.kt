@@ -112,7 +112,11 @@ fun AtermApp(
                         navController = appState.navController,
                         appContainer = appContainer,
                         identitiesScreen = identitiesScreen ?: {
-                            IdentitiesScreen(identityRepository = appContainer.foundationGraph.identityRepository)
+                            IdentitiesScreen(
+                                identityRepository = appContainer.foundationGraph.identityRepository,
+                                importedKeyImportService = appContainer.importedKeyImportService,
+                                generatedKeyIdentityService = appContainer.generatedKeyIdentityService,
+                            )
                         },
                     )
                 }
