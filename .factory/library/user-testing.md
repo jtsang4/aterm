@@ -73,4 +73,4 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 
 ## Known Coverage Gaps
 
-- Snippets continuation milestone: `VAL-SNIPPET-008` through `VAL-SNIPPET-015` remain blocked until `SnippetRealFixtureExecutionInstrumentedTest` becomes stable on emulator `5554` and proves those behaviors against `10.0.2.2:3122`. Current repository coverage for those behaviors still relies partly on `SnippetFakeSessionController` and/or seeded history state, which is useful for regression checks but not sufficient for a contract pass on the real user surface.
+- Snippets continuation milestone real-fixture proof is now covered by `SnippetRealFixtureExecutionInstrumentedTest` on emulator `5554` against `10.0.2.2:3122` for `VAL-SNIPPET-008` through `VAL-SNIPPET-015`. Reuse the targeted methods in that suite for future reruns instead of falling back to fake-session or seeded-history-only proof.

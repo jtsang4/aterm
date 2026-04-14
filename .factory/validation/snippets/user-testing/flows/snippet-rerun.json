@@ -1,0 +1,198 @@
+{
+  "groupId": "snippet-rerun",
+  "milestone": "snippets",
+  "surface": "android-instrumentation-emulator",
+  "testedAt": "2026-04-14T04:09:31.519602Z",
+  "isolation": {
+    "missionDir": "/root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64",
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "emulatorSerial": "emulator-5554",
+    "fixtureEndpoint": "10.0.2.2:3122",
+    "sharedBoundary": "single shared emulator only",
+    "productCodeModified": false
+  },
+  "toolsUsed": [
+    "gradle",
+    "adb"
+  ],
+  "commandsRun": [
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH adb -s emulator-5554 shell getprop sys.boot_completed",
+    "python3 - <<'PY' ... socket.create_connection(('127.0.0.1',3122), timeout=5) ... PY",
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH adb devices",
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH adb -s emulator-5554 shell 'toybox nc -z 10.0.2.2 3122 && echo emulator_fixture_port_open'",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#canceling_real_fixture_confirmation_dispatches_nothing_and_records_no_success_history --max-workers=1",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#saved_host_execution_uses_the_selected_fixture_host_and_preserves_multiline_order --max-workers=1",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#active_session_target_refreshes_with_live_session_changes_reuses_that_session_and_suppresses_duplicate_confirm_runs --max-workers=1",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#failed_saved_host_dispatch_does_not_record_success_history_but_payload_proof_success_does --max-workers=1",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#successful_runs_show_recent_history_newest_first_with_target_context --max-workers=1",
+    "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#latest_saved_content_history_relaunch_and_deletion_stay_coherent_on_real_fixture_surface --max-workers=1",
+    "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH adb -s emulator-5554 exec-out screencap -p > <evidence png>",
+    "cd /root/workspace/github/jtsang4/aterm && (JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest#saved_host_execution_uses_the_selected_fixture_host_and_preserves_multiline_order --max-workers=1 > VAL-SNIPPET-009-capture-gradle.log 2>&1 & pid=$!; for i in 01 02 03 04 05 06 07 08; do sleep 2; adb -s emulator-5554 exec-out screencap -p > VAL-SNIPPET-009-shot-${i}.png; done; wait $pid)"
+  ],
+  "assertionsTested": [
+    {
+      "id": "VAL-SNIPPET-008",
+      "title": "Canceling execution confirmation dispatches nothing and creates no successful-run record",
+      "status": "pass",
+      "coverageFrom": "canceling_real_fixture_confirmation_dispatches_nothing_and_records_no_success_history",
+      "observed": "Canceled confirmation returned to snippets, emitted no execution notice, left transcript without CANCEL_SHOULD_NOT_RUN, and kept execution history size at 0.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-008-gradle.log",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-008-final.png",
+        "consoleErrors": "No unexpected app crash/error observed; only normal instrumentation/system noise in run output.",
+        "network": "Real SSH fixture reachable at 10.0.2.2:3122 before test; test itself proved no dispatch occurred."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-009",
+      "title": "Confirmed execution against a selected host runs on that host and preserves multiline order",
+      "status": "pass",
+      "coverageFrom": "saved_host_execution_uses_the_selected_fixture_host_and_preserves_multiline_order",
+      "observed": "Saved-host execution switched the active host to the selected fixture host and verified ordered transcript output for SELECTED_HOST_LINE_1/2/3, with history labeled Saved host: Selected fixture host.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-009-gradle.log",
+        "logcat": "app/build/outputs/androidTest-results/connected/debug/atermApi35(AVD) - 15/logcat-io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest-saved_host_execution_uses_the_selected_fixture_host_and_preserves_multiline_order.txt",
+        "screenshots": [
+          "snippets/snippet-rerun/VAL-SNIPPET-009-final.png",
+          "snippets/snippet-rerun/VAL-SNIPPET-009-shot-01.png",
+          "snippets/snippet-rerun/VAL-SNIPPET-009-shot-03.png",
+          "snippets/snippet-rerun/VAL-SNIPPET-009-shot-08.png"
+        ],
+        "consoleErrors": "No unexpected app errors surfaced; captured logcat contains instrumentation and system noise only.",
+        "network": "Fixture-backed dispatch to 10.0.2.2:3122 verified by passing instrumentation assertions on selected-host transcript order."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-010",
+      "title": "Confirmed execution in the current active session reuses that session instead of opening an unrelated one",
+      "status": "pass",
+      "coverageFrom": "active_session_target_refreshes_with_live_session_changes_reuses_that_session_and_suppresses_duplicate_confirm_runs",
+      "observed": "Snippet execution reused the existing active session and produced one ACTIVE_SESSION_REUSE_PROOF line in the same transcript without changing the active host.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-gradle.log",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-final.png",
+        "consoleErrors": "No unexpected app crash/error observed during combined active-session run.",
+        "network": "Real SSH fixture at 10.0.2.2:3122 exercised through existing session reuse path."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-011",
+      "title": "Active-session targeting refreshes when the live session changes or disappears",
+      "status": "pass",
+      "coverageFrom": "active_session_target_refreshes_with_live_session_changes_reuses_that_session_and_suppresses_duplicate_confirm_runs",
+      "observed": "After disconnect, the snippet surface showed a stale-session warning; after reconnect, the target refreshed back to the actual live session and execution succeeded there.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-gradle.log",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-final.png",
+        "consoleErrors": "No unexpected app crash/error observed during combined active-session run.",
+        "network": "Fixture-backed reconnect and follow-up execution against 10.0.2.2:3122 passed."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-012",
+      "title": "Repeated taps on run or confirm create only one execution",
+      "status": "pass",
+      "coverageFrom": "active_session_target_refreshes_with_live_session_changes_reuses_that_session_and_suppresses_duplicate_confirm_runs",
+      "observed": "Two confirm tap attempts still yielded exactly one ACTIVE_SESSION_REUSE_PROOF output line and one history entry.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-gradle.log",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-final.png",
+        "consoleErrors": "No unexpected app crash/error observed during combined active-session run.",
+        "network": "Only one fixture-backed dispatch reached 10.0.2.2:3122 per instrumentation assertions."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-013",
+      "title": "Failed snippet dispatch does not appear as a successful recent run",
+      "status": "pass",
+      "coverageFrom": "failed_saved_host_dispatch_does_not_record_success_history_but_payload_proof_success_does",
+      "observed": "Wrong-password saved-host dispatch surfaced authentication failure and recorded no success history; a separate proven-success run recorded exactly one successful history item with payload proof.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-013-gradle.log",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-013-final.png",
+        "consoleErrors": "No unexpected app crash/error observed during failure/success comparison flow.",
+        "network": "Comparison exercised real auth failure and real successful payload dispatch against fixture endpoint 10.0.2.2:3122."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-014",
+      "title": "Successful executions appear in recent history with recency order and target context",
+      "status": "pass",
+      "coverageFrom": "successful_runs_show_recent_history_newest_first_with_target_context",
+      "observed": "Two proven executions with the same title but different targets produced newest-first history ordering, with Beta fixture host first and Alpha fixture host second, each labeled with saved-host context.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-014-gradle.log",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-014-final.png",
+        "consoleErrors": "No unexpected app crash/error observed during recency-order run.",
+        "network": "Two successful fixture-backed snippet dispatches to 10.0.2.2:3122 verified recent-history ordering."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SNIPPET-015",
+      "title": "Recent execution history survives app relaunch, uses the latest saved snippet content, and stays non-broken after deletion",
+      "status": "pass",
+      "coverageFrom": "latest_saved_content_history_relaunch_and_deletion_stay_coherent_on_real_fixture_surface",
+      "observed": "Edited snippet content previewed and executed as LATEST_HISTORY_CONTENT_PROOF, remained coherent after background/resume, and after deletion history stayed visible as Snippet deleted with no runnable edit path.",
+      "evidence": {
+        "gradleLog": "snippets/snippet-rerun/VAL-SNIPPET-015-gradle.log",
+        "junitXml": "app/build/outputs/androidTest-results/connected/debug/TEST-atermApi35(AVD) - 15-_app-.xml",
+        "htmlReport": "app/build/reports/androidTests/connected/debug/io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest.html",
+        "screenshot": "snippets/snippet-rerun/VAL-SNIPPET-015-final.png",
+        "consoleErrors": "No unexpected app crash/error observed during relaunch/deletion flow.",
+        "network": "Latest-content execution was proven against real fixture endpoint 10.0.2.2:3122 before relaunch/deletion checks."
+      },
+      "issues": null
+    }
+  ],
+  "summary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0,
+    "blocked": 0,
+    "result": "All assigned snippet rerun assertions passed on emulator-5554 against the real SSH fixture surface."
+  },
+  "frictions": [
+    {
+      "description": "External adb screencap taken after instrumentation teardown captured the launcher rather than the in-app snippet UI.",
+      "resolved": true,
+      "resolution": "Used instrumentation logs, UTP artifacts, and pass/fail assertions as the primary proof source while still preserving the captured PNGs under the assigned evidence directory.",
+      "affectedAssertions": [
+        "VAL-SNIPPET-008",
+        "VAL-SNIPPET-009",
+        "VAL-SNIPPET-010",
+        "VAL-SNIPPET-011",
+        "VAL-SNIPPET-012",
+        "VAL-SNIPPET-013",
+        "VAL-SNIPPET-014",
+        "VAL-SNIPPET-015"
+      ]
+    }
+  ],
+  "blockers": [],
+  "evidenceFiles": [
+    "snippets/snippet-rerun/VAL-SNIPPET-008-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-008-final.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-009-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-009-capture-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-009-final.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-009-shot-01.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-009-shot-03.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-009-shot-08.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-010-011-012-final.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-013-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-013-final.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-014-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-014-final.png",
+    "snippets/snippet-rerun/VAL-SNIPPET-015-gradle.log",
+    "snippets/snippet-rerun/VAL-SNIPPET-015-final.png"
+  ]
+}
