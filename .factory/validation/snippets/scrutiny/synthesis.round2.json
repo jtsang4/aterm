@@ -1,6 +1,6 @@
 {
   "milestone": "snippets",
-  "round": 3,
+  "round": 2,
   "status": "pass",
   "validatorsRun": {
     "test": {
@@ -27,25 +27,12 @@
   },
   "blockingIssues": [],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "orchestrator process",
-      "suggestion": "Ensure every feature's `workerSessionIds` entry has a matching handoff and transcript skeleton artifact before marking the feature complete or assigning scrutiny review.",
-      "evidence": "The review for `snippet-real-fixture-execution-and-history-proof` found `features.json` still lists worker session `272803b2-8f35-40ba-94b7-d6cbfe915fc7`, but the mission handoffs and `worker-transcripts.jsonl` only contain artifacts for session `0fd5cedc-b8e3-4ee8-927d-e06b556e0659`, leaving an incomplete audit trail for scrutiny.",
-      "isSystemic": false
-    },
-    {
-      "target": "ssh-terminal-worker skill",
-      "suggestion": "Clarify that exec-mode workers may satisfy the lifecycle/real-surface verification requirement with connected instrumentation evidence when it drives the shipped app shell against the live SSH fixture, instead of requiring a separate manual exercise.",
-      "evidence": "The review for `snippet-real-fixture-proof-assertions` cites the worker handoff's recorded skill deviation: step 7 of `.factory/skills/ssh-terminal-worker/SKILL.md` frames lifecycle verification as manual, but the accepted proof here came from connected instrumentation running through the real app shell and fixture in exec mode.",
-      "isSystemic": true
-    }
-  ],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
       "observation": "The snippet/SSH instrumentation suite still appears to have intermittent flakes that required targeted reruns before the full connected suite passed.",
       "reason": "ambiguous: this was reported from a single fix handoff and lacks enough repeated evidence to justify documenting it as shared repository guidance yet."
     }
   ],
-  "previousRound": ".factory/validation/snippets/scrutiny/synthesis.round2.json"
+  "previousRound": ".factory/validation/snippets/scrutiny/synthesis.round1.json"
 }
