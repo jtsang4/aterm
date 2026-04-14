@@ -17,7 +17,7 @@ None.
 
 ## Work Procedure
 
-1. Read `mission.md`, `AGENTS.md`, the assigned feature in `features.json`, and the relevant library docs before editing code.
+1. Read `mission.md`, `AGENTS.md`, and the assigned feature in `features.json` from the mission directory provided in worker bootstrap, then read the relevant repo library docs before editing code. Do not assume those mission files live at repo root on resumed missions.
 2. Run `./.factory/init.sh`, then inspect the current tests and surrounding code to match project conventions.
 3. Write failing tests first (red): unit tests for business rules/repositories and Compose/instrumentation tests for the specific user flow you are changing.
 4. Implement the feature with local-only behavior. Preserve the mission rules: no login/sync/team code paths, no plaintext secret storage, and no ambiguous host/identity/snippet targeting.
