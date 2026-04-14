@@ -1,0 +1,54 @@
+{
+  "milestone": "personal-polish",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew testDebugUnitTest --max-workers=4",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew assembleDebug --max-workers=4",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew lintDebug --max-workers=4",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "preferences-and-live-surface-presentation",
+      "personal-repeat-use-integration-flows"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "preferences-and-live-surface-presentation",
+      "severity": "blocking",
+      "description": "The terminal session surface still uses hard-coded dark background/text colors in ComposeTerminalSurface and AtermTerminalView, so switching to the Light theme does not apply consistently to already-open or restored sessions."
+    },
+    {
+      "featureId": "personal-repeat-use-integration-flows",
+      "severity": "blocking",
+      "description": "Favorite quick-open chips connect immediately without honoring the existing host repair flow, so a favorite whose linked identity becomes unavailable turns into a dead-end repeat-use entry instead of a repairable path."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "android-feature-worker skill",
+      "suggestion": "Update the startup instructions to explicitly tell workers that mission context files such as mission.md, AGENTS.md, and features.json live under the mission directory supplied in the worker bootstrap, not necessarily at repo root in resumed missions.",
+      "evidence": "Both `favorites-and-recents-host-discovery` and `personal-repeat-use-integration-flows` review reports cite worker handoff deviations caused by looking for mission files at repo-root paths instead of `/root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64/`.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

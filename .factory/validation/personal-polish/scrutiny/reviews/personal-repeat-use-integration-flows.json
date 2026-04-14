@@ -1,0 +1,28 @@
+{
+  "featureId": "personal-repeat-use-integration-flows",
+  "reviewedAt": "2026-04-14T09:50:15Z",
+  "commitId": "b26618624a6baecb0b335e3c499adcfd39c89082",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The reviewed commit adds solid fixture-backed coverage for password, imported-key, and generated-key repeat-use flows, and it wires favorite hosts into the same reconnect path as recents. However, that new favorite quick-open path bypasses the existing host-repair affordance and can now turn a broken saved favorite into a dead-end connection failure instead of a repairable repeat-use entry.",
+    "issues": [
+      {
+        "file": "feature/hosts/src/main/kotlin/io/github/jtsang4/aterm/feature/hosts/HostsEntryPoint.kt",
+        "line": 230,
+        "severity": "blocking",
+        "description": "Favorite discovery chips now always call `onOpenFavoriteHost` (falling back to edit only when no callback is provided), and `AtermNavHost` wires that callback straight to `sshSessionCoordinator.connect(hostId)`. Unlike host rows, favorite chips do not check whether the linked identity is missing/blocked and they do not preserve the existing `Repair link` path. For a favorite host whose identity later becomes unavailable, tapping the favorite now jumps to Sessions and fails the connect attempt instead of taking the user to repair/edit, which leaves a broken repeat-use entry in the critical path. Evidence: host rows explicitly compute `needsRepair` and render `host_repair_*` in the same file at lines 320-371, while the session screen only shows \"Identity needs repair before connecting\" with no repair CTA at `feature/session/src/main/kotlin/io/github/jtsang4/aterm/feature/session/SessionEntryPoint.kt:255-275`."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The android-feature-worker skill still tells workers to read mission context files by bare filename, but in resumed mission sessions those artifacts live under the mission directory instead of the repo root. This worker reported deviating from the procedure for that reason and relied on the compacted summary instead.",
+      "evidence": "/root/workspace/github/jtsang4/aterm/.factory/skills/android-feature-worker/SKILL.md step 1 says to read `mission.md`, `AGENTS.md`, and `features.json`; the actual artifacts are under /root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64/; the handoff at /root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64/handoffs/2026-04-14T09-35-26-884Z__personal-repeat-use-integration-flows__31e07423-8923-4a9f-bdaa-df59f9044068.json records a deviation saying those files were not present at the expected repo-root paths during the resumed session."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the feature handoff, transcript skeleton, skill file, architecture docs, and commit b26618624a6baecb0b335e3c499adcfd39c89082. The repeat-use instrumentation coverage is strong, but the new favorite quick-open wiring regresses repairability for broken favorite hosts, so this scrutiny review fails pending a fix."
+}

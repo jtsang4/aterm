@@ -1,0 +1,28 @@
+{
+  "featureId": "preferences-and-live-surface-presentation",
+  "reviewedAt": "2026-04-14T09:48:39.953758Z",
+  "commitId": "0515dc8a26959acedfab10c5611e1437f171e175",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature wires persisted theme/font preferences through settings, app chrome, and live session font metrics, but it does not actually theme the terminal surface itself, so an already-open or restored session still shows a hard-coded dark terminal pane even when the user selects the light theme.",
+    "issues": [
+      {
+        "file": "core/terminal/src/main/kotlin/io/github/jtsang4/aterm/core/terminal/ComposeTerminalSurface.kt",
+        "line": 119,
+        "severity": "blocking",
+        "description": "The terminal surface background is still hard-coded to `Color(0xFF101418)`, so changing the app theme to Light does not update the live session surface consistently. This misses the feature requirement that theme preferences apply across persistent/live surfaces, including already-open sessions."
+      },
+      {
+        "file": "core/terminal/src/main/kotlin/io/github/jtsang4/aterm/core/terminal/AtermTerminalView.kt",
+        "line": 17,
+        "severity": "blocking",
+        "description": "The terminal view keeps hard-coded preview text and background colors (`0xFFD7E3F4` / `0xFF101418`) instead of deriving them from the selected theme. As a result, the terminal pane remains visually dark under the Light theme, so the presentation is not applied consistently to the session surface."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the worker transcript skeleton, handoff, skill, and commit `0515dc8a26959acedfab10c5611e1437f171e175`. The implementation correctly persists theme/font preferences and updates session font metrics live, but it fails the feature as written because the terminal surface itself still uses hard-coded dark colors rather than the selected theme."
+}

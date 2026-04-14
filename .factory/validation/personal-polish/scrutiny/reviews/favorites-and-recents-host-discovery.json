@@ -1,0 +1,21 @@
+{
+  "featureId": "favorites-and-recents-host-discovery",
+  "reviewedAt": "2026-04-14T17:40:00Z",
+  "commitId": "4dc52d4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature persists favorite and recent metadata directly on saved host records, renders both discovery surfaces from that single source of truth, and routes favorite/recent selection back through the saved host ID for reconnect flows. I did not find any actionable correctness issues in the reviewed diff.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The android-feature-worker skill tells workers to read mission files by bare filename, but it does not say those artifacts live under the mission directory. In this feature handoff the worker explicitly deviated because they could not find mission.md / AGENTS.md / features.json at the expected paths and fell back to the compacted summary instead.",
+      "evidence": "/root/workspace/github/jtsang4/aterm/.factory/skills/android-feature-worker/SKILL.md step 1 says to read `mission.md`, `AGENTS.md`, and `features.json`; /root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64 contains those files; the handoff at /root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64/handoffs/2026-04-14T06-54-52-996Z__favorites-and-recents-host-discovery__331f6b61-49f7-4a93-b908-3ac99c42a46b.json records a deviation saying the worker could not find them at the expected paths."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the favorites-and-recents-host-discovery feature handoff, transcript skeleton, and commit 4dc52d4. The implementation matches the feature requirements for persistent favorites, recent-host rediscovery, and reconnecting via saved host records, so this review passes; I recorded one skill-documentation gap for triage."
+}
