@@ -22,6 +22,7 @@ The core user-facing areas are:
 
 ### App Shell
 Compose navigation and top-level screen chrome live here. This layer routes between hosts, identities, session, snippets, and settings. It should not own long-lived SSH session state directly.
+The top-of-shell scaffold summary (`Local-only scaffold`, `Current area`, dependency-ready chips) is a debug-only aid. Release builds must preserve the same five top-level destinations while hiding that summary completely.
 
 ### Hosts Boundary
 Hosts store connection metadata such as label, hostname/address, port, username, favorite state, recents metadata, and a reference to an identity. Hosts are reusable records, not ephemeral connection forms.
@@ -33,9 +34,13 @@ Identities are reusable authentication objects. A host points at an identity ins
 - imported key identities
 - generated key identities
 
-Imported-key flows accept OpenSSH and PEM private keys.
+Imported-key flows accept OpenSSH and PEM private keys, and this follow-up mission extends that support to legacy encrypted RSA/PEM material such as `BEGIN RSA PRIVATE KEY` encrypted with `AES-128-CBC`.
 
 The identity layer is responsible for distinguishing same-named identities safely in pickers and repair flows.
+For encrypted imported keys, the product must keep visible state truthful across these user-facing outcomes:
+- unencrypted key / no passphrase required
+- encrypted key with a usable saved passphrase
+- encrypted key whose passphrase is unavailable and therefore requires repair before use
 
 ### Security Boundary
 Secret material is stored through the approved security layer using **Keystore-wrapped encryption**. The app may persist non-secret metadata in Room/DataStore, but passwords, private keys, and passphrases must not bypass the security boundary.
@@ -46,6 +51,7 @@ Identity secret availability is modeled explicitly with `SecretStorageState` val
 - `BLOCKED` — secret material exists but is temporarily unusable until the user repairs or re-enters it
 
 Auth surfaces must gate on `Identity.isAuthenticationReady` rather than only checking whether an identity once had secret material.
+If a required passphrase is not persisted, has been cleared, or becomes blocked, the identity must remain visibly non-ready until the user repairs it. Host and session flows must never silently treat that identity as ready.
 
 ### SSH Boundary
 SSH transport, authentication, host-key trust, connection lifecycle, and channel/session ownership live behind a dedicated SSH client abstraction. This mission assumes **Apache MINA SSHD** unless the orchestrator updates the library docs.

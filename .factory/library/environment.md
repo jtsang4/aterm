@@ -13,7 +13,7 @@ Environment variables, external dependencies, and setup notes.
 - Android SDK root at `/root/Android/Sdk`
 - Android cmdline-tools, platform-tools, emulator, build-tools, and platform packages installed by `./.factory/init.sh`
 - Baseline AVD name: `atermApi35`
-- Host bootstrap prerequisites present on the machine: `curl`, `tar`, `unzip`, `python3`, and `yes`
+- Host bootstrap prerequisites present on the machine: `curl`, `tar`, `unzip`, `python3`, `yes`, and `openssl`
 
 ## Required Environment Variables
 
@@ -55,3 +55,8 @@ Commands in `.factory/services.yaml` inline these values because each shell is i
 - Host-key identity stays stable across fixture restarts as long as the same runtime directory is preserved.
 
 - Repo-local fixture metadata must expose only secret references or retrieval hints, never plaintext password values.
+## Follow-up Mission Key-Fixture Notes
+
+- The focused follow-up mission may generate disposable legacy PEM fixtures locally (for example `BEGIN RSA PRIVATE KEY` encrypted with `AES-128-CBC`) to validate parser and UI behavior. These fixtures must stay local-only and uncommitted.
+- Prefer generating such fixtures at test time or under ignored runtime paths rather than committing static private-key samples.
+

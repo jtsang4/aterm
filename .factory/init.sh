@@ -31,6 +31,22 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+require_host_prerequisites() {
+  local required=(curl tar unzip python3 yes openssl)
+  local missing=()
+  local cmd
+  for cmd in "${required[@]}"; do
+    if ! need_cmd "$cmd"; then
+      missing+=("$cmd")
+    fi
+  done
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    printf 'Missing required host tools: %s\n' "${missing[*]}" >&2
+    exit 1
+  fi
+}
+
 download_file() {
   local url="$1"
   local destination="$2"
@@ -182,6 +198,7 @@ check_only() {
 }
 
 main() {
+  require_host_prerequisites
   ensure_jdk
   ensure_cmdline_tools
 

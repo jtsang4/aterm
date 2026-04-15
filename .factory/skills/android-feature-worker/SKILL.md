@@ -22,10 +22,11 @@ None.
 3. Write failing tests first (red): unit tests for business rules/repositories and Compose/instrumentation tests for the specific user flow you are changing.
 4. Implement the feature with local-only behavior. Preserve the mission rules: no login/sync/team code paths, no plaintext secret storage, and no ambiguous host/identity/snippet targeting.
 5. Run the fastest focused validators during iteration. Before handoff, run the meaningful repo validators plus the affected instrumentation/UI tests. If you added or modified `androidTest` or other emulator-facing UI coverage, you must run the affected `connectedDebugAndroidTest` suite unless the emulator surface is unavailable, in which case the blocker must be called out explicitly in the handoff.
-6. Manually verify the touched surfaces on emulator when the feature is user-facing. Prefer realistic flows rather than internal-only checks.
-7. If Droid-Shield flags obviously synthetic fixture values as secrets, replace them with even more explicit non-secret placeholders and, if needed, make non-functional formatting adjustments that preserve behavior. Never swap in real-looking credentials, host keys, or private-key material just to satisfy the scanner.
-8. Ensure any recent-history, favorite, or persistence behavior you changed survives app relaunch when relevant.
-9. Stop any processes you started and write a precise handoff that names the flows you tested and what remained undone.
+6. When the feature involves build-type visibility or imported-key passphrase truthfulness, prove the exact user-visible states rather than only repository internals. For scaffold gating, verify both debug and release behavior. For imported-key work, distinguish unencrypted, encrypted-with-saved-passphrase, and encrypted-but-non-ready states explicitly.
+7. Manually verify the touched surfaces on emulator when the feature is user-facing. Prefer realistic flows rather than internal-only checks.
+8. If Droid-Shield flags obviously synthetic fixture values as secrets, replace them with even more explicit non-secret placeholders and, if needed, make non-functional formatting adjustments that preserve behavior. Never swap in real-looking credentials, host keys, or private-key material just to satisfy the scanner.
+9. Ensure any recent-history, favorite, or persistence behavior you changed survives app relaunch when relevant.
+10. Stop any processes you started and write a precise handoff that names the flows you tested and what remained undone.
 
 ## Example Handoff
 

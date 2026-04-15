@@ -21,6 +21,8 @@ Testing-surface findings, setup notes, and concurrency guidance for validators.
 - When filtering to app-only instrumentation classes, prefer `./gradlew :app:connectedDebugAndroidTest` so other modules do not try to load `:app` test classes
 - For any fixture-backed session instrumentation, start `ssh_fixture` first; otherwise fixture tests can fail with `ECONNREFUSED` to `10.0.2.2:3122`
 - Continuation mission note: the blocked snippets proof path should use `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SnippetRealFixtureExecutionInstrumentedTest --max-workers=1` after the fixture is up, and the broader repeat-use contract including `VAL-CROSS-009` should still be validated on this emulator surface rather than a separate physical-device QA path.
+- Follow-up mission note: release-shell gating requires both debug and release proof. Use `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.AppShellComposeTest --max-workers=1` for the debug positive control, then assemble/install a release artifact and verify on emulator-5554 that the five top-level destinations remain usable while the scaffold summary is absent.
+- Follow-up imported-key note: validation for legacy encrypted PEM support should generate disposable local fixtures (for example with `openssl`) and prove both identity-library behavior and the real SSH fixture path on `10.0.2.2:3122`. Distinguish saved-passphrase, unsaved-passphrase, and cleared/blocked-passphrase states explicitly in evidence.
 
 ### Surface 3: Manual terminal QA on emulator/device
 - Tools: manual QA plus screen capture/logs as evidence
