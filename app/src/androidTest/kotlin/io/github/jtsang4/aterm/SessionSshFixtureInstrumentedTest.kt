@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -75,9 +76,7 @@ class SessionSshFixtureInstrumentedTest {
                 context = context,
                 device = device,
             )
-            application.resetDefaultContainerForTesting()
-            context.deleteDatabase("aterm.db")
-            File(context.filesDir.parentFile, "datastore").deleteRecursively()
+            resetTestPersistenceState(context)
         }
 
         override fun after() {
@@ -502,12 +501,10 @@ class SessionSshFixtureInstrumentedTest {
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnected.statusMessage)
         waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
 
-        composeRule.onNodeWithTag("nav_snippets").performClick()
-        composeRule.onNodeWithTag("screen_snippets").assertIsDisplayed()
+        openSnippetsScreen()
         composeRule.onNodeWithTag("snippet_run_target_$snippetId")
             .assertTextContains("Saved host: Favorite repeat host", substring = true)
-        composeRule.onNodeWithTag("snippet_run_$snippetId").performScrollTo().performClick()
-        composeRule.onNodeWithTag("snippet_execution_confirmation").assertIsDisplayed()
+        openSnippetExecutionConfirmation(snippetId)
         composeRule.onNodeWithTag("snippet_execution_target")
             .assertTextContains("Saved host: Favorite repeat host", substring = true)
         composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
@@ -595,8 +592,7 @@ class SessionSshFixtureInstrumentedTest {
         assertNull(staleSnippet?.hostId)
         assertEquals(SnippetSavedTarget.SAVED_HOST, staleSnippet?.savedTarget)
 
-        composeRule.onNodeWithTag("nav_snippets").performClick()
-        composeRule.onNodeWithTag("screen_snippets").assertIsDisplayed()
+        openSnippetsScreen()
         composeRule.onNodeWithTag("snippet_run_target_$snippetId")
             .assertTextContains("Saved host target needs repair", substring = true)
         composeRule.onNodeWithTag("snippet_target_warning_$snippetId")
@@ -700,10 +696,10 @@ class SessionSshFixtureInstrumentedTest {
         assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnected.statusMessage)
         waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
 
-        composeRule.onNodeWithTag("nav_snippets").performClick()
+        openSnippetsScreen()
         composeRule.onNodeWithTag("snippet_run_target_$snippetId")
             .assertTextContains("Saved host: Port edit host", substring = true)
-        composeRule.onNodeWithTag("snippet_run_$snippetId").performScrollTo().performClick()
+        openSnippetExecutionConfirmation(snippetId)
         composeRule.onNodeWithTag("snippet_execution_target")
             .assertTextContains("Saved host: Port edit host", substring = true)
         composeRule.onNodeWithTag("snippet_execution_confirm").performClick()
@@ -752,8 +748,25 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
         composeRule.onNodeWithTag("host_username_field").performTextInput(FIXTURE_USERNAME)
         composeRule.onNodeWithTag("host_auth_mode_key").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("host_identity_ready_summary").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_identity_ready_summary")
+            .assertTextContains("1 reusable key identity is ready to choose.", substring = true)
         composeRule.onNodeWithTag("host_identity_option_$importedIdentityId").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_identity_option_$importedIdentityId")
+                    .performScrollTo()
+                    .assertIsSelected()
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                container.foundationGraph.hostRepository.observeHosts().first().any { it.label == "Imported key fixture" }
+            }
+        }
 
         val hostId = runBlocking {
             container.foundationGraph.hostRepository.observeHosts().first().first { it.label == "Imported key fixture" }.id
@@ -821,8 +834,25 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
         composeRule.onNodeWithTag("host_username_field").performTextInput(FIXTURE_USERNAME)
         composeRule.onNodeWithTag("host_auth_mode_key").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("host_identity_ready_summary").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_identity_ready_summary")
+            .assertTextContains("1 reusable key identity is ready to choose.", substring = true)
         composeRule.onNodeWithTag("host_identity_option_$generatedIdentityId").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_identity_option_$generatedIdentityId")
+                    .performScrollTo()
+                    .assertIsSelected()
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                container.foundationGraph.hostRepository.observeHosts().first().any { it.label == "Generated key fixture" }
+            }
+        }
 
         val hostId = runBlocking {
             container.foundationGraph.hostRepository.observeHosts().first().first { it.label == "Generated key fixture" }.id
@@ -1865,8 +1895,8 @@ class SessionSshFixtureInstrumentedTest {
 
     private fun assertProof(state: SessionUiState, port: Int) {
         val transcript = state.transcript
-        check(transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:")) {
-            "Transcript did not contain remote proof for $FIXTURE_HOST:$port: $transcript"
+        check(transcript.containsRemoteProofLine(host = FIXTURE_HOST, port = port)) {
+            "Transcript did not contain remote proof output for $FIXTURE_HOST:$port: ${transcript.takeLast(400)}"
         }
     }
 
@@ -1875,7 +1905,7 @@ class SessionSshFixtureInstrumentedTest {
         port: Int,
     ) {
         val state = waitForState(coordinator, timeoutMillis = 30_000) {
-            it.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:")
+            it.transcript.containsRemoteProofLine(host = FIXTURE_HOST, port = port)
         }
         assertProof(state, port)
     }
@@ -1884,7 +1914,12 @@ class SessionSshFixtureInstrumentedTest {
         coordinator: SshSessionCoordinator,
         port: Int,
     ) {
-        assertProofEventually(coordinator, port)
+        val state = waitForState(coordinator, timeoutMillis = 30_000) {
+            it.transcript.containsRemoteProofReadyState(host = FIXTURE_HOST, port = port)
+        }
+        check(state.transcript.containsRemoteProofReadyState(host = FIXTURE_HOST, port = port)) {
+            "Transcript did not reach proof-ready state for $FIXTURE_HOST:$port: ${state.transcript.takeLast(400)}"
+        }
     }
 
     private fun waitForTranscriptSubstring(
@@ -2301,16 +2336,59 @@ class SessionSshFixtureInstrumentedTest {
         runBlocking { delay(250) }
     }
 
+    private fun openSnippetsScreen() {
+        deviceOrchestrator.waitForAppShell(APP_PACKAGE)
+        composeRule.onNodeWithTag("nav_snippets").performClick()
+        waitForSnippetsScreen()
+    }
+
+    private fun waitForSnippetsScreen() {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("screen_snippets").assertIsDisplayed()
+            }.isSuccess
+        }
+    }
+
+    private fun openSnippetExecutionConfirmation(snippetId: Long) {
+        composeRule.onNodeWithTag("snippet_run_$snippetId").performScrollTo().performClick()
+        waitForSnippetExecutionConfirmation()
+    }
+
+    private fun waitForSnippetExecutionConfirmation() {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("snippet_execution_confirmation").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitForIdle()
+    }
+
     private fun waitForSnippetHistoryRecord(
         snippetRepository: io.github.jtsang4.aterm.core.domain.repository.SnippetRepository,
         expectedLabel: String,
     ) {
-        composeRule.waitUntil(timeoutMillis = 10_000) {
+        val reached = runCatching {
             runBlocking {
-                snippetRepository.observeExecutionHistory().first().any { entry ->
-                    entry.targetLabel == expectedLabel
+                withTimeout(10_000L) {
+                    while (true) {
+                        if (snippetRepository.observeExecutionHistory().first().any { entry ->
+                                entry.targetLabel == expectedLabel
+                            }
+                        ) {
+                            return@withTimeout
+                        }
+                        delay(100)
+                    }
                 }
             }
+            true
+        }.getOrDefault(false)
+        if (!reached) {
+            val labels = runBlocking {
+                snippetRepository.observeExecutionHistory().first().map { it.targetLabel }
+            }
+            error(
+                "Expected snippet history record for \"$expectedLabel\" but saw ${labels.joinToString(prefix = "[", postfix = "]")}.",
+            )
         }
     }
 
@@ -2397,6 +2475,20 @@ private fun sanitizedTranscriptLines(text: String): List<String> =
 
 private fun sanitizeTerminalLine(text: String): String =
     text.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trim()
+
+private fun String.containsRemoteProofLine(host: String, port: Int): Boolean =
+    sanitizedTranscriptLines(this).any { line ->
+        line.startsWith("ATERM_REMOTE_PROOF:$host:$port:")
+    }
+
+private fun String.containsRemoteProofReadyState(host: String, port: Int): Boolean {
+    val lines = sanitizedTranscriptLines(this)
+    val proofIndex = lines.indexOfLast { line -> line.startsWith("ATERM_REMOTE_PROOF:$host:$port:") }
+    if (proofIndex < 0) {
+        return false
+    }
+    return lines.drop(proofIndex + 1).any { line -> line.matches(Regex("""bash-[\d.]+[#$]""")) }
+}
 
 private fun containsOrderedOutputLines(
     lines: List<String>,

@@ -40,7 +40,6 @@ import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.security.KeyPair
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
@@ -68,8 +67,7 @@ class IdentityPasswordFlowsInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("aterm.db")
-        File(context.filesDir.parentFile, "datastore").deleteRecursively()
+        resetTestPersistenceState(context)
     }
 
     @Test

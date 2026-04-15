@@ -43,9 +43,11 @@ import io.github.jtsang4.aterm.core.ssh.SessionController
 import io.github.jtsang4.aterm.core.ssh.SessionDispatchResult
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import java.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
 
 object SnippetsEntryPoint {
     const val route = "snippets"
@@ -696,22 +698,34 @@ private fun SnippetExecutionConfirmationScreen(
                         executionError = null
                         isDispatching = true
                         coroutineScope.launch {
-                            when (
-                                val result = executeSnippet(
-                                    draft = draft,
-                                    sessionController = requireNotNull(sessionController),
-                                    snippetRepository = snippetRepository,
-                                )
-                            ) {
-                                is SnippetExecutionResult.Success -> {
-                                    onSuccess(result.message)
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    executeSnippet(
+                                        draft = draft,
+                                        sessionController = requireNotNull(sessionController),
+                                        snippetRepository = snippetRepository,
+                                    )
                                 }
+                            }.fold(
+                                onSuccess = { result ->
+                                    when (result) {
+                                        is SnippetExecutionResult.Success -> {
+                                            onSuccess(result.message)
+                                        }
 
-                                is SnippetExecutionResult.Failure -> {
-                                    executionError = result.message
+                                        is SnippetExecutionResult.Failure -> {
+                                            executionError = result.message
+                                            isDispatching = false
+                                        }
+                                    }
+                                },
+                                onFailure = { throwable ->
+                                    executionError =
+                                        throwable.message
+                                            ?: "Snippet execution failed unexpectedly."
                                     isDispatching = false
                                 }
-                            }
+                            )
                         }
                     },
                     enabled = confirmEnabled,
@@ -1173,11 +1187,12 @@ private suspend fun ensureConnectedToTargetHost(
     sessionController.connect(targetHostId)
 
     val finalState = withTimeoutOrNull<SessionUiState>(30_000L) {
-        while (true) {
+        var resolvedState: SessionUiState? = null
+        while (resolvedState == null) {
             val state = sessionController.observeUiState().value
             when {
                 state.activeHostId == targetHostId && state.isTerminalLive -> {
-                    return@withTimeoutOrNull state
+                    resolvedState = state
                 }
 
                 state.activeHostId == targetHostId &&
@@ -1187,12 +1202,13 @@ private suspend fun ensureConnectedToTargetHost(
                         SessionConnectionState.DISCONNECTED,
                     ) &&
                     !state.isConnecting -> {
-                    return@withTimeoutOrNull state
+                    resolvedState = state
                 }
+
+                else -> delay(100)
             }
-            delay(100)
         }
-        error("Unreachable")
+        resolvedState
     } ?: return SnippetExecutionResult.Failure(
         "Timed out while preparing the saved host target.",
     )
@@ -1217,22 +1233,20 @@ private suspend fun dispatchIntoCurrentSession(
         is SessionDispatchResult.Failure -> SnippetExecutionResult.Failure(dispatchResult.message)
         SessionDispatchResult.Success -> {
             val transcriptConfirmed = withTimeoutOrNull<Boolean>(5_000L) {
-                while (true) {
+                var confirmed: Boolean? = null
+                while (confirmed == null) {
                     val state = sessionController.observeUiState().value
-                    if (!state.isTerminalLive) {
-                        return@withTimeoutOrNull false
-                    }
-                    if (transcriptShowsPayloadProof(
+                    when {
+                        !state.isTerminalLive -> confirmed = false
+                        transcriptShowsPayloadProof(
                             transcriptBeforeDispatch = transcriptBeforeDispatch,
                             transcriptAfterDispatch = state.transcript,
                             payload = payload,
-                        )
-                    ) {
-                        return@withTimeoutOrNull true
+                        ) -> confirmed = true
+                        else -> delay(100)
                     }
-                    delay(100)
                 }
-                error("Unreachable")
+                confirmed
             } ?: false
 
             if (!transcriptConfirmed) {
@@ -1240,12 +1254,23 @@ private suspend fun dispatchIntoCurrentSession(
                     "Snippet dispatch could not be confirmed in the live transcript, so no successful run was recorded.",
                 )
             } else {
-                snippetRepository.markExecuted(
-                    draft.snippet.id,
-                    draft.toExecutionRecord(),
-                )
-                SnippetExecutionResult.Success(
-                    "Sent “${draft.snippet.title}” to ${draft.targetSnapshot.summary.lowercase()}.",
+                runCatching {
+                    snippetRepository.markExecuted(
+                        draft.snippet.id,
+                        draft.toExecutionRecord(),
+                    )
+                }.fold(
+                    onSuccess = {
+                        SnippetExecutionResult.Success(
+                            "Sent “${draft.snippet.title}” to ${draft.targetSnapshot.summary.lowercase()}.",
+                        )
+                    },
+                    onFailure = { throwable ->
+                        SnippetExecutionResult.Failure(
+                            throwable.message
+                                ?: "Snippet run reached the session, but history could not be recorded.",
+                        )
+                    },
                 )
             }
         }

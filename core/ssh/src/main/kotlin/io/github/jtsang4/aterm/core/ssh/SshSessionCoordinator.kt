@@ -450,7 +450,13 @@ class SshSessionCoordinator(
             )
             hostRepository.markUsed(host.id, Instant.now())
             startReader(connection)
-            sendInput("${proofCommand(host)}\n")
+            writeInput(connection, "${proofCommand(host)}\n").onFailure { throwable ->
+                failConnection(
+                    host = host,
+                    message = "Input failed: ${throwable.message ?: "Unable to send input."}",
+                    reconnectRequired = true,
+                )
+            }
         }
 
         result.onFailure { throwable ->

@@ -24,7 +24,6 @@ import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.SnippetRepository
 import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
-import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,8 +43,7 @@ class SnippetHistoryStateCoherenceInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("aterm.db")
-        File(context.filesDir.parentFile, "datastore").deleteRecursively()
+        resetTestPersistenceState(context)
     }
 
     @Test

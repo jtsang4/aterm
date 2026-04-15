@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -32,7 +33,6 @@ import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.hosts.HostsScreen
-import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,8 +54,7 @@ class HostLibraryFlowsInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("aterm.db")
-        File(context.filesDir.parentFile, "datastore").deleteRecursively()
+        resetTestPersistenceState(context)
     }
 
     @Test
@@ -165,7 +164,19 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_username_field").performTextInput("ubuntu")
         closeKeyboardIfShown()
         composeRule.onNodeWithTag("host_auth_mode_key").performClick()
-        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("host_identity_ready_summary").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_identity_ready_summary")
+            .assertTextContains("1 reusable key identity is ready to choose.", substring = true)
+        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}")
+                    .performScrollTo()
+                    .assertIsSelected()
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -186,7 +197,11 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_label_field").assertTextContains("Key host")
         composeRule.onNodeWithTag("host_address_field").assertTextContains("10.0.2.2")
         composeRule.onNodeWithTag("host_username_field").assertTextContains("ubuntu")
-        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("host_identity_ready_summary")
+            .assertTextContains("1 reusable key identity is ready to choose.", substring = true)
+        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}")
+            .performScrollTo()
+            .assertIsSelected()
         composeRule.onNodeWithText("Deploy key").assertIsDisplayed()
         composeRule.onNodeWithTag("host_editor_cancel").performScrollTo().performClick()
 
@@ -206,7 +221,11 @@ class HostLibraryFlowsInstrumentedTest {
         composeRule.onNodeWithTag("host_label_field").assertTextContains("Key host")
         composeRule.onNodeWithTag("host_address_field").assertTextContains("10.0.2.2")
         composeRule.onNodeWithTag("host_username_field").assertTextContains("ubuntu")
-        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("host_identity_ready_summary")
+            .assertTextContains("1 reusable key identity is ready to choose.", substring = true)
+        composeRule.onNodeWithTag("host_identity_option_${seededIdentity.id}")
+            .performScrollTo()
+            .assertIsSelected()
 
         val relaunchedHost = runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(1) }
         assertEquals(HostAuthKind.KEY, relaunchedHost?.authKind)

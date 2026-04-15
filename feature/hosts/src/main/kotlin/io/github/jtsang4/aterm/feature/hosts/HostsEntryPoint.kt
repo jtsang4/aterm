@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
@@ -754,11 +756,25 @@ private fun HostIdentitySelectionSection(
             Text(
                 text = "Choose the reusable ${authMode.identityRequirementLabel()} for this host. Duplicate labels stay safe because each option also shows a distinguishing detail.",
             )
+            Text(
+                text = buildString {
+                    append(compatibleIdentities.size)
+                    append(" reusable ")
+                    append(authMode.identityRequirementLabel())
+                    append(if (compatibleIdentities.size == 1) " is" else "s are")
+                    append(" ready to choose.")
+                },
+                modifier = Modifier.testTag("host_identity_ready_summary"),
+            )
             compatibleIdentities.forEach { identity ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelected(identity.id) }
+                        .selectable(
+                            selected = identity.id == selectedIdentityId,
+                            onClick = { onSelected(identity.id) },
+                            role = Role.RadioButton,
+                        )
                         .testTag("host_identity_option_${identity.id}"),
                 ) {
                     Row(

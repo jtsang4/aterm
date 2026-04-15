@@ -33,6 +33,7 @@ fun buildLocalDataFoundation(
     fieldCipher: SecretFieldCipher,
 ): LocalDataFoundation {
     val database = AtermDatabase.build(context)
+    val managedSettingsDataStore = createUserPreferencesDataStore(context)
     return LocalDataFoundation(
         hostRepository = RoomHostRepository(
             database = database,
@@ -48,8 +49,14 @@ fun buildLocalDataFoundation(
         ),
         sessionMetadataRepository = RoomSessionMetadataRepository(database.sessionMetadataDao()),
         knownHostTrustRepository = RoomKnownHostTrustRepository(database.knownHostTrustDao()),
-        settingsRepository = PreferencesSettingsRepository(createUserPreferencesDataStore(context)),
-        clearPersistentState = { database.clearAllTables() },
-        close = { database.close() },
+        settingsRepository = PreferencesSettingsRepository(managedSettingsDataStore.dataStore),
+        clearPersistentState = {
+            database.clearAllTables()
+            managedSettingsDataStore.clear()
+        },
+        close = {
+            database.close()
+            managedSettingsDataStore.close()
+        },
     )
 }

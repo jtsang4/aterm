@@ -34,7 +34,6 @@ import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
 import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.core.ssh.SshSessionCoordinator
 import io.github.jtsang4.aterm.di.AppContainer
-import java.io.File
 import java.net.Socket
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -67,9 +66,7 @@ class SnippetRealFixtureExecutionInstrumentedTest {
                 context = context,
                 device = device,
             )
-            application.resetDefaultContainerForTesting()
-            context.deleteDatabase("aterm.db")
-            File(context.filesDir.parentFile, "datastore").deleteRecursively()
+            resetTestPersistenceState(context)
         }
 
         override fun after() {
@@ -687,14 +684,20 @@ class SnippetRealFixtureExecutionInstrumentedTest {
         container: AppContainer,
         expectedSize: Int,
     ) {
+        var waitFailure: Throwable? = null
         val reached = runCatching {
-            composeRule.waitUntil(timeoutMillis = 30_000) {
-                runBlocking {
-                    container.foundationGraph.snippetRepository.observeExecutionHistory().first().size == expectedSize
+            runBlocking {
+                withTimeout(30_000L) {
+                    while (true) {
+                        if (container.foundationGraph.snippetRepository.observeExecutionHistory().first().size == expectedSize) {
+                            return@withTimeout
+                        }
+                        delay(100)
+                    }
                 }
             }
             true
-        }.getOrDefault(false)
+        }.onFailure { waitFailure = it }.getOrDefault(false)
         if (!reached) {
             val currentHistorySize = runBlocking {
                 container.foundationGraph.snippetRepository.observeExecutionHistory().first().size
@@ -702,6 +705,7 @@ class SnippetRealFixtureExecutionInstrumentedTest {
             val executionError = currentNodeTextOrNull("snippet_execution_error")
             val trustPromptEndpoint = currentNodeTextOrNull("snippet_execution_trust_endpoint")
             val confirmationTarget = currentNodeTextOrNull("snippet_execution_target")
+            val progressMessage = currentNodeTextOrNull("snippet_execution_progress")
             val transcriptTail = container.sshSessionCoordinator.observeUiState().value.transcript.takeLast(600)
             error(
                 buildString {
@@ -709,6 +713,10 @@ class SnippetRealFixtureExecutionInstrumentedTest {
                     executionError?.let { append(" executionError=$it.") }
                     trustPromptEndpoint?.let { append(" trustPrompt=$it.") }
                     confirmationTarget?.let { append(" confirmationTarget=$it.") }
+                    progressMessage?.let { append(" progress=$it.") }
+                    waitFailure?.let {
+                        append(" waitFailure=${it::class.java.simpleName}:${it.message}.")
+                    }
                     if (transcriptTail.isNotBlank()) {
                         append(" transcriptTail=$transcriptTail.")
                     }
@@ -845,7 +853,7 @@ class SnippetRealFixtureExecutionInstrumentedTest {
         port: Int,
     ) {
         waitForState(coordinator, timeoutMillis = 30_000) {
-            it.transcript.contains("ATERM_REMOTE_PROOF:$FIXTURE_HOST:$port:")
+            it.transcript.containsRemoteProofReadyState(host = FIXTURE_HOST, port = port)
         }
     }
 
@@ -918,6 +926,20 @@ private fun sanitizedTranscriptLines(text: String): List<String> =
 
 private fun sanitizeTerminalLine(text: String): String =
     text.replace(Regex("""\u001B\[[0-9;?]*[ -/]*[@-~]"""), "").trim()
+
+private fun String.containsRemoteProofLine(host: String, port: Int): Boolean =
+    sanitizedTranscriptLines(this).any { line ->
+        line.startsWith("ATERM_REMOTE_PROOF:$host:$port:")
+    }
+
+private fun String.containsRemoteProofReadyState(host: String, port: Int): Boolean {
+    val lines = sanitizedTranscriptLines(this)
+    val proofIndex = lines.indexOfLast { line -> line.startsWith("ATERM_REMOTE_PROOF:$host:$port:") }
+    if (proofIndex < 0) {
+        return false
+    }
+    return lines.drop(proofIndex + 1).any { line -> line.matches(Regex("""bash-[\d.]+[#$]""")) }
+}
 
 private fun containsOrderedOutputLines(
     lines: List<String>,

@@ -4,12 +4,14 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.jtsang4.aterm.core.data.local.AtermDatabase
 import io.github.jtsang4.aterm.core.data.local.mapper.toEntity
 import io.github.jtsang4.aterm.core.data.preferences.PreferencesSettingsRepository
+import io.github.jtsang4.aterm.core.data.preferences.createUserPreferencesDataStore
 import io.github.jtsang4.aterm.core.data.repository.RoomHostRepository
 import io.github.jtsang4.aterm.core.data.repository.RoomIdentityRepository
 import io.github.jtsang4.aterm.core.data.repository.RoomKnownHostTrustRepository
@@ -396,6 +398,34 @@ class FoundationRepositoriesInstrumentedTest {
         assertEquals(ThemePreference.DARK, preferences.themePreference)
         assertEquals(1.2f, preferences.terminalFontScale)
         assertEquals(FeatureArea.Snippets, preferences.lastViewedArea)
+    }
+
+    @Test
+    fun managed_user_preferences_data_store_releases_shared_instances_only_after_last_close() = runTest {
+        val fileName = "managed-prefs-${UUID.randomUUID()}.preferences_pb"
+        val first = createUserPreferencesDataStore(context, fileName)
+        val second = createUserPreferencesDataStore(context, fileName)
+        val firstRepository = PreferencesSettingsRepository(first.dataStore)
+        val secondRepository = PreferencesSettingsRepository(second.dataStore)
+
+        try {
+            firstRepository.updateTheme(ThemePreference.DARK)
+            assertEquals(ThemePreference.DARK, secondRepository.observePreferences().first().themePreference)
+
+            first.close()
+
+            secondRepository.updateTerminalFontScale(1.4f)
+            assertEquals(1.4f, secondRepository.observePreferences().first().terminalFontScale)
+
+            second.clear()
+            val cleared = secondRepository.observePreferences().first()
+            assertEquals(ThemePreference.SYSTEM, cleared.themePreference)
+            assertEquals(1f, cleared.terminalFontScale)
+            assertEquals(FeatureArea.Hosts, cleared.lastViewedArea)
+        } finally {
+            second.close()
+            context.preferencesDataStoreFile(fileName).delete()
+        }
     }
 
     @Test

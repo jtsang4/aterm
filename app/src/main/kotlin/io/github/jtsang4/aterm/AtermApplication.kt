@@ -19,24 +19,34 @@ class AtermApplication : Application() {
         get() = appContainerOverride ?: defaultAppContainer
 
     fun replaceAppContainerForTesting(container: AppContainer) {
+        val previousOverride = appContainerOverride
+        val previousDefault = _defaultAppContainer
         appContainerOverride = container
+        if (previousOverride !== container) {
+            previousOverride?.close()
+        }
+        if (previousDefault !== container) {
+            previousDefault?.close()
+            if (previousDefault != null) {
+                _defaultAppContainer = null
+            }
+        }
     }
 
     fun clearAppContainerOverrideForTesting() {
+        appContainerOverride?.close()
         appContainerOverride = null
     }
 
     fun resetDefaultContainerForTesting() {
-        _defaultAppContainer?.foundationGraph?.clearPersistentState?.invoke()
-        appContainerOverride?.foundationGraph?.clearPersistentState?.invoke()
-        _defaultAppContainer?.close()
-        appContainerOverride?.close()
+        AppContainer.closeAllTrackedContainersForTesting(clearPersistentState = true)
         _defaultAppContainer = null
         appContainerOverride = null
     }
 
     fun clearPersistentStateForTesting() {
-        _defaultAppContainer?.foundationGraph?.clearPersistentState?.invoke()
-        appContainerOverride?.foundationGraph?.clearPersistentState?.invoke()
+        AppContainer.closeAllTrackedContainersForTesting(clearPersistentState = true)
+        _defaultAppContainer = null
+        appContainerOverride = null
     }
 }

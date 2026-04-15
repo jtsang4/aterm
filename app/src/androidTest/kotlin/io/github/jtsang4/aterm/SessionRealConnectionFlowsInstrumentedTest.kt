@@ -37,7 +37,6 @@ import io.github.jtsang4.aterm.core.terminal.TerminalSpecialKey
 import io.github.jtsang4.aterm.core.terminal.TerminalUiState
 import io.github.jtsang4.aterm.core.terminal.TerminalViewport
 import io.github.jtsang4.aterm.feature.session.SessionsScreen
-import java.io.File
 import java.security.KeyPair
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
@@ -70,8 +69,7 @@ class SessionRealConnectionFlowsInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("aterm.db")
-        File(context.filesDir.parentFile, "datastore").deleteRecursively()
+        resetTestPersistenceState(context)
     }
 
     @After

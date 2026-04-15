@@ -41,7 +41,6 @@ import io.github.jtsang4.aterm.core.ssh.SessionUiState
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.snippets.SnippetsScreen
 import java.util.concurrent.atomic.AtomicBoolean
-import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -66,8 +65,7 @@ class SnippetLibraryFlowsInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("aterm.db")
-        File(context.filesDir.parentFile, "datastore").deleteRecursively()
+        resetTestPersistenceState(context)
     }
 
     @Test

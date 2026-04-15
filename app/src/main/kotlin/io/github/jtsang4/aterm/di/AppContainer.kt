@@ -9,6 +9,7 @@ import io.github.jtsang4.aterm.core.terminal.TerminalModuleMarker
 import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
 import io.github.jtsang4.aterm.feature.identities.ImportedKeyImportService
 import io.github.jtsang4.aterm.navigation.AppDestination
+import java.util.Collections
 
 data class AppDependencySnapshot(
     val data: String,
@@ -22,6 +23,9 @@ class AppContainer private constructor(
     val importedKeyImportService: ImportedKeyImportService,
     val generatedKeyIdentityService: GeneratedKeyIdentityService,
 ) {
+    @Volatile
+    private var isClosed = false
+
     private val foundationGraphDelegate = lazy {
         checkNotNull(foundationGraphFactory) {
             "AppFoundationGraph is only available from a context-backed container."
@@ -57,12 +61,25 @@ class AppContainer private constructor(
     val sshSessionCoordinator: SshSessionCoordinator
         get() = sshSessionCoordinatorDelegate.value
 
+    @Synchronized
     fun close() {
+        if (isClosed) {
+            return
+        }
         if (sshSessionCoordinatorDelegate.isInitialized()) {
             sshSessionCoordinator.close()
         }
         if (foundationGraphDelegate.isInitialized()) {
             foundationGraph.close()
+        }
+        isClosed = true
+        trackedContainers.remove(this)
+    }
+
+    @Synchronized
+    fun clearPersistentStateForTesting() {
+        if (!isClosed && foundationGraphDelegate.isInitialized()) {
+            foundationGraph.clearPersistentState()
         }
     }
 
@@ -75,12 +92,27 @@ class AppContainer private constructor(
             foundationGraphFactory = { buildAppFoundationGraph(applicationContext.applicationContext) },
             importedKeyImportService = importedKeyImportService,
             generatedKeyIdentityService = generatedKeyIdentityService,
-        )
+        ).also(trackedContainers::add)
 
         fun preview(): AppContainer = AppContainer(
             foundationGraphFactory = null,
             importedKeyImportService = ImportedKeyImportService(),
             generatedKeyIdentityService = GeneratedKeyIdentityService(),
+        )
+
+        fun closeAllTrackedContainersForTesting(clearPersistentState: Boolean = false) {
+            synchronized(trackedContainers) {
+                trackedContainers.toList()
+            }.forEach { container ->
+                if (clearPersistentState) {
+                    container.clearPersistentStateForTesting()
+                }
+                container.close()
+            }
+        }
+
+        private val trackedContainers = Collections.synchronizedSet(
+            linkedSetOf<AppContainer>(),
         )
     }
 }
