@@ -316,6 +316,117 @@ class SessionSshFixtureInstrumentedTest {
     }
 
     @Test
+    fun first_run_password_identity_setup_reconnects_after_relaunch_without_reentry() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_identities").performClick()
+        composeRule.onNodeWithTag("identity_empty_state").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_create_password_action").performClick()
+        composeRule.onNodeWithTag("identity_name_field").performTextInput("First run password")
+        composeRule.onNodeWithTag("identity_password_field").performTextInput(FIXTURE_PASSWORD)
+        composeRule.onNodeWithTag("identity_editor_save").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                container.foundationGraph.identityRepository.observeIdentities().first().any { it.name == "First run password" }
+            }
+        }
+        val identityId = runBlocking {
+            container.foundationGraph.identityRepository.observeIdentities().first()
+                .first { it.name == "First run password" }
+                .id
+        }
+
+        composeRule.onNodeWithTag("nav_hosts").performClick()
+        composeRule.onNodeWithTag("host_empty_state").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_create_action").performClick()
+        composeRule.onNodeWithTag("host_label_field").performTextInput("First run fixture host")
+        composeRule.onNodeWithTag("host_address_field").performTextInput(FIXTURE_HOST)
+        composeRule.onNodeWithTag("host_port_field").performTextClearance()
+        composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
+        composeRule.onNodeWithTag("host_username_field").performTextInput(FIXTURE_USERNAME)
+        composeRule.onNodeWithTag("host_auth_mode_password").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("host_identity_ready_summary").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("host_identity_ready_summary")
+            .assertTextContains("1 reusable password identity is ready to choose.", substring = true)
+        composeRule.onNodeWithTag("host_identity_option_$identityId").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_identity_option_$identityId")
+                    .performScrollTo()
+                    .assertIsSelected()
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runBlocking {
+                container.foundationGraph.hostRepository.observeHosts().first().any { it.label == "First run fixture host" }
+            }
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.observeHosts().first()
+                .first { it.label == "First run fixture host" }
+                .id
+        }
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        val firstConnected = connectFromUi(
+            coordinator = container.sshSessionCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", firstConnected.statusMessage)
+        composeRule.onNodeWithTag("session_active_endpoint")
+            .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
+        waitForProofText(container.sshSessionCoordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        waitForUiDisconnect(container.sshSessionCoordinator, "Disconnected.")
+
+        val relaunchedContainer = AppContainer.create(context)
+        application.replaceAppContainerForTesting(relaunchedContainer)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        assertEquals(
+            "First run fixture host",
+            runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(hostId) }?.label,
+        )
+        assertEquals(
+            FIXTURE_PASSWORD,
+            runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId) }?.primarySecret,
+        )
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.onNodeWithTag("session_host_row_$hostId").performScrollTo()
+        composeRule.onNodeWithTag("session_host_identity_$hostId")
+            .assertTextContains("First run password", substring = true)
+        val reconnected = connectFromUi(
+            coordinator = relaunchedContainer.sshSessionCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Reconnect",
+            expectTrustPrompt = false,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", reconnected.statusMessage)
+        composeRule.onNodeWithTag("session_active_endpoint")
+            .assertTextContains("$FIXTURE_HOST:$FIXTURE_PORT", substring = true)
+        waitForProofText(relaunchedContainer.sshSessionCoordinator, FIXTURE_PORT)
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+
+        relaunchedContainer.sshSessionCoordinator.disconnect()
+        waitForState(relaunchedContainer.sshSessionCoordinator) {
+            it.connectionState == SessionConnectionState.DISCONNECTED
+        }
+    }
+
+    @Test
     fun favorites_and_recents_survive_successful_connections_without_duplicate_recent_hosts() {
         assertFixtureReachableFromHost()
         val firstContainer = AppContainer.create(context)
