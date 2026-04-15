@@ -39,6 +39,8 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.mina.sshd.common)
+    implementation(libs.bouncycastle.provider)
+    implementation(libs.bouncycastle.pkix)
     testImplementation(libs.junit4)
     debugImplementation(libs.androidx.ui.tooling)
 }

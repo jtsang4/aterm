@@ -28,8 +28,9 @@ fun Identity.secretStatusLabel(): String = when (secretStorageState) {
 
 fun Identity.passphraseStatusLabel(): String = when {
     !hasPassphrase -> "No key passphrase required"
+    isAuthenticationReady -> "Saved key passphrase available"
     passphraseStorageState == SecretStorageState.BLOCKED -> "Passphrase unavailable until repaired"
-    else -> "Passphrase required for this key"
+    else -> "Passphrase required before this key can connect"
 }
 
 fun Identity.distinguishingDetail(): String = buildString {

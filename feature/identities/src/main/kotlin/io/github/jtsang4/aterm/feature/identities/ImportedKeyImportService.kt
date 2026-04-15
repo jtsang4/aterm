@@ -4,12 +4,18 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyPair
+import java.security.Security
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.apache.sshd.common.NamedResource
 import org.apache.sshd.common.config.keys.FilePasswordProvider
 import org.apache.sshd.common.config.keys.PublicKeyEntry
 import org.apache.sshd.common.util.security.SecurityUtils
 
 open class ImportedKeyImportService {
+    init {
+        ensureBouncyCastleRegistered()
+    }
+
     open fun parse(
         privateKeyMaterial: String,
         passphrase: String?,
@@ -75,6 +81,14 @@ open class ImportedKeyImportService {
         if (
             !passphrase.isNullOrBlank() &&
             looksLikePrivateKey(privateKeyMaterial) &&
+            looksLikeEncryptedPrivateKey(privateKeyMaterial) &&
+            normalizedMessages.none { message -> INVALID_KEY_MATERIAL_MARKERS.any(message::contains) }
+        ) {
+            return ImportedKeyParseResult.IncorrectPassphrase
+        }
+        if (
+            !passphrase.isNullOrBlank() &&
+            looksLikePrivateKey(privateKeyMaterial) &&
             normalizedMessages.none { message -> INVALID_KEY_MATERIAL_MARKERS.any(message::contains) } &&
             throwable is GeneralSecurityException
         ) {
@@ -96,11 +110,26 @@ open class ImportedKeyImportService {
     private fun looksLikePrivateKey(privateKeyMaterial: String): Boolean =
         PRIVATE_KEY_HEADER_REGEX.containsMatchIn(privateKeyMaterial)
 
+    private fun looksLikeEncryptedPrivateKey(privateKeyMaterial: String): Boolean =
+        ENCRYPTED_PRIVATE_KEY_MARKERS.any(privateKeyMaterial::contains)
+
     private fun Iterable<KeyPair>.toList(): List<KeyPair> = iterator().asSequence().toList()
 
     private companion object {
+        fun ensureBouncyCastleRegistered() {
+            if (Security.getProvider(BOUNCY_CASTLE_PROVIDER) == null) {
+                Security.addProvider(BouncyCastleProvider())
+            }
+        }
+
+        const val BOUNCY_CASTLE_PROVIDER = "BC"
         val IMPORT_RESOURCE = NamedResource { "imported-private-key" }
         val PRIVATE_KEY_HEADER_REGEX = Regex("-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+        val ENCRYPTED_PRIVATE_KEY_MARKERS = listOf(
+            "Proc-Type: 4,ENCRYPTED",
+            "DEK-Info:",
+            "BEGIN OPENSSH PRIVATE KEY",
+        )
         val INCORRECT_PASSPHRASE_MARKERS = listOf(
             "decrypt",
             "password",

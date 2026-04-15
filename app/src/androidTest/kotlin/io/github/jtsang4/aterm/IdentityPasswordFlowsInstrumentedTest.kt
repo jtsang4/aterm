@@ -318,6 +318,9 @@ class IdentityPasswordFlowsInstrumentedTest {
 
         composeRule.onNodeWithTag("identity_import_name_field").assertTextContains("Encrypted key")
         composeRule.onNodeWithTag("identity_import_passphrase_field").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").assertIsDisplayed()
+        composeRule.onNodeWithText("Leave unchecked to import without saving the passphrase", substring = true)
+            .assertIsDisplayed()
 
         composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("wrong-passphrase")
         composeRule.onNodeWithTag("identity_import_save").performClick()
@@ -337,6 +340,116 @@ class IdentityPasswordFlowsInstrumentedTest {
         val savedIdentity = repository.currentIdentities().first()
         assertEquals(IdentityKind.IMPORTED_KEY, savedIdentity.kind)
         assertEquals(true, savedIdentity.hasPassphrase)
+        assertEquals(SecretStorageState.BLOCKED, savedIdentity.passphraseStorageState)
+    }
+
+    @Test
+    fun legacy_encrypted_pem_import_with_saved_passphrase_shows_ready_saved_state() {
+        val repository = FakeIdentityRepository()
+        val encryptedKey = """
+            -----BEGIN RSA PRIVATE KEY-----
+            Proc-Type: 4,ENCRYPTED
+            DEK-Info: AES-128-CBC,0123456789ABCDEF0123456789ABCDEF
+
+            legacy-ui-test-placeholder
+            -----END RSA PRIVATE KEY-----
+        """.trimIndent()
+        val scriptedImportService = ScriptedImportedKeyImportService(
+            listOf(
+                ImportedKeyParseResult.PassphraseRequired,
+                ImportedKeyParseResult.Success(
+                    publicKey = "ssh-rsa AAAAB3NzaLegacySavedKey saved@test",
+                    hasPassphrase = true,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = repository,
+                importedKeyImportService = scriptedImportService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_import_key_action").performClick()
+        composeRule.onNodeWithTag("identity_import_name_field").performTextInput("Saved legacy key")
+        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(encryptedKey)
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("identity_import_passphrase_field").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").performClick()
+        composeRule.onNodeWithText("stay ready to connect", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("legacy-passphrase")
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().any { it.name == "Saved legacy key" }
+        }
+
+        val savedIdentity = repository.currentIdentities().first { it.name == "Saved legacy key" }
+        assertEquals(true, savedIdentity.hasPassphrase)
+        assertEquals(SecretStorageState.AVAILABLE, savedIdentity.passphraseStorageState)
+        composeRule.onNodeWithTag("identity_row_${savedIdentity.id}").assertIsDisplayed()
+        composeRule.onNodeWithText("Saved key passphrase available").assertIsDisplayed()
+    }
+
+    @Test
+    fun legacy_encrypted_pem_import_without_saving_passphrase_stays_truthfully_blocked() {
+        val repository = FakeIdentityRepository()
+        val encryptedKey = """
+            -----BEGIN RSA PRIVATE KEY-----
+            Proc-Type: 4,ENCRYPTED
+            DEK-Info: AES-128-CBC,0123456789ABCDEF0123456789ABCDEF
+
+            legacy-ui-test-placeholder
+            -----END RSA PRIVATE KEY-----
+        """.trimIndent()
+        val scriptedImportService = ScriptedImportedKeyImportService(
+            listOf(
+                ImportedKeyParseResult.PassphraseRequired,
+                ImportedKeyParseResult.Success(
+                    publicKey = "ssh-rsa AAAAB3NzaLegacyUnsavedKey unsaved@test",
+                    hasPassphrase = true,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = repository,
+                importedKeyImportService = scriptedImportService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_import_key_action").performClick()
+        composeRule.onNodeWithTag("identity_import_name_field").performTextInput("Unsaved legacy key")
+        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(encryptedKey)
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("identity_import_passphrase_field").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("legacy-passphrase")
+        closeKeyboardIfShown()
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().any { it.name == "Unsaved legacy key" }
+        }
+
+        val savedIdentity = repository.currentIdentities().first { it.name == "Unsaved legacy key" }
+        assertEquals(true, savedIdentity.hasPassphrase)
+        assertEquals(SecretStorageState.BLOCKED, savedIdentity.passphraseStorageState)
+        composeRule.onNodeWithTag("identity_repair_hint_${savedIdentity.id}").assertIsDisplayed()
+        composeRule.onNodeWithText("Passphrase unavailable until repaired").assertIsDisplayed()
     }
 
     @Test

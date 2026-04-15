@@ -51,6 +51,7 @@ android {
     packaging {
         resources {
             excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
 }
@@ -90,6 +91,8 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.mina.sshd.common)
     androidTestImplementation(libs.mina.sshd.core)
+    androidTestImplementation(libs.bouncycastle.provider)
+    androidTestImplementation(libs.bouncycastle.pkix)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
@@ -502,6 +503,9 @@ private fun KeyIdentityEditorScreen(
     var privateKeyMaterial by remember(identity?.id) { mutableStateOf("") }
     var publicKey by remember(identity?.id) { mutableStateOf(identity?.publicKey.orEmpty()) }
     var passphrase by remember(identity?.id) { mutableStateOf("") }
+    var savePassphrase by remember(identity?.id) {
+        mutableStateOf(identity?.passphraseStorageState == SecretStorageState.AVAILABLE)
+    }
     var replacePrivateKey by remember(identity?.id) { mutableStateOf(identity == null || requiresRepair) }
     var passphraseRequested by remember(identity?.id) { mutableStateOf(false) }
     var showPassphrase by remember(identity?.id) { mutableStateOf(false) }
@@ -541,6 +545,7 @@ private fun KeyIdentityEditorScreen(
                             privateKeyMaterial = ""
                             publicKey = if (isEditing && !replacePrivateKey) identity?.publicKey.orEmpty() else ""
                             passphrase = ""
+                            savePassphrase = false
                             passphraseRequested = false
                             saveError = null
                             clipboardStatus = null
@@ -555,6 +560,7 @@ private fun KeyIdentityEditorScreen(
                             privateKeyMaterial = ""
                             publicKey = ""
                             passphrase = ""
+                            savePassphrase = false
                             passphraseRequested = false
                             saveError = null
                             clipboardStatus = null
@@ -590,6 +596,7 @@ private fun KeyIdentityEditorScreen(
                             privateKeyMaterial = ""
                             publicKey = identity?.publicKey.orEmpty()
                             passphrase = ""
+                            savePassphrase = identity?.passphraseStorageState == SecretStorageState.AVAILABLE
                             passphraseRequested = false
                             keyMaterialError = null
                             passphraseError = null
@@ -606,6 +613,7 @@ private fun KeyIdentityEditorScreen(
                             privateKeyMaterial = ""
                             publicKey = ""
                             passphrase = ""
+                            savePassphrase = identity?.passphraseStorageState == SecretStorageState.AVAILABLE
                             passphraseRequested = false
                             keyMaterialError = null
                             passphraseError = null
@@ -648,6 +656,7 @@ private fun KeyIdentityEditorScreen(
                             privateKeyMaterial = generated.privateKeyMaterial
                             publicKey = generated.publicKey
                             passphrase = ""
+                            savePassphrase = false
                             passphraseRequested = false
                             keyMaterialError = null
                             passphraseError = null
@@ -693,6 +702,33 @@ private fun KeyIdentityEditorScreen(
                         .fillMaxWidth()
                         .testTag("identity_import_passphrase_field"),
                 )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("identity_import_passphrase_persistence_row"),
+                ) {
+                    Checkbox(
+                        checked = savePassphrase,
+                        onCheckedChange = { checked ->
+                            savePassphrase = checked
+                            saveError = null
+                        },
+                        modifier = Modifier.testTag("identity_import_save_passphrase_toggle"),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Save passphrase for future connections")
+                        Text(
+                            text = if (savePassphrase) {
+                                "This imported key will stay ready to connect after import."
+                            } else {
+                                "Leave unchecked to import without saving the passphrase. The identity will stay blocked until you repair it later."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("identity_import_passphrase_persistence_hint"),
+                        )
+                    }
+                }
             }
             if (publicKey.isNotBlank()) {
                 OutlinedTextField(
@@ -827,7 +863,8 @@ private fun KeyIdentityEditorScreen(
                                                 passphraseStorageState = when {
                                                     !parsed.hasPassphrase && !requiresKeyEditor ->
                                                         existing?.passphraseStorageState ?: SecretStorageState.MISSING
-                                                    parsed.hasPassphrase && passphrase.isNotBlank() -> SecretStorageState.AVAILABLE
+                                                    parsed.hasPassphrase && savePassphrase && passphrase.isNotBlank() ->
+                                                        SecretStorageState.AVAILABLE
                                                     parsed.hasPassphrase -> SecretStorageState.BLOCKED
                                                     else -> SecretStorageState.MISSING
                                                 },
@@ -837,7 +874,9 @@ private fun KeyIdentityEditorScreen(
                                             secrets = if (requiresKeyEditor) {
                                                 IdentitySecretMaterial(
                                                     primarySecret = normalizedKeyMaterial,
-                                                    passphrase = passphrase.takeIf { parsed.hasPassphrase && it.isNotBlank() },
+                                                    passphrase = passphrase.takeIf {
+                                                        parsed.hasPassphrase && savePassphrase && it.isNotBlank()
+                                                    },
                                                 )
                                             } else {
                                                 null
