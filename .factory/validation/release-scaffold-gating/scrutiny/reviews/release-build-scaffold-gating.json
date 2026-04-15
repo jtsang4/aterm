@@ -1,0 +1,21 @@
+{
+  "featureId": "release-build-scaffold-gating",
+  "reviewedAt": "2026-04-15T22:32:50.641726Z",
+  "commitId": "f47dd97e771259af60fdbf007fd048922b5ff1f7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The build-type gate cleanly hides the scaffold summary only in release builds while preserving the full five-destination app shell and keeping the debug summary visible as a positive control. I did not find any high-confidence correctness issues in the implementation for the reviewed feature.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The android-feature-worker procedure still mandates writing failing tests first even for release-shell gating work where the mission guidance explicitly says release proof may need assemble/sign/install manual verification because no release instrumentation harness exists. That mismatch caused an avoidable procedure deviation for this feature.",
+      "evidence": ".factory/skills/android-feature-worker/SKILL.md:22 requires \"Write failing tests first (red)\"; /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/AGENTS.md:50 notes release-shell proof may require manually assembling/installing the release artifact; the handoff skillFeedback for worker session e51962b8-3ed4-4a00-825f-84f39dbf0305 records this exact deviation."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The commit gates `ShellSummaryRow` behind a release-only `BuildConfig.SHOW_SHELL_SUMMARY` flag, preserves the normal `aterm` shell and all five top-level destinations, strengthens the debug instrumentation positive control, and the recorded release validation covers launch, navigation, and relaunch without scaffold leakage."
+}
