@@ -1,0 +1,107 @@
+{
+  "surface": "Android instrumentation + manual emulator validation on atermApi35 (emulator-5554)",
+  "assertions": [
+    {
+      "id": "VAL-SHELL-001",
+      "status": "pass",
+      "reason": "Release launch showed the aterm title and all five top-level destinations while the debug scaffold summary text, current-area label, and dependency-ready chips were absent.",
+      "evidence": [
+        "Instrumentation positive-control command: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.AppShellComposeTest#app_shell_shows_all_top_level_navigation_entries --max-workers=1",
+        "Release build command: ./gradlew :app:assembleRelease --max-workers=4",
+        "Release validation artifact signing command: /root/Android/Sdk/build-tools/35.0.0/apksigner sign --ks /root/.android/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out app/build/outputs/apk/release/app-release-signed.apk app/build/outputs/apk/release/app-release-unsigned.apk",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-001-launch.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-001-launch.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-001-hosts.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-001-hosts.xml"
+      ]
+    },
+    {
+      "id": "VAL-SHELL-002",
+      "status": "pass",
+      "reason": "Across release navigation to Identities, Sessions, Snippets, and Settings, plus force-stop/relaunch, the shell continued to expose all top-level destinations and never revealed scaffold summary UI or dependency chips.",
+      "evidence": [
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-identities.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-identities.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-session.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-session.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-snippets.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-snippets.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-settings.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-settings.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-relaunch.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-002-relaunch.xml"
+      ]
+    },
+    {
+      "id": "VAL-SHELL-003",
+      "status": "pass",
+      "reason": "The targeted debug instrumentation test passed, and debug-shell captures showed the scaffold summary, current-area label, and all dependency-ready chips (Data/Security/SSH/Terminal) while release captures hid them.",
+      "evidence": [
+        "Instrumentation result: /root/workspace/github/jtsang4/aterm/app/build/outputs/androidTest-results/connected/debug/TEST-atermApi35(AVD) - 15-_app-.xml",
+        "Instrumentation logcat: /root/workspace/github/jtsang4/aterm/app/build/outputs/androidTest-results/connected/debug/atermApi35(AVD) - 15/logcat-io.github.jtsang4.aterm.AppShellComposeTest-app_shell_shows_all_top_level_navigation_entries.txt",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe1.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe1.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe2.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe2.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe3.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe3.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe4.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe4.xml",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe5.png",
+        "Evidence: /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/release-scaffold-gating/shell-release/VAL-SHELL-003-debug-shell-swipe5.xml"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Read",
+    "LS",
+    "Glob",
+    "Grep",
+    "Execute",
+    "adb",
+    "Gradle instrumentation",
+    "uiautomator dump"
+  ],
+  "commandsRun": [
+    "./.factory/init.sh --check",
+    "./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.AppShellComposeTest#app_shell_shows_all_top_level_navigation_entries --max-workers=1",
+    "./gradlew :app:assembleRelease --max-workers=4",
+    "/root/Android/Sdk/build-tools/35.0.0/apksigner sign --ks /root/.android/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out /root/workspace/github/jtsang4/aterm/app/build/outputs/apk/release/app-release-signed.apk /root/workspace/github/jtsang4/aterm/app/build/outputs/apk/release/app-release-unsigned.apk",
+    "adb -s emulator-5554 install -r /root/workspace/github/jtsang4/aterm/app/build/outputs/apk/release/app-release-signed.apk",
+    "adb -s emulator-5554 shell pm clear io.github.jtsang4.aterm",
+    "adb -s emulator-5554 shell am start -W -n io.github.jtsang4.aterm/.MainActivity",
+    "adb -s emulator-5554 exec-out screencap -p > evidence files",
+    "adb -s emulator-5554 shell uiautomator dump /sdcard/window_dump.xml && adb -s emulator-5554 pull /sdcard/window_dump.xml <evidence>",
+    "adb -s emulator-5554 shell input tap 320 2230",
+    "adb -s emulator-5554 shell input tap 540 2230",
+    "adb -s emulator-5554 shell input tap 760 2230",
+    "adb -s emulator-5554 shell input tap 980 2230",
+    "adb -s emulator-5554 shell am force-stop io.github.jtsang4.aterm && adb -s emulator-5554 shell am start -W -n io.github.jtsang4.aterm/.MainActivity",
+    "./gradlew :app:assembleDebug --max-workers=4",
+    "adb -s emulator-5554 install -r /root/workspace/github/jtsang4/aterm/app/build/outputs/apk/debug/app-debug.apk",
+    "adb -s emulator-5554 shell input swipe 950 620 180 620 300"
+  ],
+  "frictions": [
+    {
+      "description": "The release build output was an unsigned APK and the project did not expose an installRelease task, so release validation required signing the assembled APK locally with the existing debug keystore before adb install.",
+      "resolved": true,
+      "resolution": "Signed app-release-unsigned.apk with /root/.android/debug.keystore to create app-release-signed.apk for emulator-only validation.",
+      "affectedAssertions": [
+        "VAL-SHELL-001",
+        "VAL-SHELL-002"
+      ]
+    },
+    {
+      "description": "The debug scaffold dependency chips were in a horizontally scrollable row, so not all chips were visible in one capture.",
+      "resolved": true,
+      "resolution": "Captured additional swipe-based screenshots/UI dumps to expose Security, SSH, and Terminal chips after the initial Data chip capture.",
+      "affectedAssertions": [
+        "VAL-SHELL-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested VAL-SHELL-001, VAL-SHELL-002, and VAL-SHELL-003 on emulator-5554. All three passed: release kept the full five-destination shell while hiding scaffold summary UI across launch/navigation/relaunch, and debug remained the positive control with the scaffold summary and dependency-ready chips visible."
+}

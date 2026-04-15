@@ -1,0 +1,26 @@
+{
+  "milestone": "release-scaffold-gating",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-SHELL-001",
+    "VAL-SHELL-002",
+    "VAL-SHELL-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented that release-shell validation currently needs local signing of app-release-unsigned.apk because the project has no installRelease task.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
