@@ -42,6 +42,7 @@ import io.github.jtsang4.aterm.navigation.rememberAtermAppState
 fun AtermApp(
     appContainer: AppContainer = AppContainer.preview(),
     identitiesScreen: @Composable (() -> Unit)? = null,
+    showShellSummary: Boolean = BuildConfig.SHOW_SHELL_SUMMARY,
 ) {
     val settingsRepository = appContainer.settingsRepositoryOrNull
     val preferences by settingsRepository
@@ -104,10 +105,12 @@ fun AtermApp(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    ShellSummaryRow(
-                        currentDestination = currentDestination,
-                        appContainer = appContainer,
-                    )
+                    if (showShellSummary) {
+                        ShellSummaryRow(
+                            currentDestination = currentDestination,
+                            appContainer = appContainer,
+                        )
+                    }
                     AtermNavHost(
                         navController = appState.navController,
                         appContainer = appContainer,

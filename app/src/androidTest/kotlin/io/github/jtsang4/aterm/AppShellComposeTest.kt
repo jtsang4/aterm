@@ -57,6 +57,7 @@ class AppShellComposeTest {
     @Test
     fun app_shell_shows_all_top_level_navigation_entries() {
         composeRule.onNodeWithTag("app_shell").assertIsDisplayed()
+        composeRule.onNodeWithTag("shell_summary").assertIsDisplayed()
 
         listOf("hosts", "identities", "session", "snippets", "settings").forEach { route ->
             composeRule.onNodeWithTag("nav_$route").assertIsDisplayed()

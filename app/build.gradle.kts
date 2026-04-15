@@ -17,7 +17,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "SHOW_SHELL_SUMMARY", "true")
+        }
         release {
+            buildConfigField("boolean", "SHOW_SHELL_SUMMARY", "false")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -36,6 +40,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
