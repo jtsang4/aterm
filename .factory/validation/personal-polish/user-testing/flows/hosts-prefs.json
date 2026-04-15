@@ -1,0 +1,169 @@
+{
+  "groupId": "hosts-prefs",
+  "milestone": "personal-polish",
+  "surface": "Android instrumentation on shared emulator emulator-5554 / AVD atermApi35 via :app:connectedDebugAndroidTest",
+  "testedAt": "2026-04-15T11:47:15.941300+00:00",
+  "isolation": {
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64",
+    "emulator": "atermApi35",
+    "deviceSerial": "emulator-5554",
+    "fixtureEndpointFromEmulator": "10.0.2.2:3122",
+    "sharedSurfaceBoundary": "single Android instrumentation flow at a time",
+    "productCodeModified": false
+  },
+  "toolsUsed": [
+    "Gradle :app:connectedDebugAndroidTest",
+    "adb",
+    "Android instrumentation on emulator",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    {
+      "command": "/root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+      "exitCode": 0,
+      "observation": "Android/JDK bootstrap check passed."
+    },
+    {
+      "command": "/root/Android/Sdk/platform-tools/adb devices -l && /root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop sys.boot_completed && /root/Android/Sdk/platform-tools/adb -s emulator-5554 shell getprop init.svc.bootanim && /root/Android/Sdk/platform-tools/adb -s emulator-5554 shell 'toybox nc -z -w 2 10.0.2.2 3122; echo fixture:$?'",
+      "exitCode": 0,
+      "observation": "emulator-5554 was online, boot completed was 1, boot animation was stopped, and the SSH fixture endpoint was reachable from the emulator (fixture:0)."
+    },
+    {
+      "command": "export JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH; /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest#favorite_host_toggle_persists_after_relaunch_and_deletion_clears_favorite_surface,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#favorites_and_recents_survive_successful_connections_without_duplicate_recent_hosts,io.github.jtsang4.aterm.AppShellComposeTest#terminal_font_size_updates_open_and_new_sessions_and_persists_after_relaunch,io.github.jtsang4.aterm.AppShellComposeTest#theme_preference_updates_main_and_transient_surfaces_and_persists_after_relaunch",
+      "exitCode": 0,
+      "observation": "Focused instrumentation ran 4 assigned tests on emulator-5554 with 0 failures."
+    }
+  ],
+  "assertionsTested": [
+    {
+      "id": "VAL-HOST-009",
+      "title": "Favorite hosts can be marked, unmarked, and rediscovered after relaunch",
+      "status": "pass",
+      "coverageFrom": [
+        "HostLibraryFlowsInstrumentedTest.favorite_host_toggle_persists_after_relaunch_and_deletion_clears_favorite_surface"
+      ],
+      "observed": [
+        "The test toggled the saved host into favorites, removed it, and re-favorited it with the favorite surface updating each time.",
+        "After recreating the app container, the same host reappeared in the favorite surface, proving relaunch persistence.",
+        "Opening the favorite entry reused the same saved host record, and deleting that host cleared the favorite surface without leaving a zombie favorite row."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/hosts-prefs/host-library-instrumentation.html",
+          "personal-polish/hosts-prefs/app-connected-summary.html",
+          "personal-polish/hosts-prefs/app-connected-results.xml",
+          "personal-polish/hosts-prefs/VAL-HOST-009-favorite-logcat.txt"
+        ],
+        "consoleErrors": "none found in copied assertion logcat",
+        "network": "No external HTTP calls; local persistence behavior only."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-HOST-010",
+      "title": "Recently connected hosts are surfaced for quick rediscovery",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.favorites_and_recents_survive_successful_connections_without_duplicate_recent_hosts"
+      ],
+      "observed": [
+        "The flow connected to host A, then host B, then host A again against the real SSH fixture at 10.0.2.2:3122.",
+        "The recent-host surface showed a single newest-first entry for A above B, with no duplicate recent rows for A.",
+        "After relaunch, favorites and recents persisted, and the same alpha/beta saved host ids were still surfaced in the expected order."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/hosts-prefs/session-fixture-instrumentation.html",
+          "personal-polish/hosts-prefs/app-connected-summary.html",
+          "personal-polish/hosts-prefs/app-connected-results.xml",
+          "personal-polish/hosts-prefs/VAL-HOST-010-recents-logcat.txt",
+          "personal-polish/hosts-prefs/emulator-fixture-readiness.txt"
+        ],
+        "consoleErrors": "none found in copied assertion logcat",
+        "network": "Real SSH connections from emulator to 10.0.2.2:3122 succeeded for the repeated A/B/A sequence."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PREF-001",
+      "title": "Terminal font size changes apply to already-open and newly opened sessions and persist across relaunch",
+      "status": "pass",
+      "coverageFrom": [
+        "AppShellComposeTest.terminal_font_size_updates_open_and_new_sessions_and_persists_after_relaunch"
+      ],
+      "observed": [
+        "With a live SSH fixture session open, increasing terminal font scale changed the visible terminal metrics for the already-open session.",
+        "After disconnecting and reconnecting, the newly opened session retained the updated terminal metrics, showing the new size applied to new sessions too.",
+        "After relaunch, reconnecting again preserved the same updated metrics, and the persisted settings repository value remained 1.75."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/hosts-prefs/app-shell-instrumentation.html",
+          "personal-polish/hosts-prefs/app-connected-summary.html",
+          "personal-polish/hosts-prefs/app-connected-results.xml",
+          "personal-polish/hosts-prefs/VAL-PREF-001-font-size-logcat.txt",
+          "personal-polish/hosts-prefs/emulator-fixture-readiness.txt"
+        ],
+        "consoleErrors": "none found in copied assertion logcat",
+        "network": "Fixture-backed session reconnects to 10.0.2.2:3122 succeeded before and after the preference change."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PREF-002",
+      "title": "Theme preference applies consistently to main and transient app surfaces and persists across relaunch",
+      "status": "pass",
+      "coverageFrom": [
+        "AppShellComposeTest.theme_preference_updates_main_and_transient_surfaces_and_persists_after_relaunch"
+      ],
+      "observed": [
+        "Starting from light theme, switching to dark updated the shared theme marker on Settings.",
+        "The same dark theme marker was then observed on Hosts, Session, and Snippets surfaces, covering the main user-visible surfaces exercised by the test.",
+        "After relaunch, dark theme remained active and the persisted settings repository still stored ThemePreference.DARK."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/hosts-prefs/app-shell-instrumentation.html",
+          "personal-polish/hosts-prefs/app-connected-summary.html",
+          "personal-polish/hosts-prefs/app-connected-results.xml",
+          "personal-polish/hosts-prefs/VAL-PREF-002-theme-logcat.txt"
+        ],
+        "consoleErrors": "none found in copied assertion logcat",
+        "network": "Not applicable; this assertion covered local preference propagation and persistence."
+      },
+      "issues": null
+    }
+  ],
+  "summary": "Validated 4 assigned assertions on emulator-5554: 4 passed, 0 failed, 0 blocked.",
+  "frictions": [
+    {
+      "description": "The current Android instrumentation harness emits XML/HTML/logcat artifacts but does not produce standalone per-step screenshots for these UI flows.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-HOST-009",
+        "VAL-HOST-010",
+        "VAL-PREF-001",
+        "VAL-PREF-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "evidenceFiles": [
+    "personal-polish/hosts-prefs/emulator-fixture-readiness.txt",
+    "personal-polish/hosts-prefs/app-connected-results.xml",
+    "personal-polish/hosts-prefs/app-connected-summary.html",
+    "personal-polish/hosts-prefs/host-library-instrumentation.html",
+    "personal-polish/hosts-prefs/session-fixture-instrumentation.html",
+    "personal-polish/hosts-prefs/app-shell-instrumentation.html",
+    "personal-polish/hosts-prefs/VAL-HOST-009-favorite-logcat.txt",
+    "personal-polish/hosts-prefs/VAL-HOST-010-recents-logcat.txt",
+    "personal-polish/hosts-prefs/VAL-PREF-001-font-size-logcat.txt",
+    "personal-polish/hosts-prefs/VAL-PREF-002-theme-logcat.txt"
+  ]
+}

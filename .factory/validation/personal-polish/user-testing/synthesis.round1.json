@@ -1,0 +1,34 @@
+{
+  "milestone": "personal-polish",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 13,
+    "passed": 12,
+    "failed": 0,
+    "blocked": 1
+  },
+  "passedAssertions": [
+    "VAL-HOST-009",
+    "VAL-HOST-010",
+    "VAL-PREF-001",
+    "VAL-PREF-002",
+    "VAL-CROSS-002",
+    "VAL-CROSS-003",
+    "VAL-CROSS-004",
+    "VAL-CROSS-005",
+    "VAL-CROSS-006",
+    "VAL-CROSS-007",
+    "VAL-CROSS-008",
+    "VAL-CROSS-009"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "blockedBy": "No runnable end-to-end first-run password-identity setup flow currently proves create identity -> save host -> connect successfully -> restart app -> reconnect without re-entering setup data on the real user surface."
+    }
+  ],
+  "appliedUpdates": [],
+  "previousRound": null
+}

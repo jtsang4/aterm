@@ -1,0 +1,327 @@
+{
+  "groupId": "cross-flows",
+  "milestone": "personal-polish",
+  "surface": "Android instrumentation on shared emulator emulator-5554 / AVD atermApi35 via :app:connectedDebugAndroidTest",
+  "testedAt": "2026-04-15T12:25:15.864915+00:00",
+  "isolation": {
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64",
+    "emulator": "atermApi35",
+    "deviceSerial": "emulator-5554",
+    "fixtureEndpointFromEmulator": "10.0.2.2:3122",
+    "hostSshEndpointFromEmulator": "10.0.2.2:22",
+    "sharedSurfaceBoundary": "single Android instrumentation flow at a time",
+    "productCodeModified": false
+  },
+  "toolsUsed": [
+    "Gradle :app:connectedDebugAndroidTest",
+    "adb",
+    "Android instrumentation on emulator",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    {
+      "command": "JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/.factory/init.sh --check && adb -s emulator-5554 shell getprop sys.boot_completed && nc -z 127.0.0.1 3122",
+      "exitCode": 0,
+      "observation": "Bootstrap check passed, emulator-5554 was boot-complete, and the repo-local SSH fixture was reachable on host port 3122."
+    },
+    {
+      "command": "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#saved_password_identity_remains_selectable_from_host_flows_after_relaunch,io.github.jtsang4.aterm.HostLibraryFlowsInstrumentedTest#password_host_can_be_saved_and_reopened_after_relaunch,io.github.jtsang4.aterm.SnippetLibraryFlowsInstrumentedTest#snippet_can_be_saved_and_rediscovered_after_relaunch,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#generated_key_identity_survives_relaunch_and_reaches_real_terminal_session,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#edited_password_host_and_saved_snippet_target_reconnect_with_updated_fixture_port_after_relaunch,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#real_fixture_session_ui_truthfully_reflects_password_replacement_failures_and_recovery,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#changed_key_is_blocked_and_endpoint_edits_do_not_reuse_prior_trust --max-workers=1",
+      "exitCode": 0,
+      "observation": "A focused 9-test instrumentation suite passed and supplied the main proof for VAL-CROSS-002/003/004/006/007/008 plus partial coverage for VAL-CROSS-001."
+    },
+    {
+      "command": "cd /root/workspace/github/jtsang4/aterm && JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#favorite_repeat_use_flow_reconnects_and_runs_saved_snippet_without_any_login_or_sync_gate --max-workers=1",
+      "exitCode": 0,
+      "observation": "An isolated rerun of the favorite repeat-use flow passed and supplied the proof for VAL-CROSS-005 and VAL-CROSS-009."
+    }
+  ],
+  "assertionsTested": [
+    {
+      "id": "VAL-CROSS-001",
+      "title": "A first-run password-identity setup can connect successfully and reconnect after app restart without re-entering setup data",
+      "status": "blocked",
+      "coverageFrom": [
+        "IdentityPasswordFlowsInstrumentedTest.saved_password_identity_remains_selectable_from_host_flows_after_relaunch",
+        "HostLibraryFlowsInstrumentedTest.password_host_can_be_saved_and_reopened_after_relaunch",
+        "SnippetLibraryFlowsInstrumentedTest.snippet_can_be_saved_and_rediscovered_after_relaunch",
+        "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows"
+      ],
+      "observed": [
+        "Password identities can be created through the UI and remain selectable after relaunch.",
+        "Password hosts can be saved and reopened after relaunch.",
+        "A seeded password-backed host can connect through the real app shell, keep trust state, and reconnect after relaunch."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-001-partial-password-identity-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-001-partial-host-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-001-partial-snippet-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-004-trust-relaunch-logcat.txt"
+        ],
+        "consoleErrors": "No app-specific failures were required for the partial UI proofs; instrumentation logcats only showed routine emulator/IME noise.",
+        "network": "Partial real-session proof exists against 10.0.2.2:3122, but not as one end-to-end first-run setup flow."
+      },
+      "issues": "No runnable proof chained first-run password-identity creation, host creation, first successful real connection, app restart, and reconnect in the same end-to-end user-surface flow. Existing tests only cover those pieces separately."
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "An imported key identity can be used end to end to reach a real terminal session",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.imported_key_identity_survives_relaunch_and_reaches_real_terminal_session"
+      ],
+      "observed": [
+        "The flow imported a private key through the identity UI, created a key-auth host through the host UI, relaunched the app, and connected through the real app shell.",
+        "The host was explicitly switched into key auth mode and the imported key identity was selected before saving.",
+        "After connection, the test sent a terminal command and observed remote output proving a real terminal session on the SSH fixture without any visible password fallback path."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-002-imported-key-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcat beyond routine emulator noise.",
+        "network": "Real SSH connection from emulator to 10.0.2.2:3122 succeeded, followed by terminal output proof IMPORTED_KEY_SESSION_OK."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "A generated key identity can be used end to end to reach a real terminal session",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.generated_key_identity_survives_relaunch_and_reaches_real_terminal_session"
+      ],
+      "observed": [
+        "The flow generated a new key through the identity UI, created a key-auth host through the host UI, relaunched the app, and connected through the real app shell.",
+        "The generated key identity was selected from the reusable key identity chooser before host save.",
+        "After connection, the test sent a terminal command and observed remote output proving a real terminal session on the SSH fixture."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-003-generated-key-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcat beyond routine emulator noise.",
+        "network": "Real SSH connection from emulator to 10.0.2.2:3122 succeeded, followed by terminal output proof GENERATED_KEY_SESSION_OK."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "A trusted host remains trusted on later connections until the server key actually changes",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_proves_trust_identity_edit_and_relaunch_through_visible_app_flows",
+        "SessionSshFixtureInstrumentedTest.changed_key_is_blocked_and_endpoint_edits_do_not_reuse_prior_trust"
+      ],
+      "observed": [
+        "The first real-fixture connection presented a trust prompt, and later reconnects plus a post-relaunch reconnect succeeded without showing that prompt again.",
+        "The persisted trust state remained available after the linked identity metadata was edited and after app relaunch.",
+        "When the trusted key was intentionally changed, the app blocked the connection, and editing to a different endpoint required a fresh trust decision instead of silently reusing prior trust."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-004-trust-relaunch-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-004-changed-key-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcats beyond routine emulator noise.",
+        "network": "Real SSH connections to 10.0.2.2:3122 succeeded before trust reuse, and changed-key/endpoint-edit handling was exercised through the fixture trust flow."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "title": "A snippet saved during normal use can be reused in a later terminal session on the intended host",
+      "status": "pass",
+      "coverageFrom": [
+        "SnippetLibraryFlowsInstrumentedTest.snippet_can_be_saved_and_rediscovered_after_relaunch",
+        "SessionSshFixtureInstrumentedTest.favorite_repeat_use_flow_reconnects_and_runs_saved_snippet_without_any_login_or_sync_gate"
+      ],
+      "observed": [
+        "A saved-host snippet can be created through the snippets UI and persists as a saved snippet record tied to a chosen host.",
+        "In a later session, the repeat-use flow reopened the app, reconnected to the intended favorite host, opened snippets, and showed the saved-host target label before execution.",
+        "After confirmation, payload-specific remote output FAVORITE_REPEAT_SNIPPET_OK appeared in the terminal transcript and snippet history recorded the intended host label."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/run-cross-005-009-test-result.textproto",
+          "personal-polish/cross-flows/run-cross-005-009-test-results.log",
+          "personal-polish/cross-flows/VAL-CROSS-001-partial-snippet-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-005-009-favorite-repeat-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcats beyond routine emulator noise.",
+        "network": "Real SSH reconnect and snippet dispatch to 10.0.2.2:3122 succeeded, with payload-specific transcript proof and saved-host history entry."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "Saved snippet-to-host association survives app relaunch and still targets the intended host",
+      "status": "pass",
+      "coverageFrom": [
+        "SnippetLibraryFlowsInstrumentedTest.snippet_can_be_saved_and_rediscovered_after_relaunch",
+        "SessionSshFixtureInstrumentedTest.edited_password_host_and_saved_snippet_target_reconnect_with_updated_fixture_port_after_relaunch"
+      ],
+      "observed": [
+        "A snippet can be saved against a chosen saved host in the snippets UI and is rediscoverable after relaunch with that saved-host target preserved.",
+        "After app relaunch in the port-edit flow, the snippet details still showed Saved host: Port edit host instead of degrading to active-session targeting.",
+        "Running the snippet after reconnect executed on the intended saved host and recorded history for that same saved host label."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-001-partial-snippet-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-006-007-008-port-edit-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcats beyond routine emulator noise.",
+        "network": "Real SSH reconnect and saved-host snippet execution to 10.0.2.2:3122 succeeded after relaunch."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "Editing host or identity configuration propagates cleanly to both direct-connect and snippet-execution flows",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.edited_password_host_and_saved_snippet_target_reconnect_with_updated_fixture_port_after_relaunch"
+      ],
+      "observed": [
+        "The saved host initially failed against the stale endpoint configuration.",
+        "After editing the host port and saving, a later direct reconnect succeeded against the updated fixture endpoint after relaunch.",
+        "The saved snippet targeting that host then executed successfully and recorded host-specific history, showing snippet execution also consumed the updated persisted configuration instead of stale cached state."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-006-007-008-port-edit-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcat beyond routine emulator noise.",
+        "network": "Initial connection to the stale endpoint failed, then direct connect and saved-host snippet execution both succeeded on the updated 10.0.2.2:3122 endpoint."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "Failed connection attempts do not destroy the saved local setup needed for retry",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.real_fixture_session_ui_truthfully_reflects_password_replacement_failures_and_recovery",
+        "SessionSshFixtureInstrumentedTest.edited_password_host_and_saved_snippet_target_reconnect_with_updated_fixture_port_after_relaunch"
+      ],
+      "observed": [
+        "After replacing the linked password with a wrong value, the app surfaced an authentication failure without corrupting the session transcript and left the saved identity repair path usable.",
+        "Re-entering the correct password through the identity UI allowed a successful retry, proving the saved host and identity setup survived the failed attempt.",
+        "In the separate stale-endpoint flow, the saved host and its saved-host snippet remained available through the failed connection, host correction, relaunch, and later successful direct connect plus snippet execution, with history still recording the repaired saved host."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-main-suite.xml",
+          "personal-polish/cross-flows/run-cross-main-suite.textproto",
+          "personal-polish/cross-flows/VAL-CROSS-008-recovery-logcat.txt",
+          "personal-polish/cross-flows/VAL-CROSS-006-007-008-port-edit-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcats beyond routine emulator noise.",
+        "network": "Recoverable SSH failures were observed before later successful retries against 10.0.2.2:3122, and saved-host snippet execution still succeeded afterward."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-009",
+      "title": "Repeat-use flows stay local-only and support fast reconnect from favorites or recents without any login or sync gate",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.favorite_repeat_use_flow_reconnects_and_runs_saved_snippet_without_any_login_or_sync_gate"
+      ],
+      "observed": [
+        "The flow relaunched the app, opened Hosts, selected the saved favorite host, and reconnected through the real app shell without recreating setup.",
+        "After reconnect, it opened Snippets, confirmed the saved-host target, and executed the saved snippet successfully in the later session.",
+        "The assertion explicitly checked that no Login, Sync, or Team text appeared in the critical path, so the repeat-use path stayed local-only."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/cross-flows/run-cross-005-009-test-result.textproto",
+          "personal-polish/cross-flows/run-cross-005-009-test-results.log",
+          "personal-polish/cross-flows/VAL-CROSS-005-009-favorite-repeat-logcat.txt"
+        ],
+        "consoleErrors": "No assertion-specific app errors were reported in the copied logcat beyond routine emulator noise.",
+        "network": "Real SSH reconnect and saved snippet execution to 10.0.2.2:3122 succeeded after reopening the app from the favorite path."
+      },
+      "issues": null
+    }
+  ],
+  "summary": "Validated 9 assigned cross-area assertions on emulator-5554: 8 passed, 0 failed, 1 blocked (VAL-CROSS-001 lacked a single end-to-end first-run password setup proof).",
+  "frictions": [
+    {
+      "description": "A combined 10-test batch intermittently timed out on favorite_repeat_use_flow_reconnects_and_runs_saved_snippet_without_any_login_or_sync_gate when run late in a longer shared-emulator suite.",
+      "resolved": true,
+      "resolution": "Reran that flow in isolation on the same emulator-5554 surface; the isolated rerun passed and its artifacts were used for VAL-CROSS-005 and VAL-CROSS-009.",
+      "affectedAssertions": [
+        "VAL-CROSS-005",
+        "VAL-CROSS-009"
+      ]
+    },
+    {
+      "description": "The current Android instrumentation harness produced XML/textproto/logcat artifacts but no standalone per-step screenshots for these UI flows.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-CROSS-001",
+        "VAL-CROSS-002",
+        "VAL-CROSS-003",
+        "VAL-CROSS-004",
+        "VAL-CROSS-005",
+        "VAL-CROSS-006",
+        "VAL-CROSS-007",
+        "VAL-CROSS-008",
+        "VAL-CROSS-009"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No existing runnable instrumentation proof covers the full first-run chain of creating a password identity, saving a host that uses it, connecting successfully through the real app shell, restarting the app, and reconnecting without re-entering setup data.",
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ],
+      "quickFixAttempted": "Combined the available UI identity, host, snippet, and real-session persistence tests, but they still only prove the pieces separately rather than as one end-to-end first-run flow."
+    }
+  ],
+  "evidenceFiles": [
+    "personal-polish/cross-flows/run-cross-main-suite.xml",
+    "personal-polish/cross-flows/run-cross-main-suite.textproto",
+    "personal-polish/cross-flows/run-cross-main-suite.log",
+    "personal-polish/cross-flows/run-cross-005-009-test-result.textproto",
+    "personal-polish/cross-flows/run-cross-005-009-test-results.log",
+    "personal-polish/cross-flows/VAL-CROSS-001-partial-password-identity-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-001-partial-host-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-001-partial-snippet-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-002-imported-key-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-003-generated-key-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-004-trust-relaunch-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-004-changed-key-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-005-009-favorite-repeat-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-006-007-008-port-edit-logcat.txt",
+    "personal-polish/cross-flows/VAL-CROSS-008-recovery-logcat.txt"
+  ]
+}

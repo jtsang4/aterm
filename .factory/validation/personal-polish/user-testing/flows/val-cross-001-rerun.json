@@ -1,0 +1,95 @@
+{
+  "groupId": "val-cross-001-rerun",
+  "milestone": "personal-polish",
+  "surface": "Android instrumentation on shared emulator emulator-5554 / AVD atermApi35 via :app:connectedDebugAndroidTest",
+  "testedAt": "2026-04-15T12:56:02.524133+00:00",
+  "isolation": {
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64",
+    "emulator": "atermApi35",
+    "deviceSerial": "emulator-5554",
+    "fixtureEndpointFromEmulator": "10.0.2.2:3122",
+    "sharedSurfaceBoundary": "single Android instrumentation flow at a time",
+    "productCodeModified": false
+  },
+  "toolsUsed": [
+    "Gradle :app:connectedDebugAndroidTest",
+    "adb",
+    "Android instrumentation on emulator",
+    "repo source inspection"
+  ],
+  "commandsRun": [
+    {
+      "command": "export JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH && nohup /root/Android/Sdk/emulator/emulator @atermApi35 -no-window -no-snapshot -no-boot-anim -no-audio -gpu swiftshader_indirect -port 5554 >/tmp/aterm-emulator.log 2>&1 & echo $!",
+      "exitCode": 0,
+      "observation": "The assigned shared emulator surface was not attached to adb initially, so the existing atermApi35 AVD was started on port 5554 without creating any additional emulator."
+    },
+    {
+      "command": "export JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH && /root/workspace/github/jtsang4/aterm/.factory/init.sh --check && adb -s emulator-5554 wait-for-device && adb -s emulator-5554 shell getprop sys.boot_completed && adb -s emulator-5554 shell getprop dev.bootcomplete && adb -s emulator-5554 shell \"toybox nc -z -w 3 10.0.2.2 3122; echo fixture_exit:$?\"",
+      "exitCode": 0,
+      "observation": "Bootstrap check passed, emulator-5554 reported boot completion, and the repo-local SSH fixture was reachable from the emulator at 10.0.2.2:3122."
+    },
+    {
+      "command": "export JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH && cd /root/workspace/github/jtsang4/aterm && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#first_run_password_identity_setup_reconnects_after_relaunch_without_reentry --max-workers=1",
+      "exitCode": 0,
+      "observation": "The focused instrumentation rerun executed exactly one test on atermApi35(AVD) - 15 and passed with 0 failures."
+    }
+  ],
+  "assertionsTested": [
+    {
+      "id": "VAL-CROSS-001",
+      "title": "A first-run password-identity setup can connect successfully and reconnect after app restart without re-entering setup data",
+      "status": "pass",
+      "coverageFrom": [
+        "SessionSshFixtureInstrumentedTest.first_run_password_identity_setup_reconnects_after_relaunch_without_reentry"
+      ],
+      "observed": [
+        "The runnable proof starts from an empty identities surface and empty hosts surface, creates a reusable password identity through the real app UI, and saves a host that selects that identity.",
+        "The first session connection uses the saved host, accepts the initial trust prompt, reaches Connected to 10.0.2.2:3122, and waits for remote proof text in the terminal transcript.",
+        "After disconnecting and recreating the app shell, the saved host label and password secret are still present in local storage, the session list still shows the linked identity label, and reconnect succeeds from saved local data with expectedButtonLabel=Reconnect and no trust re-prompt or setup-data re-entry."
+      ],
+      "evidence": {
+        "screenshots": [],
+        "artifacts": [
+          "personal-polish/val-cross-001-rerun/bootstrap-emulator-fixture-readiness.txt",
+          "personal-polish/val-cross-001-rerun/gradle-test-output.log",
+          "personal-polish/val-cross-001-rerun/TEST-atermApi35(AVD) - 15-_app-.xml",
+          "personal-polish/val-cross-001-rerun/SessionSshFixtureInstrumentedTest.html",
+          "personal-polish/val-cross-001-rerun/io.github.jtsang4.aterm.html",
+          "personal-polish/val-cross-001-rerun/index.html"
+        ],
+        "consoleErrors": "No assertion-specific app failures appeared in the connected Android test reports; the rerun finished with 1/1 passing test.",
+        "network": "Real SSH fixture connections from emulator-5554 to 10.0.2.2:3122 succeeded for both the first connection and the post-relaunch reconnect."
+      },
+      "issues": null
+    }
+  ],
+  "summary": "Validated the assigned rerun assertion on emulator-5554: VAL-CROSS-001 passed with a single focused end-to-end instrumentation proof covering first-run password identity setup, first connect, app relaunch, and reconnect without re-entry.",
+  "frictions": [
+    {
+      "description": "The shared emulator surface was not attached when readiness checks began.",
+      "resolved": true,
+      "resolution": "Started the assigned atermApi35 emulator on emulator-5554, waited for boot completion, and then ran the focused rerun on that same shared surface.",
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ]
+    },
+    {
+      "description": "The instrumentation harness produces XML/HTML/log artifacts rather than an auto-recorded video or screenshot set for this flow.",
+      "resolved": false,
+      "resolution": null,
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ]
+    }
+  ],
+  "blockers": [],
+  "evidenceFiles": [
+    "personal-polish/val-cross-001-rerun/bootstrap-emulator-fixture-readiness.txt",
+    "personal-polish/val-cross-001-rerun/gradle-test-output.log",
+    "personal-polish/val-cross-001-rerun/TEST-atermApi35(AVD) - 15-_app-.xml",
+    "personal-polish/val-cross-001-rerun/SessionSshFixtureInstrumentedTest.html",
+    "personal-polish/val-cross-001-rerun/io.github.jtsang4.aterm.html",
+    "personal-polish/val-cross-001-rerun/index.html"
+  ]
+}
