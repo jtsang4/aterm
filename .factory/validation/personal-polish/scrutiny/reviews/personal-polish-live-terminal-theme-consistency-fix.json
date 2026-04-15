@@ -1,0 +1,21 @@
+{
+  "featureId": "personal-polish-live-terminal-theme-consistency-fix",
+  "reviewedAt": "2026-04-15T11:30:17Z",
+  "commitId": "f02c269d054bc7bd99259a346f9c6dbd4e4bc78c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the original failing implementation in `0515dc8a26959acedfab10c5611e1437f171e175` and the fix in `f02c269d054bc7bd99259a346f9c6dbd4e4bc78c`. The fix closes the scrutiny gap: terminal foreground/background colors now derive from `MaterialTheme`, the palette is pushed into both the Compose wrapper and the underlying live terminal session/view, and targeted instrumentation proves already-open plus restored sessions switch between Light and Dark themes without changing terminal metrics. I did not find any remaining actionable correctness issues in the reviewed scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `android-feature-worker` skill does not explain how to handle features that explicitly continue from an existing in-progress working tree, so the worker had to deviate from the usual 'write failing tests first' procedure to finish and verify the already-started implementation.",
+      "evidence": "/root/workspace/github/jtsang4/aterm/.factory/skills/android-feature-worker/SKILL.md:22 requires 'Write failing tests first (red)'; the feature description in /root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64/features.json says to 'Continue from the current working-tree implementation'; and the handoff /root/.factory/missions/91fdc83e-53cf-4a4e-94a9-0be6de23fe64/handoffs/2026-04-14T12-18-08-014Z__personal-polish-live-terminal-theme-consistency-fix__6b7dc6d3-f402-4e74-9c37-dd0e95c187ad.json records `followedProcedure: false` for that reason."
+    }
+  ],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/personal-polish/scrutiny/reviews/preferences-and-live-surface-presentation.json",
+  "summary": "Reviewed the prior failing feature and the rerun fix together, including the fix transcript skeleton, handoffs, skill guidance, and commit diffs for `0515dc8a26959acedfab10c5611e1437f171e175` and `f02c269d054bc7bd99259a346f9c6dbd4e4bc78c`. The original failure was the hard-coded dark terminal pane; the fix now derives terminal colors from the active app theme in live and restored session surfaces and adds focused regression coverage showing Light/Dark palette changes do not regress live font-size behavior, so this rerun review passes."
+}

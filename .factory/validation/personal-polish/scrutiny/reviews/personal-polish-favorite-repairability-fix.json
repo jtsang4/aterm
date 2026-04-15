@@ -1,0 +1,15 @@
+{
+  "featureId": "personal-polish-favorite-repairability-fix",
+  "reviewedAt": "2026-04-15T11:29:50Z",
+  "commitId": "0cf7dbbb15c3bdd55f33a5e2b5d4961d37127790",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The original repeat-use feature introduced favorite quick-open by routing favorite chips directly into `onOpenFavoriteHost`, which bypassed the existing host repair gate and caused broken favorites to dead-end in session connect failures. The fix commit closes that gap by applying the same `needsRepair` check used by host rows before favorite quick-open, so blocked or missing linked identities now reopen the host editor/repair flow while healthy favorites still quick-open by saved host ID.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/personal-polish/scrutiny/reviews/personal-repeat-use-integration-flows.json",
+  "summary": "Reviewed the prior failure, both feature handoffs, both transcript skeletons, architecture/mission guidance, and the original and fix diffs. The rerun fix adequately resolves the favorite-host repairability regression: favorite discovery chips now follow the same repair/edit gate as host rows, preserve auth-family repair context through `HostEditorDraft.from(...)`, and add focused instrumentation coverage for both healthy and broken favorite quick-open paths."
+}
