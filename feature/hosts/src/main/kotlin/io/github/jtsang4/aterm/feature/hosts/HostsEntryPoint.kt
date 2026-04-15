@@ -223,13 +223,18 @@ private fun HostsLibraryScreen(
                     modifier = Modifier.testTag("favorite_hosts_section"),
                 ) {
                     favoriteHosts.forEachIndexed { index, host ->
+                        val linkedIdentity = identities.firstOrNull { it.id == host.identityId }
                         DiscoveryChip(
                             host = host,
                             index = index,
                             containerTagPrefix = "favorite_host_item",
                             markerTagPrefix = "favorite_host_marker",
                             onClick = {
-                                onOpenFavoriteHost?.invoke(host.id) ?: onEditHost(host)
+                                if (linkedIdentity.needsRepair()) {
+                                    onRepairHost(host)
+                                } else {
+                                    onOpenFavoriteHost?.invoke(host.id) ?: onEditHost(host)
+                                }
                             },
                         )
                     }
@@ -319,7 +324,7 @@ private fun HostRow(
     onRepairHost: (Host) -> Unit,
     onToggleFavorite: (Host, Boolean) -> Unit,
 ) {
-    val needsRepair = linkedIdentity == null || !linkedIdentity.isAuthenticationReady
+    val needsRepair = linkedIdentity.needsRepair()
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -377,6 +382,8 @@ private fun HostRow(
         }
     }
 }
+
+private fun Identity?.needsRepair(): Boolean = this == null || !isAuthenticationReady
 
 @Composable
 private fun HostEditorScreen(

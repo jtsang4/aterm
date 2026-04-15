@@ -329,6 +329,73 @@ class HostLibraryFlowsInstrumentedTest {
     }
 
     @Test
+    fun healthy_favorite_quick_open_reuses_saved_host_id() {
+        val identity = readyIdentity(id = 40, name = "Healthy favorite password", kind = IdentityKind.PASSWORD)
+        val host = Host(
+            id = 4,
+            label = "Healthy favorite host",
+            address = "10.0.2.2",
+            port = 3122,
+            username = "fixture",
+            identityId = identity.id,
+            authKind = HostAuthKind.PASSWORD,
+            isFavorite = true,
+        )
+        var openedFavoriteHostId: Long? by mutableStateOf(null)
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = HostTestFakeHostRepository(initialHosts = listOf(host)),
+                identityRepository = HostTestFakeIdentityRepository(initialIdentities = listOf(identity)),
+                onOpenFavoriteHost = { openedFavoriteHostId = it },
+            )
+        }
+
+        composeRule.onAllNodesWithTag("favorite_host_item_0_${host.id}").assertCountEquals(1)
+        composeRule.onNodeWithTag("favorite_host_item_0_${host.id}").performClick()
+
+        assertEquals(host.id, openedFavoriteHostId)
+    }
+
+    @Test
+    fun broken_favorite_quick_open_opens_repair_editor_instead_of_callback() {
+        val blockedIdentity = Identity(
+            id = 41,
+            name = "Broken favorite password",
+            kind = IdentityKind.PASSWORD,
+            hasSecret = true,
+            secretStorageState = SecretStorageState.BLOCKED,
+        )
+        val host = Host(
+            id = 5,
+            label = "Broken favorite host",
+            address = "10.0.2.2",
+            port = 3122,
+            username = "fixture",
+            identityId = blockedIdentity.id,
+            authKind = HostAuthKind.PASSWORD,
+            isFavorite = true,
+        )
+        var openedFavoriteHostId: Long? by mutableStateOf(null)
+
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = HostTestFakeHostRepository(initialHosts = listOf(host)),
+                identityRepository = HostTestFakeIdentityRepository(initialIdentities = listOf(blockedIdentity)),
+                onOpenFavoriteHost = { openedFavoriteHostId = it },
+            )
+        }
+
+        composeRule.onAllNodesWithTag("favorite_host_item_0_${host.id}").assertCountEquals(1)
+        composeRule.onNodeWithTag("favorite_host_item_0_${host.id}").performClick()
+
+        composeRule.onNodeWithTag("host_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("host_label_field").assertTextContains("Broken favorite host")
+        composeRule.onNodeWithTag("host_no_password_identities").assertIsDisplayed()
+        assertEquals(null, openedFavoriteHostId)
+    }
+
+    @Test
     fun recent_surface_reuses_saved_host_id_when_selected() {
         val identity = readyIdentity(id = 30, name = "Recent password", kind = IdentityKind.PASSWORD)
         val identityRepository = HostTestFakeIdentityRepository(
