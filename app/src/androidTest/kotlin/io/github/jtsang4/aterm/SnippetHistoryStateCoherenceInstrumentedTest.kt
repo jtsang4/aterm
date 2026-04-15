@@ -1,6 +1,5 @@
 package io.github.jtsang4.aterm
 
-import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -12,7 +11,6 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
@@ -28,23 +26,21 @@ import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SnippetHistoryStateCoherenceInstrumentedTest {
+    private val resetRule = TestPersistenceResetRule()
+    private val composeRule = createAndroidComposeRule<ComponentActivity>()
+
     @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
-
-    private lateinit var context: Context
-
-    @Before
-    fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        resetTestPersistenceState(context)
-    }
+    val ruleChain: TestRule = RuleChain
+        .outerRule(resetRule)
+        .around(composeRule)
 
     @Test
     fun history_survives_relaunch_uses_latest_saved_content_and_deletion_stays_non_broken() {

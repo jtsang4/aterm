@@ -83,7 +83,7 @@ class SessionSshFixtureInstrumentedTest {
             if (::deviceOrchestrator.isInitialized) {
                 deviceOrchestrator.restoreDeviceState()
             }
-            application.resetDefaultContainerForTesting()
+            resetTestPersistenceState(context)
         }
     }
 

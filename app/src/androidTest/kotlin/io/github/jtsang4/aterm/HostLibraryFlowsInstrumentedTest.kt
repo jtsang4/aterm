@@ -1,6 +1,5 @@
 package io.github.jtsang4.aterm
 
-import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,23 +38,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HostLibraryFlowsInstrumentedTest {
+    private val resetRule = TestPersistenceResetRule()
+    private val composeRule = createAndroidComposeRule<ComponentActivity>()
+
     @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    val ruleChain: TestRule = RuleChain
+        .outerRule(resetRule)
+        .around(composeRule)
 
-    private lateinit var context: Context
-
-    @Before
-    fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        resetTestPersistenceState(context)
-    }
+    private val context
+        get() = resetRule.context
 
     @Test
     fun empty_state_create_action_and_validation_errors_are_visible() {

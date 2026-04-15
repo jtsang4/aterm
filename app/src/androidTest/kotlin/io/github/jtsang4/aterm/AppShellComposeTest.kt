@@ -39,11 +39,11 @@ class AppShellComposeTest {
         override fun before() {
             context = ApplicationProvider.getApplicationContext()
             application = context as AtermApplication
-            application.resetDefaultContainerForTesting()
+            resetTestPersistenceState(context)
         }
 
         override fun after() {
-            application.resetDefaultContainerForTesting()
+            resetTestPersistenceState(context)
         }
     }
 

@@ -1,6 +1,5 @@
 package io.github.jtsang4.aterm
 
-import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -12,7 +11,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -50,27 +48,29 @@ import kotlinx.coroutines.runBlocking
 import org.apache.sshd.common.util.security.SecurityUtils
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SessionRealConnectionFlowsInstrumentedTest {
-    @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    private val resetRule = TestPersistenceResetRule()
+    private val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    private lateinit var context: Context
+    @get:Rule
+    val ruleChain: TestRule = RuleChain
+        .outerRule(resetRule)
+        .around(composeRule)
+
     private lateinit var passwordIdentityRepository: SessionTestIdentityRepository
     private lateinit var hostRepository: SessionTestHostRepository
     private lateinit var knownHostTrustRepository: SessionTestKnownHostTrustRepository
     private lateinit var controller: ScriptedSessionController
 
-    @Before
-    fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        resetTestPersistenceState(context)
-    }
+    private val context
+        get() = resetRule.context
 
     @After
     fun tearDown() {

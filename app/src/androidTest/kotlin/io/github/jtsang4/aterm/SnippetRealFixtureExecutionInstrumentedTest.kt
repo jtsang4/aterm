@@ -73,7 +73,7 @@ class SnippetRealFixtureExecutionInstrumentedTest {
             if (::deviceOrchestrator.isInitialized) {
                 deviceOrchestrator.restoreDeviceState()
             }
-            application.resetDefaultContainerForTesting()
+            resetTestPersistenceState(context)
         }
     }
 

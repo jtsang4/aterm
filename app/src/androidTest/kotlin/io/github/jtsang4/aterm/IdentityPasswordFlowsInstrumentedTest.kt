@@ -1,6 +1,5 @@
 package io.github.jtsang4.aterm
 
-import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,7 +19,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.jtsang4.aterm.di.AppContainer
@@ -52,23 +50,24 @@ import org.apache.sshd.common.util.security.SecurityUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class IdentityPasswordFlowsInstrumentedTest {
+    private val resetRule = TestPersistenceResetRule()
+    private val composeRule = createAndroidComposeRule<ComponentActivity>()
+
     @get:Rule
-    val composeRule = createAndroidComposeRule<ComponentActivity>()
+    val ruleChain: TestRule = RuleChain
+        .outerRule(resetRule)
+        .around(composeRule)
 
-    private lateinit var context: Context
-
-    @Before
-    fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        resetTestPersistenceState(context)
-    }
+    private val context
+        get() = resetRule.context
 
     @Test
     fun empty_identity_library_exposes_password_import_and_generate_actions() {
