@@ -441,7 +441,6 @@ private fun PasswordIdentityEditorScreen(
                                         id = identity?.id ?: 0,
                                         name = trimmedName,
                                         kind = IdentityKind.PASSWORD,
-                                        username = identity?.username,
                                         publicKey = null,
                                         hasSecret = identity?.hasSecret == true || password.isNotBlank(),
                                         hasPassphrase = false,

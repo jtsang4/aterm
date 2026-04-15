@@ -38,6 +38,7 @@ import java.io.File
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -142,7 +143,7 @@ class FoundationRepositoriesInstrumentedTest {
     fun password_identity_round_trips_and_preserves_secret_when_only_metadata_changes() = runTest {
         val created = identityRepository.upsert(
             sampleIdentity()
-                .copy(id = 0, kind = IdentityKind.PASSWORD, hasPassphrase = false, username = null),
+                .copy(id = 0, kind = IdentityKind.PASSWORD, hasPassphrase = false),
             IdentitySecretMaterial(primarySecret = "initial-password"),
         )
 
@@ -158,6 +159,174 @@ class FoundationRepositoriesInstrumentedTest {
         assertEquals("Renamed password identity", persistedIdentity?.name)
         assertEquals("initial-password", persistedSecrets?.primarySecret)
         assertEquals(null, persistedSecrets?.passphrase)
+    }
+
+    @Test
+    fun migration_drops_legacy_identity_username_and_keeps_hosts_authoritative() {
+        val dbName = "identity-username-cleanup-${UUID.randomUUID()}"
+        val dbPath = context.getDatabasePath(dbName).absolutePath
+        val supportDb = SQLiteDatabase.openOrCreateDatabase(dbPath, null)
+        supportDb.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `identities` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `name` TEXT NOT NULL,
+                `kind` TEXT NOT NULL,
+                `username` TEXT,
+                `publicKey` TEXT,
+                `hasSecret` INTEGER NOT NULL,
+                `hasPassphrase` INTEGER NOT NULL,
+                `secretStorageState` TEXT NOT NULL,
+                `passphraseStorageState` TEXT NOT NULL,
+                `primaryCipherText` BLOB,
+                `primaryIv` BLOB,
+                `passphraseCipherText` BLOB,
+                `passphraseIv` BLOB,
+                `createdAtEpochMillis` INTEGER NOT NULL,
+                `updatedAtEpochMillis` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `hosts` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `label` TEXT NOT NULL,
+                `address` TEXT NOT NULL,
+                `port` INTEGER NOT NULL,
+                `username` TEXT NOT NULL,
+                `identityId` INTEGER,
+                `authKind` TEXT NOT NULL,
+                `isFavorite` INTEGER NOT NULL,
+                `lastUsedAtEpochMillis` INTEGER,
+                `createdAtEpochMillis` INTEGER NOT NULL,
+                `updatedAtEpochMillis` INTEGER NOT NULL,
+                FOREIGN KEY(`identityId`) REFERENCES `identities`(`id`) ON UPDATE CASCADE ON DELETE SET NULL
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL("CREATE INDEX IF NOT EXISTS `index_hosts_identityId` ON `hosts` (`identityId`)")
+        supportDb.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `snippets` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `title` TEXT NOT NULL,
+                `description` TEXT,
+                `tagsSerialized` TEXT NOT NULL,
+                `hostId` INTEGER,
+                `savedTarget` TEXT NOT NULL,
+                `bodyCipherText` BLOB,
+                `bodyIv` BLOB,
+                `createdAtEpochMillis` INTEGER NOT NULL,
+                `updatedAtEpochMillis` INTEGER NOT NULL,
+                `lastRunAtEpochMillis` INTEGER,
+                FOREIGN KEY(`hostId`) REFERENCES `hosts`(`id`) ON UPDATE CASCADE ON DELETE SET NULL
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL("CREATE INDEX IF NOT EXISTS `index_snippets_hostId` ON `snippets` (`hostId`)")
+        supportDb.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `session_metadata` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `hostId` INTEGER NOT NULL,
+                `state` TEXT NOT NULL,
+                `title` TEXT,
+                `connectedAtEpochMillis` INTEGER,
+                `disconnectedAtEpochMillis` INTEGER,
+                `reconnectRequired` INTEGER NOT NULL,
+                `lastError` TEXT,
+                FOREIGN KEY(`hostId`) REFERENCES `hosts`(`id`) ON UPDATE CASCADE ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL("CREATE INDEX IF NOT EXISTS `index_session_metadata_hostId` ON `session_metadata` (`hostId`)")
+        supportDb.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `snippet_execution_history` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `snippetId` INTEGER,
+                `snippetTitle` TEXT NOT NULL,
+                `targetKind` TEXT NOT NULL,
+                `targetLabel` TEXT NOT NULL,
+                `targetDetail` TEXT NOT NULL,
+                `executedAtEpochMillis` INTEGER NOT NULL,
+                FOREIGN KEY(`snippetId`) REFERENCES `snippets`(`id`) ON UPDATE CASCADE ON DELETE SET NULL
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_snippet_execution_history_snippetId` ON `snippet_execution_history` (`snippetId`)",
+        )
+        supportDb.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_snippet_execution_history_executedAtEpochMillis` ON `snippet_execution_history` (`executedAtEpochMillis`)",
+        )
+        supportDb.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `known_host_trust` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `host` TEXT NOT NULL,
+                `port` INTEGER NOT NULL,
+                `algorithm` TEXT NOT NULL,
+                `fingerprint` TEXT NOT NULL,
+                `hostKeyBase64` TEXT NOT NULL,
+                `createdAtEpochMillis` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_known_host_trust_host_port` ON `known_host_trust` (`host`, `port`)",
+        )
+        supportDb.execSQL(
+            """
+            INSERT INTO identities (
+                id, name, kind, username, publicKey, hasSecret, hasPassphrase,
+                secretStorageState, passphraseStorageState, primaryCipherText, primaryIv,
+                passphraseCipherText, passphraseIv, createdAtEpochMillis, updatedAtEpochMillis
+            ) VALUES (
+                1, 'Legacy password identity', 'PASSWORD', 'legacy-user', NULL, 1, 0,
+                'AVAILABLE', 'MISSING', X'01', X'02', NULL, NULL, 1, 1
+            )
+            """.trimIndent(),
+        )
+        supportDb.execSQL(
+            """
+            INSERT INTO hosts (
+                id, label, address, port, username, identityId, authKind, isFavorite,
+                lastUsedAtEpochMillis, createdAtEpochMillis, updatedAtEpochMillis
+            ) VALUES (
+                1, 'Legacy host', 'legacy.example', 22, 'host-user', 1, 'PASSWORD', 0, NULL, 1, 1
+            )
+            """.trimIndent(),
+        )
+        supportDb.version = 6
+        supportDb.close()
+
+        val opened = Room.databaseBuilder(context, AtermDatabase::class.java, dbName)
+            .addMigrations(AtermDatabase.MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+
+        val identityColumns = opened.query(SimpleSQLiteQuery("PRAGMA table_info(`identities`)")).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(cursor.getString(cursor.getColumnIndexOrThrow("name")))
+                }
+            }
+        }
+        val hostUsername = opened.query(SimpleSQLiteQuery("SELECT username FROM hosts WHERE id = 1")).use {
+            it.moveToFirst()
+            it.getString(0)
+        }
+        val persistedIdentity = runBlocking { opened.identityDao().getById(1) }
+
+        assertFalse(identityColumns.contains("username"))
+        assertEquals("host-user", hostUsername)
+        assertEquals("Legacy password identity", persistedIdentity?.name)
+        assertEquals("PASSWORD", persistedIdentity?.kind)
+
+        opened.close()
+        context.deleteDatabase(dbName)
     }
 
     @Test
@@ -628,6 +797,7 @@ class FoundationRepositoriesInstrumentedTest {
                 AtermDatabase.MIGRATION_3_4,
                 AtermDatabase.MIGRATION_4_5,
                 AtermDatabase.MIGRATION_5_6,
+                AtermDatabase.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()

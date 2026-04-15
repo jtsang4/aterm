@@ -8,7 +8,6 @@ data class IdentityEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val kind: String,
-    val username: String?,
     val publicKey: String?,
     val hasSecret: Boolean,
     val hasPassphrase: Boolean,

@@ -18,7 +18,6 @@ data class Identity(
     val id: Long = 0,
     val name: String,
     val kind: IdentityKind,
-    val username: String? = null,
     val publicKey: String? = null,
     val hasSecret: Boolean = false,
     val hasPassphrase: Boolean = false,

@@ -37,7 +37,6 @@ fun sampleIdentity(id: Long = 1): Identity = Identity(
     id = id,
     name = "Primary identity",
     kind = IdentityKind.IMPORTED_KEY,
-    username = "factory",
     publicKey = "TEST_PUBLIC_KEY_PLACEHOLDER_NOT_REAL",
     hasSecret = true,
     hasPassphrase = true,

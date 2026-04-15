@@ -28,7 +28,7 @@ import io.github.jtsang4.aterm.core.data.local.entity.SnippetEntity
         SessionMetadataEntity::class,
         KnownHostTrustEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AtermDatabase : RoomDatabase() {
@@ -40,6 +40,71 @@ abstract class AtermDatabase : RoomDatabase() {
     abstract fun knownHostTrustDao(): KnownHostTrustDao
 
     companion object {
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("PRAGMA foreign_keys=OFF")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `identities_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `publicKey` TEXT,
+                        `hasSecret` INTEGER NOT NULL,
+                        `hasPassphrase` INTEGER NOT NULL,
+                        `secretStorageState` TEXT NOT NULL,
+                        `passphraseStorageState` TEXT NOT NULL,
+                        `primaryCipherText` BLOB,
+                        `primaryIv` BLOB,
+                        `passphraseCipherText` BLOB,
+                        `passphraseIv` BLOB,
+                        `createdAtEpochMillis` INTEGER NOT NULL,
+                        `updatedAtEpochMillis` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `identities_new` (
+                        `id`,
+                        `name`,
+                        `kind`,
+                        `publicKey`,
+                        `hasSecret`,
+                        `hasPassphrase`,
+                        `secretStorageState`,
+                        `passphraseStorageState`,
+                        `primaryCipherText`,
+                        `primaryIv`,
+                        `passphraseCipherText`,
+                        `passphraseIv`,
+                        `createdAtEpochMillis`,
+                        `updatedAtEpochMillis`
+                    )
+                    SELECT
+                        `id`,
+                        `name`,
+                        `kind`,
+                        `publicKey`,
+                        `hasSecret`,
+                        `hasPassphrase`,
+                        `secretStorageState`,
+                        `passphraseStorageState`,
+                        `primaryCipherText`,
+                        `primaryIv`,
+                        `passphraseCipherText`,
+                        `passphraseIv`,
+                        `createdAtEpochMillis`,
+                        `updatedAtEpochMillis`
+                    FROM `identities`
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE `identities`")
+                db.execSQL("ALTER TABLE `identities_new` RENAME TO `identities`")
+                db.execSQL("PRAGMA foreign_keys=ON")
+            }
+        }
+
         val MIGRATION_5_6: Migration = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -359,7 +424,14 @@ abstract class AtermDatabase : RoomDatabase() {
             context.applicationContext,
             AtermDatabase::class.java,
             "aterm.db",
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        ).addMigrations(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+        )
             .build()
     }
 }
