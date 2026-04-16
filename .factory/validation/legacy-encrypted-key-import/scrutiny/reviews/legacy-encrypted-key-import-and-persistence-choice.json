@@ -1,0 +1,22 @@
+{
+  "featureId": "legacy-encrypted-key-import-and-persistence-choice",
+  "reviewedAt": "2026-04-16T03:34:22.003428Z",
+  "commitId": "dafd9324b954ae6a6a37cacdb1b94e378a6791eb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The legacy AES-128-CBC PEM parsing work is in place, but the unsaved-passphrase path is not fully truthful: choosing not to persist the passphrase marks the identity as BLOCKED and shows a repair message claiming Keystore invalidation, even though nothing was invalidated.",
+    "issues": [
+      {
+        "file": "feature/identities/src/main/kotlin/io/github/jtsang4/aterm/feature/identities/IdentitiesEntryPoint.kt",
+        "line": 1013,
+        "severity": "blocking",
+        "description": "When an encrypted key is imported without saving its passphrase, this branch forces `passphraseStorageState` to `SecretStorageState.BLOCKED`. That makes the library row hit the generic repair path at lines 277-281 and show `Repair needed: Keystore access changed or the saved secret was invalidated`, which is false for a brand-new identity where the user explicitly chose not to save the passphrase. This violates the feature/validation requirement that the saved-vs-unsaved result be visible and truthful in the identity library/details."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the feature correctly adds legacy encrypted PEM parsing and retry coverage, but the unsaved-passphrase outcome is mislabeled as a repaired/invalidated-secret state instead of a truthful intentionally-unsaved state."
+}

@@ -1,0 +1,22 @@
+{
+  "featureId": "imported-key-passphrase-maintenance-and-relaunch-state",
+  "reviewedAt": "2026-04-16T03:33:42.798317Z",
+  "commitId": "9edaae6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature mostly implements passphrase maintenance, but encrypted key replacement does not actually clear or revalidate stale saved passphrase material when the replacement passphrase is not persisted.",
+    "issues": [
+      {
+        "file": "core/data/src/main/kotlin/io/github/jtsang4/aterm/core/data/repository/RoomIdentityRepository.kt",
+        "line": 97,
+        "severity": "blocking",
+        "description": "When an imported encrypted key is replaced and the user does not save the new passphrase, the editor intentionally writes `passphraseStorageState = BLOCKED` (`feature/identities/src/main/kotlin/io/github/jtsang4/aterm/feature/identities/IdentitiesEntryPoint.kt:1007-1014`) and omits a new passphrase secret (`...:1019-1027`). But `RoomIdentityRepository.upsert()` preserves the previous `passphraseCipherText`/`passphraseIv` in that case (`RoomIdentityRepository.kt:97-107`). On the next load, `resolveStorageState()` decrypts that leftover blob and upgrades the passphrase state back to `AVAILABLE`, so the replaced identity can look ready and silently reuse stale passphrase material instead of remaining blocked/repair-needed. This violates the feature contract that key replacement must clear or revalidate stale passphrase state, and the added tests only cover the saved-passphrase replacement path (`app/src/androidTest/kotlin/io/github/jtsang4/aterm/IdentityPasswordFlowsInstrumentedTest.kt:713-792`), so this regression is not caught."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Fail: replacing an encrypted imported key without persisting the new passphrase can retain the previous encrypted passphrase blob and later surface the identity as passphrase-ready, violating the required stale-passphrase clearing/revalidation behavior."
+}

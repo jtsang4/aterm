@@ -1,0 +1,28 @@
+{
+  "featureId": "encrypted-imported-key-host-session-truthfulness",
+  "reviewedAt": "2026-04-16T03:37:36.276334Z",
+  "commitId": "051bfae70a9f38e76df5487c5253599d4439f572",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The legacy RSA repair/reuse flow is covered, but the new runtime PEM loader still accepts a narrower set of PEM keys than the import/repair path, so some saved encrypted PEM identities can import successfully and then fail in the real session flow.",
+    "issues": [
+      {
+        "file": "core/ssh/src/main/kotlin/io/github/jtsang4/aterm/core/ssh/SshSessionCoordinator.kt",
+        "line": 1083,
+        "severity": "blocking",
+        "description": "`SshSessionCoordinator.loadKeyPair()` only routes saved keys through the new BouncyCastle PEM loader when `looksLikePemPrivateKey()` matches `BEGIN RSA PRIVATE KEY`, `BEGIN PRIVATE KEY`, or `BEGIN ENCRYPTED PRIVATE KEY` (`core/ssh/src/main/kotlin/io/github/jtsang4/aterm/core/ssh/SshSessionCoordinator.kt:1083-1086`). The paired import/repair path now recognizes additional PEM forms including `BEGIN EC PRIVATE KEY` and `BEGIN DSA PRIVATE KEY` (`feature/identities/src/main/kotlin/io/github/jtsang4/aterm/feature/identities/ImportedKeyImportService.kt:242-246`). That means an encrypted EC/DSA PEM can import and persist successfully, but the saved-host/session path will skip the PEM loader and fall back to MINA's generic parser at runtime, reintroducing the import/runtime mismatch this feature was supposed to close and breaking host/session truthfulness for supported encrypted PEM identities outside the specific RSA fixture exercised by the new test."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Imported-key PEM parsing is duplicated between the identity import service and the SSH runtime without a documented shared contract, and the accepted header sets have already drifted.",
+      "evidence": "`feature/identities/src/main/kotlin/io/github/jtsang4/aterm/feature/identities/ImportedKeyImportService.kt:242-246` matches RSA/EC/DSA/PKCS#8 PEM headers, while `core/ssh/src/main/kotlin/io/github/jtsang4/aterm/core/ssh/SshSessionCoordinator.kt:1083-1086` only matches RSA/PKCS#8 headers."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the reviewed commit fixes the legacy RSA blocked\u2192repair\u2192reuse fixture path, but the new session-side PEM detection still accepts a narrower set of PEM keys than the import path, so some imported encrypted PEM identities can still look valid in the library yet fail in saved-host session flows."
+}
