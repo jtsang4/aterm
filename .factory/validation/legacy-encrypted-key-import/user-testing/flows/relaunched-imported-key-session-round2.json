@@ -1,0 +1,93 @@
+{
+  "groupId": "relaunched-imported-key-session-round2",
+  "testedAt": "2026-04-16T07:23:23.574099+00:00",
+  "isolation": {
+    "milestone": "legacy-encrypted-key-import",
+    "emulator": "emulator-5554",
+    "fixture": "10.0.2.2:3122",
+    "fixtureKeyPathOnDevice": "/data/local/tmp/aterm-fixture-client_key_legacy_pem",
+    "repoRoot": "/root/workspace/github/jtsang4/aterm",
+    "missionDir": "/root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746"
+  },
+  "toolsUsed": [
+    "adb",
+    "Gradle :app:connectedDebugAndroidTest",
+    "Android instrumentation on emulator-5554"
+  ],
+  "commandsRun": [
+    "\"/root/workspace/github/jtsang4/aterm/.factory/init.sh\" --check",
+    "adb -s emulator-5554 shell ls -l /data/local/tmp/aterm-fixture-client_key_legacy_pem /data/local/tmp/aterm-fixture-client_key.pub",
+    "adb -s emulator-5554 shell 'toybox nc -z -w 5 10.0.2.2 3122; echo EXIT:$?'",
+    "\"/root/workspace/github/jtsang4/aterm/gradlew\" -p \"/root/workspace/github/jtsang4/aterm\" :app:connectedDebugAndroidTest --max-workers=1 --rerun-tasks -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session",
+    "python helper rerun of the same targeted instrumentation proof while tailing adb logcat and capturing a screenshot as soon as the shipped UI reported CONNECTED"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "title": "A saved encrypted imported-key identity can be linked to a host, survive relaunch, and reach a real SSH session through the normal trust flow",
+      "status": "pass",
+      "reason": "On this rerun, the shipped app-shell proof passed end-to-end: the relaunched saved host still referenced the imported-key identity, the targeted UI flow completed through the trust-required connect path, the session state became CONNECTED to 10.0.2.2:3122, and the rerun evidence no longer showed the prior timeout-only failure boundary.",
+      "steps": [
+        {
+          "action": "Verify the assigned emulator and fixture inputs before running the proof",
+          "expected": "emulator-5554 is booted, /data/local/tmp/aterm-fixture-client_key_legacy_pem is present, and 10.0.2.2:3122 is reachable from the emulator",
+          "observed": "sys.boot_completed returned 1, the legacy PEM and public key fixture files were present on-device, and toybox nc returned EXIT:0 for 10.0.2.2:3122."
+        },
+        {
+          "action": "Run SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session against the shipped app-shell path",
+          "expected": "the saved encrypted imported-key identity survives relaunch, the saved host remains linked to it, the normal trust flow is exercised, and the session reaches CONNECTED",
+          "observed": "The focused connectedDebugAndroidTest run finished green, and the instrumentation proof drove the relaunched Session screen to a connected state for the saved host \"Imported key fixture\" using the imported-key identity."
+        },
+        {
+          "action": "Inspect rerun logs instead of trusting the test result alone",
+          "expected": "log output should confirm the shipped UI path reached a live session rather than only a diagnostic probe",
+          "observed": "logcat recorded \"legacy imported-key ui outcome state=CONNECTED status=Connected to 10.0.2.2:3122.\" and the earlier timeout line did not appear in the rerun evidence set."
+        },
+        {
+          "action": "Capture user-visible evidence from the connected UI state",
+          "expected": "the Session surface should visibly show a connected state for 10.0.2.2:3122 and the saved host card",
+          "observed": "The connected-state screenshot shows the Sessions screen with \"State: connected\", \"Connected to 10.0.2.2:3122.\", and the saved host card for \"Imported key fixture\"."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/connected-ui-screen.png"
+        ],
+        "artifacts": [
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/TEST-atermApi35(AVD) - 15-_app-.xml",
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/SessionSshFixtureInstrumentedTest.html",
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/gradle-imported-key-session-round2-livecapture.txt",
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/environment-checks.txt",
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/relaunched-imported-key-session-round2.mp4"
+        ],
+        "logs": [
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/logcat-imported-key-session-round2-livecapture.txt",
+          "legacy-encrypted-key-import/relaunched-imported-key-session-round2/logcat-imported-key-session-round2.txt"
+        ],
+        "consoleErrors": "No app crash, no FATAL EXCEPTION, and no \"Connection timed out while reaching 10.0.2.2:3122.\" line were observed in the rerun assertion logs. Generic adb-shell/uiautomator SELinux and binder warnings appeared only while collecting extra evidence after the successful run.",
+        "network": "Fixture reachability from emulator confirmed with toybox nc EXIT:0 to 10.0.2.2:3122; shipped UI outcome logged CONNECTED to 10.0.2.2:3122."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Time-based screenshot attempts at 6s and 10s missed the app and captured the launcher instead of the connected session surface.",
+      "resolved": true,
+      "resolution": "Reran the same targeted instrumentation proof while streaming adb logcat and triggered the screenshot exactly when the shipped UI logged a CONNECTED outcome.",
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ]
+    },
+    {
+      "description": "This assertion had previously required manual log interpretation because the same targeted method once passed while the shipped UI still timed out.",
+      "resolved": true,
+      "resolution": "Inspected the rerun log output directly and confirmed the shipped UI now reports CONNECTED rather than the earlier timeout message before marking the assertion passed.",
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "VAL-CROSS-001 passed on rerun: the relaunched saved imported-key host/session path reached a real connected Session UI on emulator-5554 against the SSH fixture at 10.0.2.2:3122, with supporting screenshot, logcat, Gradle, and JUnit/HTML artifacts saved under the assigned evidence directory."
+}

@@ -1,0 +1,38 @@
+{
+  "milestone": "legacy-encrypted-key-import",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 11,
+    "passed": 10,
+    "failed": 1,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-IDENTITY-001",
+    "VAL-IDENTITY-002",
+    "VAL-IDENTITY-003",
+    "VAL-IDENTITY-004",
+    "VAL-IDENTITY-005",
+    "VAL-IDENTITY-006",
+    "VAL-IDENTITY-007",
+    "VAL-IDENTITY-008",
+    "VAL-CROSS-002",
+    "VAL-CROSS-003"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "reason": "The saved encrypted imported-key identity survived relaunch and the focused legacy PEM probe reached TCP connect, SSH authentication, and shell-channel open against 10.0.2.2:3122, but the shipped relaunched app-shell connect path still failed with \"Connection timed out while reaching 10.0.2.2:3122.\" instead of reaching a live terminal session."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented that SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session is currently a diagnostic proof and that VAL-CROSS-001 must inspect both the successful legacy PEM probe log and the separate shipped UI timeout log before claiming pass.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
