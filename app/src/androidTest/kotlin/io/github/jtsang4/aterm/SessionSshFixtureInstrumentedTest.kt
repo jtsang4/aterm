@@ -902,20 +902,6 @@ class SessionSshFixtureInstrumentedTest {
         assertEquals(privateKeyMaterial, importedSecrets.primarySecret)
         assertEquals(LEGACY_FIXTURE_KEY_PASSPHRASE, importedSecrets.passphrase)
         val relaunchedContainer = AppContainer.create(context)
-        val probe = diagnoseLegacyImportedKeyConnection(privateKeyMaterial, LEGACY_FIXTURE_KEY_PASSPHRASE)
-        Log.i(
-            "SessionSshFixtureTest",
-            "legacy imported-key probe tcp=${probe.tcpReachable} auth=${probe.authenticationCompleted} " +
-                "shell=${probe.shellChannelOpened} failureStage=${probe.failureStage} failureMessage=${probe.failureMessage}",
-        )
-        assertTrue(probe.tcpReachable)
-        if (probe.failureStage == null) {
-            assertTrue(probe.authenticationCompleted)
-            assertTrue(probe.shellChannelOpened)
-        } else {
-            assertFalse(probe.shellChannelOpened)
-            assertNotNull(probe.failureMessage)
-        }
         application.replaceAppContainerForTesting(relaunchedContainer)
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
@@ -928,47 +914,32 @@ class SessionSshFixtureInstrumentedTest {
                     .assertTextContains("Identity ready: Fixture imported key", substring = true)
             }.isSuccess
         }
-        val outcome = connectFromUiAllowingOptionalTrust(
+        assertEquals(
+            0,
+            runBlocking { relaunchedContainer.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
+        )
+        val outcome = connectFromUi(
             coordinator = relaunchedCoordinator,
             hostId = hostId,
             expectedButtonLabel = "Connect",
-            expectedTrustEndpoint = "$FIXTURE_HOST:$FIXTURE_PORT",
-            timeoutMillis = 35_000,
+            expectTrustPrompt = true,
         )
         Log.i(
             "SessionSshFixtureTest",
             "legacy imported-key ui outcome state=${outcome.connectionState} status=${outcome.statusMessage} " +
                 "transcript=${outcome.transcript.takeLast(120)}",
         )
-        when (probe.failureStage) {
-            LegacyImportedKeyProbeFailureStage.SSH_AUTH -> {
-                assertFalse(probe.authenticationCompleted)
-                assertEquals(SessionConnectionState.FAILED, outcome.connectionState)
-            }
-
-            LegacyImportedKeyProbeFailureStage.SHELL_CHANNEL_OPEN -> {
-                assertTrue(probe.authenticationCompleted)
-                assertFalse(probe.shellChannelOpened)
-                assertEquals(SessionConnectionState.FAILED, outcome.connectionState)
-            }
-
-            null -> {
-                if (outcome.connectionState == SessionConnectionState.CONNECTED) {
-                    waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
-                    sendCommandDirectly(relaunchedCoordinator, "printf 'IMPORTED_KEY_SESSION_OK\\n'")
-                    waitForTranscriptOutputLine(relaunchedCoordinator, "IMPORTED_KEY_SESSION_OK")
-                    relaunchedCoordinator.disconnect()
-                    waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
-                } else {
-                    assertEquals(SessionConnectionState.FAILED, outcome.connectionState)
-                    assertEquals(
-                        "Connection timed out while reaching $FIXTURE_HOST:$FIXTURE_PORT.",
-                        outcome.statusMessage,
-                    )
-                    assertTrue(outcome.transcript.isEmpty())
-                }
-            }
-        }
+        assertEquals(SessionConnectionState.CONNECTED, outcome.connectionState)
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", outcome.statusMessage)
+        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
+        sendCommandDirectly(relaunchedCoordinator, "printf 'IMPORTED_KEY_SESSION_OK\\n'")
+        waitForTranscriptOutputLine(relaunchedCoordinator, "IMPORTED_KEY_SESSION_OK")
+        relaunchedCoordinator.disconnect()
+        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+        assertEquals(
+            privateKeyMaterial,
+            runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(importedIdentityId) }?.primarySecret,
+        )
         assertEquals(
             LEGACY_FIXTURE_KEY_PASSPHRASE,
             runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(importedIdentityId) }?.passphrase,

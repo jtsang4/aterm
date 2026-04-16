@@ -517,7 +517,7 @@ class SshSessionCoordinator(
         }
         val authFuture = session.auth()
         attempt.register(authFuture)
-        authFuture.verify(AUTH_TIMEOUT_MILLIS)
+        authFuture.verify(authenticationTimeoutMillis(identity))
         attempt.ensureActive()
     }
 
@@ -764,16 +764,16 @@ class SshSessionCoordinator(
                 is PEMEncryptedKeyPair -> {
                     val password = passphrase?.takeIf(String::isNotBlank)?.toCharArray()
                         ?: error("Private key could not be loaded.")
-                    normalizeKeyPair(
+                    converter.getKeyPair(
                         parsed.decryptKeyPair(
                             JcePEMDecryptorProviderBuilder()
                                 .setProvider(BOUNCY_CASTLE_PROVIDER)
                                 .build(password),
-                        ).let(converter::getKeyPair),
+                        ),
                     )
                 }
 
-                is PEMKeyPair -> normalizeKeyPair(converter.getKeyPair(parsed))
+                is PEMKeyPair -> converter.getKeyPair(parsed)
 
                 is PKCS8EncryptedPrivateKeyInfo -> {
                     val password = passphrase?.takeIf(String::isNotBlank)?.toCharArray()
@@ -808,23 +808,7 @@ class SshSessionCoordinator(
 
             else -> error("Private key could not be loaded.")
         }
-        val normalizedPrivateKey = when (privateKey) {
-            is RSAPrivateCrtKey -> keyFactory.generatePrivate(
-                RSAPrivateCrtKeySpec(
-                    privateKey.modulus,
-                    privateKey.publicExponent,
-                    privateKey.privateExponent,
-                    privateKey.primeP,
-                    privateKey.primeQ,
-                    privateKey.primeExponentP,
-                    privateKey.primeExponentQ,
-                    privateKey.crtCoefficient,
-                ),
-            )
-
-            else -> error("Private key could not be loaded.")
-        }
-        return KeyPair(publicKey, normalizedPrivateKey)
+        return KeyPair(publicKey, privateKey)
     }
 
     private fun normalizeKeyPair(keyPair: KeyPair): KeyPair {
@@ -1065,6 +1049,7 @@ class SshSessionCoordinator(
         private val IMPORT_RESOURCE = NamedResource { "saved-private-key" }
         private const val CONNECT_TIMEOUT_MILLIS = 20_000L
         private const val AUTH_TIMEOUT_MILLIS = 20_000L
+        private const val IMPORTED_KEY_AUTH_TIMEOUT_MILLIS = 35_000L
         private const val CHANNEL_OPEN_TIMEOUT_MILLIS = 20_000L
         private const val TRUST_DECISION_TIMEOUT_MILLIS = 30_000L
         private const val DEFAULT_TERMINAL_COLUMNS = 80
@@ -1084,5 +1069,10 @@ class SshSessionCoordinator(
 
         private fun looksLikePemPrivateKey(privateKey: String): Boolean =
             PrivateKeyMaterialFormat.looksLikeRuntimePemPrivateKey(privateKey)
+    }
+
+    private fun authenticationTimeoutMillis(identity: Identity): Long = when (identity.kind) {
+        IdentityKind.IMPORTED_KEY -> IMPORTED_KEY_AUTH_TIMEOUT_MILLIS
+        else -> AUTH_TIMEOUT_MILLIS
     }
 }
