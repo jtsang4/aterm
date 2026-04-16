@@ -106,7 +106,7 @@ val startSshFixture by tasks.registering(Exec::class) {
 
 val prepareFixtureClientKeyForAndroidTests by tasks.registering(Exec::class) {
     group = "verification"
-    description = "Pushes the SSH fixture client keypair onto the emulator for fixture-backed Android tests."
+    description = "Derives and pushes the SSH fixture client keypair plus the legacy PEM fixture onto the emulator for fixture-backed Android tests."
     dependsOn(startSshFixture)
     workingDir = rootDir
     commandLine(
@@ -119,6 +119,10 @@ val prepareFixtureClientKeyForAndroidTests by tasks.registering(Exec::class) {
         cp ./tools/sshfixture/runtime/client_key ./tools/sshfixture/runtime/client_key_legacy_pem && \
         chmod 600 ./tools/sshfixture/runtime/client_key_legacy_pem && \
         ssh-keygen -p -m PEM -N legacy-passphrase -P '' -f ./tools/sshfixture/runtime/client_key_legacy_pem -q >/dev/null && \
+        JAVA_HOME=/root/.local/share/aterm-jdk-17 \
+        ANDROID_SDK_ROOT=/root/Android/Sdk \
+        PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
+        adb -s emulator-5554 shell rm -f /data/local/tmp/aterm-fixture-client_key /data/local/tmp/aterm-fixture-client_key.pub /data/local/tmp/aterm-fixture-client_key_legacy_pem >/dev/null 2>&1 && \
         JAVA_HOME=/root/.local/share/aterm-jdk-17 \
         ANDROID_SDK_ROOT=/root/Android/Sdk \
         PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
