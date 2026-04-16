@@ -14,3 +14,5 @@
   - `./gradlew lintDebug --max-workers=4` ✅
   - `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session --max-workers=1` ✅
 - Recommended next step: inspect the shipped `SshSessionCoordinator.connectInternal(...)` path around post-trust state transitions, future verification, and timeout-to-user-message mapping. The new probe shows the legacy PEM fixture itself can authenticate and open a shell, so the remaining defect is likely in coordinator-specific flow control or error classification rather than in key parsing/decryption or fixture acceptance.
+- Scrutiny round 1 follow-up: reviewers confirmed the diagnostic proof now isolates TCP/auth/shell success, but they also flagged two cleanup expectations before revalidation: the legacy PEM fixture path must be reproducible from committed setup on a clean emulator, and this note must only describe behavior that is actually present in the committed changes being reviewed.
+
