@@ -1,6 +1,7 @@
 package io.github.jtsang4.aterm.core.ssh
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
+import io.github.jtsang4.aterm.core.domain.model.connectionBlockedMessage
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
@@ -356,7 +357,7 @@ class SshSessionCoordinator(
                 "The linked identity is missing. Repair this host before connecting."
             }
             if (!identity.isAuthenticationReady) {
-                error("The linked identity needs repair before connecting.")
+                error(identity.connectionBlockedMessage())
             }
             val secrets = identityRepository.getSecretMaterial(identity.id)
                 ?: error("Stored identity secret is unavailable.")

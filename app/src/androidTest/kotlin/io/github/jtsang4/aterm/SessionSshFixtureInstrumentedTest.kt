@@ -1107,7 +1107,7 @@ class SessionSshFixtureInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
                 composeRule.onNodeWithTag("session_host_identity_$hostId")
-                    .assertTextContains("Identity needs repair before connecting: Repairable fixture imported key", substring = true)
+                    .assertTextContains("Passphrase required before connecting: Repairable fixture imported key", substring = true)
             }.isSuccess
         }
         composeRule.onNodeWithTag("session_host_identity_$hostId")

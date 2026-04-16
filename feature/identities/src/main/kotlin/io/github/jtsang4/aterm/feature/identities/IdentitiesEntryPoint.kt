@@ -729,7 +729,7 @@ private fun KeyIdentityEditorScreen(
                             text = if (savePassphrase) {
                                 "This imported key will stay ready to connect after import."
                             } else {
-                                "Leave unchecked to import without saving the passphrase. The identity will stay blocked until you repair it later."
+                                "Leave unchecked to import without saving the passphrase. The identity will stay non-ready until you save or repair the passphrase later."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.testTag("identity_import_passphrase_persistence_hint"),
@@ -1010,7 +1010,7 @@ private fun KeyIdentityEditorScreen(
                                                         existing?.passphraseStorageState ?: SecretStorageState.MISSING
                                                     parsed.hasPassphrase && savePassphrase && passphrase.isNotBlank() ->
                                                         SecretStorageState.AVAILABLE
-                                                    parsed.hasPassphrase -> SecretStorageState.BLOCKED
+                                                    parsed.hasPassphrase -> SecretStorageState.MISSING
                                                     else -> SecretStorageState.MISSING
                                                 },
                                                 createdAt = existing?.createdAt ?: Instant.now(),

@@ -36,6 +36,7 @@ import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
+import io.github.jtsang4.aterm.core.domain.model.sessionConnectionRequirementLabel
 import io.github.jtsang4.aterm.core.domain.model.passphraseStatusLabel
 import io.github.jtsang4.aterm.core.domain.model.secretStatusLabel
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
@@ -259,7 +260,7 @@ private fun SessionHostList(
                                     text = if (isReady) {
                                         "Identity ready: ${identity?.name}"
                                     } else if (identity != null) {
-                                        "Identity needs repair before connecting: ${identity.name} (${identity.sessionRepairStatusLabel()})"
+                                        "${identity.sessionConnectionRequirementLabel()}: ${identity.name} (${identity.sessionRepairStatusLabel()})"
                                     } else {
                                         "Linked identity is missing. Repair this host before connecting."
                                     },

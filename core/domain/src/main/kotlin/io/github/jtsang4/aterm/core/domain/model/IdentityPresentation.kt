@@ -33,6 +33,33 @@ fun Identity.passphraseStatusLabel(): String = when {
     else -> "Passphrase required before this key can connect"
 }
 
+fun Identity.requiresPassphraseBeforeConnecting(): Boolean =
+    usesKeyMaterial &&
+        hasPassphrase &&
+        secretStorageState == SecretStorageState.AVAILABLE &&
+        passphraseStorageState == SecretStorageState.MISSING
+
+fun Identity.hostConnectionRequirementLabel(): String =
+    if (requiresPassphraseBeforeConnecting()) {
+        "Passphrase required before connecting"
+    } else {
+        "Identity needs repair"
+    }
+
+fun Identity.sessionConnectionRequirementLabel(): String =
+    if (requiresPassphraseBeforeConnecting()) {
+        "Passphrase required before connecting"
+    } else {
+        "Identity needs repair before connecting"
+    }
+
+fun Identity.connectionBlockedMessage(): String =
+    if (requiresPassphraseBeforeConnecting()) {
+        "The linked identity needs its passphrase before connecting."
+    } else {
+        "The linked identity needs repair before connecting."
+    }
+
 fun Identity.distinguishingDetail(): String = buildString {
     append(kindLabel())
     append(" · ")

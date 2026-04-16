@@ -37,6 +37,7 @@ import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.distinguishingDetail
+import io.github.jtsang4.aterm.core.domain.model.hostConnectionRequirementLabel
 import io.github.jtsang4.aterm.core.domain.model.kindLabel
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
@@ -348,6 +349,8 @@ private fun HostRow(
             Text(
                 text = linkedIdentity?.takeIf { it.isAuthenticationReady }?.let {
                     "${it.kindLabel()}: ${it.name}"
+                } ?: linkedIdentity?.let {
+                    "${it.hostConnectionRequirementLabel()}: ${it.name}"
                 } ?: "Identity needs repair",
                 modifier = Modifier.testTag("host_identity_label_${host.id}"),
             )

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
@@ -33,10 +34,13 @@ import io.github.jtsang4.aterm.core.domain.model.HostAuthKind
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
+import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
 import io.github.jtsang4.aterm.core.domain.model.SecretMaterialUnavailableException
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
+import io.github.jtsang4.aterm.core.domain.repository.KnownHostTrustRepository
+import io.github.jtsang4.aterm.feature.session.SessionsScreen
 import java.io.ByteArrayOutputStream
 import java.security.KeyPair
 import java.time.Instant
@@ -341,7 +345,7 @@ class IdentityPasswordFlowsInstrumentedTest {
         val savedIdentity = repository.currentIdentities().first()
         assertEquals(IdentityKind.IMPORTED_KEY, savedIdentity.kind)
         assertEquals(true, savedIdentity.hasPassphrase)
-        assertEquals(SecretStorageState.BLOCKED, savedIdentity.passphraseStorageState)
+        assertEquals(SecretStorageState.MISSING, savedIdentity.passphraseStorageState)
     }
 
     @Test
@@ -400,7 +404,7 @@ class IdentityPasswordFlowsInstrumentedTest {
     }
 
     @Test
-    fun legacy_encrypted_pem_import_without_saving_passphrase_stays_truthfully_blocked() {
+    fun legacy_encrypted_pem_import_without_saving_passphrase_stays_truthfully_non_ready() {
         val repository = FakeIdentityRepository()
         val encryptedKey = """
             -----BEGIN RSA PRIVATE KEY-----
@@ -448,9 +452,9 @@ class IdentityPasswordFlowsInstrumentedTest {
 
         val savedIdentity = repository.currentIdentities().first { it.name == "Unsaved legacy key" }
         assertEquals(true, savedIdentity.hasPassphrase)
-        assertEquals(SecretStorageState.BLOCKED, savedIdentity.passphraseStorageState)
-        composeRule.onNodeWithTag("identity_repair_hint_${savedIdentity.id}").assertIsDisplayed()
-        composeRule.onNodeWithText("Passphrase unavailable until repaired").assertIsDisplayed()
+        assertEquals(SecretStorageState.MISSING, savedIdentity.passphraseStorageState)
+        composeRule.onAllNodesWithTag("identity_repair_hint_${savedIdentity.id}").assertCountEquals(0)
+        composeRule.onNodeWithText("Passphrase required before this key can connect").assertIsDisplayed()
     }
 
     @Test
@@ -850,10 +854,11 @@ class IdentityPasswordFlowsInstrumentedTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
                 composeRule.onNodeWithTag("host_identity_label_$hostId")
-                    .assertTextContains("Identity needs repair", substring = true)
+                    .assertTextContains("Passphrase required before connecting: Relaunch encrypted key", substring = true)
             }.isSuccess
         }
-        composeRule.onNodeWithTag("host_identity_label_$hostId").assertTextContains("Identity needs repair")
+        composeRule.onNodeWithTag("host_identity_label_$hostId")
+            .assertTextContains("Passphrase required before connecting: Relaunch encrypted key")
         composeRule.onNodeWithTag("host_repair_$hostId").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
@@ -1016,11 +1021,56 @@ class IdentityPasswordFlowsInstrumentedTest {
             )
         }
 
-        composeRule.onNodeWithTag("host_identity_label_1").assertTextContains("Identity needs repair")
+        composeRule.onNodeWithTag("host_identity_label_1")
+            .assertTextContains("Identity needs repair: Broken password", substring = true)
         composeRule.onNodeWithTag("host_repair_1").assertIsDisplayed()
         composeRule.onNodeWithTag("host_repair_1").performClick()
         composeRule.onNodeWithTag("host_no_password_identities").assertIsDisplayed()
         composeRule.onAllNodesWithTag("host_identity_option_9").assertCountEquals(0)
+    }
+
+    @Test
+    fun unsaved_imported_key_session_message_distinguishes_missing_passphrase_from_repair() {
+        val identity = Identity(
+            id = 12,
+            name = "Unsaved session key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAUnsavedSessionKey session@test",
+            hasSecret = true,
+            hasPassphrase = true,
+            secretStorageState = SecretStorageState.AVAILABLE,
+            passphraseStorageState = SecretStorageState.MISSING,
+        )
+        val host = Host(
+            id = 4,
+            label = "Fixture unsaved host",
+            address = "10.0.2.2",
+            port = 3122,
+            username = "fixture",
+            identityId = identity.id,
+            authKind = HostAuthKind.KEY,
+        )
+        val identityRepository = FakeIdentityRepository(
+            initialIdentities = listOf(identity),
+            initialSecrets = mapOf(identity.id to IdentitySecretMaterial(primarySecret = "fixture-private-key")),
+        )
+        val hostRepository = FakeHostRepository(initialHosts = listOf(host))
+
+        composeRule.setContent {
+            SessionsScreen(
+                hostRepository = hostRepository,
+                identityRepository = identityRepository,
+                knownHostTrustRepository = FakeKnownHostTrustRepository(),
+            )
+        }
+
+        composeRule.onNodeWithTag("session_host_identity_${host.id}")
+            .assertTextContains("Passphrase required before connecting: Unsaved session key", substring = true)
+        composeRule.onNodeWithTag("session_host_identity_${host.id}")
+            .assertTextContains("Passphrase required before this key can connect", substring = true)
+        composeRule.onNodeWithTag("session_connect_${host.id}").assertExists()
+        composeRule.onNodeWithTag("session_connect_${host.id}").assertIsNotEnabled()
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
     }
 
     @Test
@@ -1265,6 +1315,24 @@ private class FakeHostRepository : HostRepository {
 
     override suspend fun deleteHost(id: Long) {
         hosts.value = hosts.value.filterNot { it.id == id }
+    }
+}
+
+private class FakeKnownHostTrustRepository : KnownHostTrustRepository {
+    private val trusts = MutableStateFlow<List<KnownHostTrust>>(emptyList())
+
+    override fun observeTrustedHosts(): Flow<List<KnownHostTrust>> = trusts
+
+    override suspend fun findTrustedHost(host: String, port: Int): KnownHostTrust? =
+        trusts.value.firstOrNull { it.host == host && it.port == port }
+
+    override suspend fun upsert(trust: KnownHostTrust): KnownHostTrust {
+        trusts.value = trusts.value.filterNot { it.host == trust.host && it.port == trust.port } + trust
+        return trust
+    }
+
+    override suspend fun deleteByEndpoint(host: String, port: Int) {
+        trusts.value = trusts.value.filterNot { it.host == host && it.port == port }
     }
 }
 

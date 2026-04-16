@@ -10,6 +10,9 @@ import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
+import io.github.jtsang4.aterm.core.domain.model.connectionBlockedMessage
+import io.github.jtsang4.aterm.core.domain.model.hostConnectionRequirementLabel
+import io.github.jtsang4.aterm.core.domain.model.sessionConnectionRequirementLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -62,6 +65,40 @@ class FoundationDomainModelTest {
 
         assertFalse(missingPassphraseIdentity.requiresSecretRepair)
         assertFalse(missingPassphraseIdentity.isAuthenticationReady)
+    }
+
+    @Test
+    fun missing_passphrase_presentation_distinguishes_unsaved_state_from_repair_state() {
+        val missingPassphraseIdentity = sampleIdentity().copy(
+            hasPassphrase = true,
+            secretStorageState = SecretStorageState.AVAILABLE,
+            passphraseStorageState = SecretStorageState.MISSING,
+        )
+        val blockedPassphraseIdentity = missingPassphraseIdentity.copy(
+            passphraseStorageState = SecretStorageState.BLOCKED,
+        )
+
+        assertEquals(
+            "Passphrase required before connecting",
+            missingPassphraseIdentity.hostConnectionRequirementLabel(),
+        )
+        assertEquals(
+            "Passphrase required before connecting",
+            missingPassphraseIdentity.sessionConnectionRequirementLabel(),
+        )
+        assertEquals(
+            "The linked identity needs its passphrase before connecting.",
+            missingPassphraseIdentity.connectionBlockedMessage(),
+        )
+        assertEquals("Identity needs repair", blockedPassphraseIdentity.hostConnectionRequirementLabel())
+        assertEquals(
+            "Identity needs repair before connecting",
+            blockedPassphraseIdentity.sessionConnectionRequirementLabel(),
+        )
+        assertEquals(
+            "The linked identity needs repair before connecting.",
+            blockedPassphraseIdentity.connectionBlockedMessage(),
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)
