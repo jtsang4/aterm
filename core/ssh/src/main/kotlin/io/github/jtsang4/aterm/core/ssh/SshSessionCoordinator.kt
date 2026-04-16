@@ -1,4 +1,5 @@
 package io.github.jtsang4.aterm.core.ssh
+import io.github.jtsang4.aterm.core.domain.PrivateKeyMaterialFormat
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.connectionBlockedMessage
@@ -1082,8 +1083,6 @@ class SshSessionCoordinator(
         }
 
         private fun looksLikePemPrivateKey(privateKey: String): Boolean =
-            privateKey.contains("-----BEGIN RSA PRIVATE KEY-----") ||
-                privateKey.contains("-----BEGIN PRIVATE KEY-----") ||
-                privateKey.contains("-----BEGIN ENCRYPTED PRIVATE KEY-----")
+            PrivateKeyMaterialFormat.looksLikeRuntimePemPrivateKey(privateKey)
     }
 }

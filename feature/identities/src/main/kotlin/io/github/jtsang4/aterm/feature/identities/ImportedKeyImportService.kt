@@ -1,5 +1,6 @@
 package io.github.jtsang4.aterm.feature.identities
 
+import io.github.jtsang4.aterm.core.domain.PrivateKeyMaterialFormat
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.StringReader
@@ -237,16 +238,13 @@ open class ImportedKeyImportService {
     }
 
     private fun looksLikePrivateKey(privateKeyMaterial: String): Boolean =
-        PRIVATE_KEY_HEADER_REGEX.containsMatchIn(privateKeyMaterial)
+        PrivateKeyMaterialFormat.looksLikePrivateKey(privateKeyMaterial)
 
     private fun looksLikePemPrivateKey(privateKeyMaterial: String): Boolean =
-        privateKeyMaterial.contains("BEGIN RSA PRIVATE KEY") ||
-            privateKeyMaterial.contains("BEGIN EC PRIVATE KEY") ||
-            privateKeyMaterial.contains("BEGIN DSA PRIVATE KEY") ||
-            privateKeyMaterial.contains("BEGIN ENCRYPTED PRIVATE KEY")
+        PrivateKeyMaterialFormat.looksLikeImportedKeyPemPrivateKey(privateKeyMaterial)
 
     private fun looksLikeEncryptedPrivateKey(privateKeyMaterial: String): Boolean =
-        ENCRYPTED_PRIVATE_KEY_MARKERS.any(privateKeyMaterial::contains)
+        PrivateKeyMaterialFormat.looksLikeEncryptedPrivateKey(privateKeyMaterial)
 
     private fun Iterable<KeyPair>.toList(): List<KeyPair> = iterator().asSequence().toList()
 
@@ -261,12 +259,6 @@ open class ImportedKeyImportService {
 
         const val BOUNCY_CASTLE_PROVIDER = "BC"
         val IMPORT_RESOURCE = NamedResource { "imported-private-key" }
-        val PRIVATE_KEY_HEADER_REGEX = Regex("-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
-        val ENCRYPTED_PRIVATE_KEY_MARKERS = listOf(
-            "Proc-Type: 4,ENCRYPTED",
-            "DEK-Info:",
-            "BEGIN OPENSSH PRIVATE KEY",
-        )
         val INCORRECT_PASSPHRASE_MARKERS = listOf(
             "decrypt",
             "password",

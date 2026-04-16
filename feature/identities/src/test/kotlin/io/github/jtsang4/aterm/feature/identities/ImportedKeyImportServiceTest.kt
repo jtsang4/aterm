@@ -78,6 +78,25 @@ class ImportedKeyImportServiceTest {
     }
 
     @Test
+    fun legacy_aes128cbc_ec_pem_requires_passphrase_then_imports_with_correct_retry() {
+        val keyPair = SecurityUtils.getKeyPairGenerator("EC").apply { initialize(256) }.generateKeyPair()
+        val privateKey = writeLegacyEncryptedPemPrivateKey(keyPair, passphrase = "legacy-passphrase")
+
+        val requiredResult = service.parse(privateKey, passphrase = null)
+        val wrongResult = service.parse(privateKey, passphrase = "wrong-passphrase")
+        val successResult = service.parse(privateKey, passphrase = "legacy-passphrase")
+
+        assertTrue(privateKey.contains("BEGIN EC PRIVATE KEY"))
+        assertTrue(privateKey.contains("AES-128-CBC"))
+        assertEquals(ImportedKeyParseResult.PassphraseRequired, requiredResult)
+        assertEquals(ImportedKeyParseResult.IncorrectPassphrase, wrongResult)
+        assertTrue(successResult is ImportedKeyParseResult.Success)
+        successResult as ImportedKeyParseResult.Success
+        assertTrue(successResult.publicKey.startsWith("ecdsa-sha2-"))
+        assertEquals(true, successResult.hasPassphrase)
+    }
+
+    @Test
     fun malformed_private_key_is_rejected_clearly() {
         val result = service.parse("this is not a private key", passphrase = null)
 
