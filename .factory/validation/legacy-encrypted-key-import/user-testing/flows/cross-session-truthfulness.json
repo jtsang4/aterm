@@ -1,0 +1,70 @@
+{
+  "surface": "Android instrumentation with real SSH fixture on emulator-5554",
+  "testedAt": "2026-04-16T06:00:38.633939+00:00",
+  "assertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "status": "fail",
+      "reason": "Targeted proof used SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session. The saved imported-key identity survived relaunch and the focused legacy PEM probe reached TCP, SSH auth, and shell-channel open against 10.0.2.2:3122, but the shipped app-shell connect path still ended with UI state FAILED and status \"Connection timed out while reaching 10.0.2.2:3122.\" Because the normal relaunched host/session flow did not reach a live terminal session, this assertion fails.",
+      "evidence": [
+        "legacy-encrypted-key-import/cross-session-truthfulness/TEST-atermApi35(AVD) - 15-_app-.xml",
+        "legacy-encrypted-key-import/cross-session-truthfulness/logcat-imported-key.txt",
+        "legacy-encrypted-key-import/cross-session-truthfulness/SessionSshFixtureInstrumentedTest.html",
+        "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:854-979"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "status": "pass",
+      "reason": "Validated through SessionSshFixtureInstrumentedTest#encrypted_imported_key_saved_host_stays_blocked_until_repair_then_reuses_same_records. Before repair, the saved host remained linked to the imported-key identity but showed repair-needed/passphrase-required messaging, the connect button stayed disabled, no trust prompt appeared, the session state stayed disconnected with an empty transcript, and known-host trust remained empty. The same blocked behavior was reasserted after clearing the passphrase, satisfying the requirement that no trust/auth/session/fallback transition starts while the identity is non-ready.",
+      "evidence": [
+        "legacy-encrypted-key-import/cross-session-truthfulness/TEST-atermApi35(AVD) - 15-_app-.xml",
+        "legacy-encrypted-key-import/cross-session-truthfulness/logcat-blocked-repair.txt",
+        "legacy-encrypted-key-import/cross-session-truthfulness/SessionSshFixtureInstrumentedTest.html",
+        "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:983-1118"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "status": "pass",
+      "reason": "Validated through the same targeted method SessionSshFixtureInstrumentedTest#encrypted_imported_key_saved_host_stays_blocked_until_repair_then_reuses_same_records. The test repaired the passphrase on the existing imported-key identity, verified the same identityId and hostId were preserved, confirmed the host became ready again, and then reconnected on the saved host path to 10.0.2.2:3122 without recreating records. The method finished green in the targeted run, so the repair flow truthfully restores the existing saved host/session path.",
+      "evidence": [
+        "legacy-encrypted-key-import/cross-session-truthfulness/TEST-atermApi35(AVD) - 15-_app-.xml",
+        "legacy-encrypted-key-import/cross-session-truthfulness/logcat-blocked-repair.txt",
+        "legacy-encrypted-key-import/cross-session-truthfulness/SessionSshFixtureInstrumentedTest.html",
+        "app/src/androidTest/kotlin/io/github/jtsang4/aterm/SessionSshFixtureInstrumentedTest.kt:1041-1158"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Gradle :app:connectedDebugAndroidTest",
+    "adb"
+  ],
+  "commandsRun": [
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/.factory/init.sh --check",
+    "env PATH=/root/Android/Sdk/platform-tools:$PATH adb -s emulator-5554 get-state && env PATH=/root/Android/Sdk/platform-tools:$PATH adb -s emulator-5554 shell ls -l /data/local/tmp/aterm-fixture-client_key_legacy_pem /data/local/tmp/aterm-fixture-client_key.pub",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session,io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#encrypted_imported_key_saved_host_stays_blocked_until_repair_then_reuses_same_records"
+  ],
+  "frictions": [
+    {
+      "description": "The current instrumentation harness produced JUnit XML, HTML, and logcat artifacts but no standalone per-step screenshots for these assertions.",
+      "resolved": true,
+      "resolution": "Used the targeted connectedDebugAndroidTest artifacts plus the explicit assertion logic in SessionSshFixtureInstrumentedTest as the evidence set.",
+      "affectedAssertions": [
+        "VAL-CROSS-001",
+        "VAL-CROSS-002",
+        "VAL-CROSS-003"
+      ]
+    },
+    {
+      "description": "The imported-key relaunch test is diagnostic: it passes even when the shipped UI path times out, so VAL-CROSS-001 required manual interpretation from logcat rather than trusting the green test result alone.",
+      "resolved": true,
+      "resolution": "Mapped the assertion to the logcat lines showing probe success (tcp/auth/shell) and the separate UI timeout failure, then marked the contract status as fail.",
+      "affectedAssertions": [
+        "VAL-CROSS-001"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Ran one targeted :app:connectedDebugAndroidTest proof on emulator-5554 after confirming the real fixture files /data/local/tmp/aterm-fixture-client_key_legacy_pem and .pub were present. Result: VAL-CROSS-001 failed because the relaunched shipped UI path timed out despite the legacy PEM probe succeeding through TCP/auth/shell; VAL-CROSS-002 and VAL-CROSS-003 passed because blocked imported-key hosts stayed hard-blocked until repair and the repaired flow reused the same saved host/identity records."
+}

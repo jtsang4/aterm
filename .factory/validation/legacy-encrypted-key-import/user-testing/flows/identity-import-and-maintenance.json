@@ -1,0 +1,140 @@
+{
+  "surface": "Android instrumentation + focused JVM parser/state tests on emulator-5554",
+  "testedAt": "2026-04-16T05:54:02.246899+00:00",
+  "assertions": [
+    {
+      "id": "VAL-IDENTITY-001",
+      "status": "pass",
+      "reason": "Pass via ImportedKeyImportServiceTest#legacy_aes128cbc_rsa_pem_requires_passphrase_then_imports_with_correct_retry (JVM parser proof for legacy AES-128-CBC RSA PEM retry/success) plus IdentityPasswordFlowsInstrumentedTest#legacy_encrypted_pem_import_with_saved_passphrase_shows_ready_saved_state (UI import/save flow reached one ready imported-key row).",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/imported-key-import-service-test-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/imported-key-import-service-test-report.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-002",
+      "status": "pass",
+      "reason": "Pass via ImportedKeyImportServiceTest#unencrypted_private_key_import_succeeds and #unencrypted_private_key_ignores_stray_passphrase_text, plus IdentityPasswordFlowsInstrumentedTest#supported_private_key_imports_and_becomes_selectable_from_host_flows. The focused UI test completed a direct save path with no passphrase-step interaction before the imported key became selectable from host flows.",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/imported-key-import-service-test-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/imported-key-import-service-test-report.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-003",
+      "status": "pass",
+      "reason": "Pass via ImportedKeyImportServiceTest#encrypted_private_key_requires_passphrase_then_imports_with_correct_retry and IdentityPasswordFlowsInstrumentedTest#encrypted_private_key_retries_after_wrong_passphrase_without_losing_draft. The instrumentation flow kept the draft intact, surfaced the passphrase field/toggle, left repository size at 0 before success, and then imported successfully on the corrected retry.",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/imported-key-import-service-test-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/imported-key-import-service-test-report.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-004",
+      "status": "pass",
+      "reason": "Pass via IdentityPasswordFlowsInstrumentedTest#legacy_encrypted_pem_import_with_saved_passphrase_shows_ready_saved_state, #legacy_encrypted_pem_import_without_saving_passphrase_stays_truthfully_non_ready, and #supported_private_key_imports_and_becomes_selectable_from_host_flows. Those passing flows distinguish encrypted-saved, encrypted-unsaved/non-ready, and unencrypted/no-passphrase-required states through the import UI and resulting identity status.",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-005",
+      "status": "pass",
+      "reason": "Pass via IdentityPasswordFlowsInstrumentedTest#encrypted_key_passphrase_can_be_added_updated_and_cleared_without_replacing_key_material. The flow rejected a wrong passphrase without mutating the existing record, then added and updated the saved passphrase while preserving the same identity id, public key, and primary key material.",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-006",
+      "status": "pass",
+      "reason": "Pass via IdentityPasswordFlowsInstrumentedTest#encrypted_key_passphrase_can_be_added_updated_and_cleared_without_replacing_key_material and #cleared_saved_passphrase_survives_relaunch_and_stays_blocked_in_host_flows. Clearing the saved passphrase moved the identity back to SecretStorageState.MISSING / non-ready, removed the stored passphrase, and kept host flows blocked after relaunch.",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-007",
+      "status": "pass",
+      "reason": "Pass via IdentityPasswordFlowsInstrumentedTest#replacing_encrypted_key_with_unencrypted_import_ignores_stray_passphrase_text and #replacing_encrypted_key_requires_new_valid_passphrase_and_failed_attempt_leaves_prior_identity_unchanged. The replacement flows cleared stale passphrase state when moving to unencrypted material, required a new valid passphrase for different encrypted material, and preserved the prior identity state on failed replacement.",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    },
+    {
+      "id": "VAL-IDENTITY-008",
+      "status": "pass",
+      "reason": "Pass via SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session (saved passphrase survives relaunch and reaches the real fixture path), IdentityPasswordFlowsInstrumentedTest#replacing_encrypted_key_without_saving_new_passphrase_survives_relaunch_as_non_ready (unsaved stays non-ready after relaunch), and #cleared_saved_passphrase_survives_relaunch_and_stays_blocked_in_host_flows (cleared stays blocked after relaunch).",
+      "evidence": [
+        "legacy-encrypted-key-import/identity-import-and-maintenance/session-imported-key-relaunch-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/session-imported-key-relaunch.log",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-results.xml",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-connected-class.html",
+        "legacy-encrypted-key-import/identity-import-and-maintenance/identity-password-instrumentation-rerun.log"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Gradle :feature:identities:testDebugUnitTest",
+    "Gradle :app:connectedDebugAndroidTest",
+    "adb via /root/Android/Sdk/platform-tools/adb"
+  ],
+  "commandsRun": [
+    "\"/root/workspace/github/jtsang4/aterm/.factory/init.sh\" --check",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/Android/Sdk/platform-tools/adb devices",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :feature:identities:testDebugUnitTest --tests io.github.jtsang4.aterm.feature.identities.ImportedKeyImportServiceTest",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#supported_private_key_imports_and_becomes_selectable_from_host_flows,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#encrypted_private_key_retries_after_wrong_passphrase_without_losing_draft,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#legacy_encrypted_pem_import_with_saved_passphrase_shows_ready_saved_state,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#legacy_encrypted_pem_import_without_saving_passphrase_stays_truthfully_non_ready,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#encrypted_key_passphrase_can_be_added_updated_and_cleared_without_replacing_key_material,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#replacing_encrypted_key_with_unencrypted_import_ignores_stray_passphrase_text,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#replacing_encrypted_key_requires_new_valid_passphrase_and_failed_attempt_leaves_prior_identity_unchanged,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#replacing_encrypted_key_without_saving_new_passphrase_survives_relaunch_as_non_ready,io.github.jtsang4.aterm.IdentityPasswordFlowsInstrumentedTest#cleared_saved_passphrase_survives_relaunch_and_stays_blocked_in_host_flows --max-workers=1",
+    "env JAVA_HOME=/root/.local/share/aterm-jdk-17 ANDROID_SDK_ROOT=/root/Android/Sdk PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:$PATH /root/workspace/github/jtsang4/aterm/gradlew -p /root/workspace/github/jtsang4/aterm :app:connectedDebugAndroidTest --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session"
+  ],
+  "frictions": [
+    {
+      "description": "The plain shell did not have adb on PATH by default, so emulator inspection had to use the SDK-path-qualified adb command after confirming .factory/init.sh --check.",
+      "resolved": true,
+      "resolution": "Used /root/Android/Sdk/platform-tools/adb with the same JAVA_HOME/ANDROID_SDK_ROOT/PATH environment as the Gradle runs.",
+      "affectedAssertions": [
+        "VAL-IDENTITY-001",
+        "VAL-IDENTITY-002",
+        "VAL-IDENTITY-003",
+        "VAL-IDENTITY-004",
+        "VAL-IDENTITY-005",
+        "VAL-IDENTITY-006",
+        "VAL-IDENTITY-007",
+        "VAL-IDENTITY-008"
+      ]
+    },
+    {
+      "description": "Gradle connected-test HTML/XML outputs are overwritten by subsequent focused instrumentation reruns, so evidence had to be copied into the mission evidence directory immediately after each run.",
+      "resolved": true,
+      "resolution": "Copied the connected-test XML/HTML artifacts into /root/.factory/missions/6abb6051-d9e4-4111-861b-5a664893e746/evidence/legacy-encrypted-key-import/identity-import-and-maintenance after the identity suite rerun and preserved the session relaunch XML/log separately.",
+      "affectedAssertions": [
+        "VAL-IDENTITY-001",
+        "VAL-IDENTITY-002",
+        "VAL-IDENTITY-003",
+        "VAL-IDENTITY-004",
+        "VAL-IDENTITY-005",
+        "VAL-IDENTITY-006",
+        "VAL-IDENTITY-007",
+        "VAL-IDENTITY-008"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions on emulator-5554: all 8 passed. Evidence came from one focused ImportedKeyImportService JVM suite, one 9-test IdentityPasswordFlowsInstrumentedTest instrumentation run, and one real-fixture SessionSshFixtureInstrumentedTest relaunch proof."
+}
