@@ -797,6 +797,133 @@ class IdentityPasswordFlowsInstrumentedTest {
     }
 
     @Test
+    fun replacing_encrypted_key_without_saving_new_passphrase_survives_relaunch_as_non_ready() {
+        val firstContainer = AppContainer.create(context)
+        var showHosts by mutableStateOf(false)
+        var hostContainer by mutableStateOf(firstContainer)
+        val replacementKey = """
+            -----BEGIN RSA PRIVATE KEY-----
+            Proc-Type: 4,ENCRYPTED
+            DEK-Info: AES-128-CBC,0123456789ABCDEF0123456789ABCDEF
+
+            replacement-unsaved-passphrase-placeholder
+            -----END RSA PRIVATE KEY-----
+        """.trimIndent()
+        val scriptedImportService = ScriptedImportedKeyImportService(
+            listOf(
+                ImportedKeyParseResult.PassphraseRequired,
+                ImportedKeyParseResult.Success(
+                    publicKey = "ssh-rsa AAAAUnsavedReplacementKey replacement@test",
+                    hasPassphrase = true,
+                ),
+            ),
+        )
+        val identityId = runBlocking {
+            firstContainer.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Unsaved replacement key",
+                    kind = IdentityKind.IMPORTED_KEY,
+                    publicKey = "ssh-rsa AAAAOldReplacementKey replacement@test",
+                    hasSecret = true,
+                    hasPassphrase = true,
+                    passphraseStorageState = SecretStorageState.AVAILABLE,
+                ),
+                secrets = IdentitySecretMaterial(
+                    primarySecret = "old-encrypted-key",
+                    passphrase = "old-passphrase",
+                ),
+            ).id
+        }
+        val hostId = runBlocking {
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Unsaved replacement host",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "fixture",
+                    identityId = identityId,
+                    authKind = HostAuthKind.KEY,
+                ),
+            ).id
+        }
+
+        composeRule.setContent {
+            if (showHosts) {
+                HostsScreen(
+                    hostRepository = hostContainer.foundationGraph.hostRepository,
+                    identityRepository = hostContainer.foundationGraph.identityRepository,
+                )
+            } else {
+                IdentitiesScreen(
+                    identityRepository = firstContainer.foundationGraph.identityRepository,
+                    importedKeyImportService = scriptedImportService,
+                )
+            }
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("identity_edit_$identityId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("identity_edit_$identityId").performClick()
+        composeRule.onNodeWithTag("identity_replace_secret").performClick()
+        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(replacementKey)
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("identity_import_passphrase_field").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").performClick()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("new-unsaved-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking {
+                firstContainer.foundationGraph.identityRepository.getIdentity(identityId)
+            }?.publicKey == "ssh-rsa AAAAUnsavedReplacementKey replacement@test"
+        }
+
+        val updatedIdentity = runBlocking {
+            firstContainer.foundationGraph.identityRepository.getIdentity(identityId)
+        }
+        val updatedSecrets = runBlocking {
+            firstContainer.foundationGraph.identityRepository.getSecretMaterial(identityId)
+        }
+        assertEquals(true, updatedIdentity?.hasPassphrase)
+        assertEquals(SecretStorageState.MISSING, updatedIdentity?.passphraseStorageState)
+        assertFalse(updatedIdentity?.isAuthenticationReady == true)
+        assertEquals(replacementKey, updatedSecrets?.primarySecret)
+        assertNull(updatedSecrets?.passphrase)
+
+        val relaunchedContainer = AppContainer.create(context)
+        composeRule.runOnIdle {
+            hostContainer = relaunchedContainer
+            showHosts = true
+        }
+        composeRule.waitForIdle()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_identity_label_$hostId")
+                    .assertTextContains("Passphrase required before connecting: Unsaved replacement key", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("host_identity_label_$hostId")
+            .assertTextContains("Passphrase required before connecting: Unsaved replacement key")
+
+        val relaunchedIdentity = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.getIdentity(identityId)
+        }
+        val relaunchedSecrets = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId)
+        }
+        assertEquals("ssh-rsa AAAAUnsavedReplacementKey replacement@test", relaunchedIdentity?.publicKey)
+        assertEquals(SecretStorageState.MISSING, relaunchedIdentity?.passphraseStorageState)
+        assertFalse(relaunchedIdentity?.isAuthenticationReady == true)
+        assertEquals(replacementKey, relaunchedSecrets?.primarySecret)
+        assertNull(relaunchedSecrets?.passphrase)
+    }
+
+    @Test
     fun cleared_saved_passphrase_survives_relaunch_and_stays_blocked_in_host_flows() {
         val firstContainer = AppContainer.create(context)
         val identityId = runBlocking {

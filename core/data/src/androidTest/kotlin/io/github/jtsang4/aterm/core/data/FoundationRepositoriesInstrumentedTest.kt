@@ -425,6 +425,39 @@ class FoundationRepositoriesInstrumentedTest {
     }
 
     @Test
+    fun replacing_encrypted_key_without_saving_new_passphrase_clears_stale_ciphertext_and_stays_non_ready() = runTest {
+        val created = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, kind = IdentityKind.IMPORTED_KEY, hasPassphrase = true),
+            IdentitySecretMaterial(
+                primarySecret = "encrypted-private-key",
+                passphrase = "stored-passphrase",
+            ),
+        )
+
+        val updated = identityRepository.upsert(
+            created.copy(
+                publicKey = "ssh-rsa TEST_REPLACEMENT_ENCRYPTED_KEY",
+                hasPassphrase = true,
+                passphraseStorageState = SecretStorageState.MISSING,
+            ),
+            IdentitySecretMaterial(primarySecret = "replacement-encrypted-private-key"),
+        )
+
+        val persistedIdentity = identityRepository.getIdentity(updated.id)
+        val persistedSecrets = identityRepository.getSecretMaterial(updated.id)
+        val rawEntity = database.identityDao().getById(updated.id)
+
+        assertEquals(created.id, updated.id)
+        assertEquals(true, persistedIdentity?.hasPassphrase)
+        assertEquals(SecretStorageState.MISSING, persistedIdentity?.passphraseStorageState)
+        assertFalse(persistedIdentity?.isAuthenticationReady == true)
+        assertEquals("replacement-encrypted-private-key", persistedSecrets?.primarySecret)
+        assertNull(persistedSecrets?.passphrase)
+        assertNull(rawEntity?.passphraseCipherText)
+        assertNull(rawEntity?.passphraseIv)
+    }
+
+    @Test
     fun failed_passphrase_only_update_leaves_existing_identity_row_unchanged() = runTest {
         val created = identityRepository.upsert(
             sampleIdentity().copy(id = 0, kind = IdentityKind.IMPORTED_KEY, hasPassphrase = true),

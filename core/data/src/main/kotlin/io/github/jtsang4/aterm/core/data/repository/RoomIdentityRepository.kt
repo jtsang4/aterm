@@ -52,6 +52,8 @@ class RoomIdentityRepository(
                 storingPassphrase -> SecretStorageState.AVAILABLE
                 else -> identity.passphraseStorageState
             }
+            val shouldClearPersistedPassphrase = replacingPrimarySecret &&
+                (!finalHasPassphrase || !storingPassphrase || desiredPassphraseState != SecretStorageState.AVAILABLE)
             val baseEntity = identity.toEntity(
                 primaryCipherText = existing?.primaryCipherText,
                 primaryIv = existing?.primaryIv,
@@ -96,12 +98,14 @@ class RoomIdentityRepository(
                     },
                     passphraseCipherText = when {
                         !finalHasPassphrase -> null
+                        shouldClearPersistedPassphrase -> null
                         desiredPassphraseState == SecretStorageState.MISSING -> null
                         storingPassphrase -> passphrasePayload?.cipherText
                         else -> persisted.passphraseCipherText
                     },
                     passphraseIv = when {
                         !finalHasPassphrase -> null
+                        shouldClearPersistedPassphrase -> null
                         desiredPassphraseState == SecretStorageState.MISSING -> null
                         storingPassphrase -> passphrasePayload?.iv
                         else -> persisted.passphraseIv
