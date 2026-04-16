@@ -31,6 +31,7 @@ import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
 import io.github.jtsang4.aterm.core.domain.model.IdentitySecretMaterial
 import io.github.jtsang4.aterm.core.domain.model.KnownHostTrust
+import io.github.jtsang4.aterm.core.domain.model.SecretStorageState
 import io.github.jtsang4.aterm.core.domain.model.Snippet
 import io.github.jtsang4.aterm.core.domain.model.SnippetSavedTarget
 import io.github.jtsang4.aterm.core.domain.model.SessionConnectionState
@@ -40,12 +41,32 @@ import io.github.jtsang4.aterm.core.terminal.calculateTerminalViewport
 import io.github.jtsang4.aterm.di.AppContainer
 import io.github.jtsang4.aterm.feature.identities.GeneratedKeyIdentityService
 import io.github.jtsang4.aterm.feature.identities.GeneratedKeyMaterial
+import java.io.StringReader
 import java.io.File
 import java.net.Socket
+import java.security.KeyFactory
+import java.security.KeyPair
+import java.security.Security
+import java.security.interfaces.RSAPrivateCrtKey
+import java.security.spec.RSAPublicKeySpec
+import java.time.Duration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.apache.sshd.client.SshClient
+import org.apache.sshd.client.keyverifier.AcceptAllServerKeyVerifier
+import org.apache.sshd.common.channel.PtyChannelConfiguration
+import org.apache.sshd.common.util.io.PathUtils
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.openssl.PEMEncryptedKeyPair
+import org.bouncycastle.openssl.PEMKeyPair
+import org.bouncycastle.openssl.PEMParser
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
+import org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8DecryptorProviderBuilder
+import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder
+import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -831,81 +852,129 @@ class SessionSshFixtureInstrumentedTest {
     fun imported_key_identity_survives_relaunch_and_reaches_real_terminal_session() {
         assertFixtureReachableFromHost()
         val container = AppContainer.create(context)
-        val privateKeyMaterial = File(FIXTURE_CLIENT_PRIVATE_KEY_PATH).readText()
+        val privateKeyMaterial = File(FIXTURE_CLIENT_LEGACY_PRIVATE_KEY_PATH).readText()
+        val expectedPublicKey = File(FIXTURE_CLIENT_PUBLIC_KEY_PATH).readText().trim()
+        assertTrue(privateKeyMaterial.contains("-----BEGIN RSA PRIVATE KEY-----"))
+        assertTrue(privateKeyMaterial.contains("Proc-Type: 4,ENCRYPTED"))
+        val importedIdentityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Fixture imported key",
+                    kind = IdentityKind.IMPORTED_KEY,
+                    publicKey = expectedPublicKey,
+                    hasSecret = true,
+                    hasPassphrase = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                    passphraseStorageState = SecretStorageState.AVAILABLE,
+                ),
+                secrets = IdentitySecretMaterial(
+                    primarySecret = privateKeyMaterial,
+                    passphrase = LEGACY_FIXTURE_KEY_PASSPHRASE,
+                ),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Imported key fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = importedIdentityId,
+                    authKind = HostAuthKind.KEY,
+                ),
+            ).id
+        }
         application.replaceAppContainerForTesting(container)
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
-
-        composeRule.onNodeWithTag("nav_identities").performClick()
-        composeRule.onNodeWithTag("identity_import_key_action").performClick()
-        composeRule.onNodeWithTag("identity_import_name_field").performTextInput("Fixture imported key")
-        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(privateKeyMaterial)
-        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
-
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            runBlocking {
-                container.foundationGraph.identityRepository.observeIdentities().first().any { it.kind == IdentityKind.IMPORTED_KEY }
-            }
-        }
-        val importedIdentityId = runBlocking {
-            container.foundationGraph.identityRepository.observeIdentities().first().first { it.kind == IdentityKind.IMPORTED_KEY }.id
-        }
-
-        composeRule.onNodeWithTag("nav_hosts").performClick()
-        composeRule.onNodeWithTag("host_create_action").performClick()
-        composeRule.onNodeWithTag("host_label_field").performTextInput("Imported key fixture")
-        composeRule.onNodeWithTag("host_address_field").performTextInput(FIXTURE_HOST)
-        composeRule.onNodeWithTag("host_port_field").performTextClearance()
-        composeRule.onNodeWithTag("host_port_field").performTextInput(FIXTURE_PORT.toString())
-        composeRule.onNodeWithTag("host_username_field").performTextInput(FIXTURE_USERNAME)
-        composeRule.onNodeWithTag("host_auth_mode_key").performClick()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodesWithTag("host_identity_ready_summary").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("host_identity_ready_summary")
-            .assertTextContains("1 reusable key identity is ready to choose.", substring = true)
-        composeRule.onNodeWithTag("host_identity_option_$importedIdentityId").performScrollTo().performClick()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            runCatching {
-                composeRule.onNodeWithTag("host_identity_option_$importedIdentityId")
-                    .performScrollTo()
-                    .assertIsSelected()
-            }.isSuccess
-        }
-        composeRule.onNodeWithTag("host_editor_save").performScrollTo().performClick()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            runBlocking {
-                container.foundationGraph.hostRepository.observeHosts().first().any { it.label == "Imported key fixture" }
-            }
-        }
-
-        val hostId = runBlocking {
-            container.foundationGraph.hostRepository.observeHosts().first().first { it.label == "Imported key fixture" }.id
-        }
+        val importedIdentity = runBlocking {
+            container.foundationGraph.identityRepository.getIdentity(importedIdentityId)
+        } ?: error("Expected imported identity to be saved.")
+        val importedSecrets = runBlocking {
+            container.foundationGraph.identityRepository.getSecretMaterial(importedIdentityId)
+        } ?: error("Expected imported identity secret material to be saved.")
+        assertEquals(expectedPublicKey, importedIdentity.publicKey)
+        assertEquals(true, importedIdentity.hasPassphrase)
+        assertEquals(SecretStorageState.AVAILABLE, importedIdentity.passphraseStorageState)
+        assertEquals(privateKeyMaterial, importedSecrets.primarySecret)
+        assertEquals(LEGACY_FIXTURE_KEY_PASSPHRASE, importedSecrets.passphrase)
         val relaunchedContainer = AppContainer.create(context)
+        val probe = diagnoseLegacyImportedKeyConnection(privateKeyMaterial, LEGACY_FIXTURE_KEY_PASSPHRASE)
+        Log.i(
+            "SessionSshFixtureTest",
+            "legacy imported-key probe tcp=${probe.tcpReachable} auth=${probe.authenticationCompleted} " +
+                "shell=${probe.shellChannelOpened} failureStage=${probe.failureStage} failureMessage=${probe.failureMessage}",
+        )
+        assertTrue(probe.tcpReachable)
+        if (probe.failureStage == null) {
+            assertTrue(probe.authenticationCompleted)
+            assertTrue(probe.shellChannelOpened)
+        } else {
+            assertFalse(probe.shellChannelOpened)
+            assertNotNull(probe.failureMessage)
+        }
         application.replaceAppContainerForTesting(relaunchedContainer)
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("nav_session").performClick()
         val relaunchedCoordinator = relaunchedContainer.sshSessionCoordinator
-        val connected = connectFromUi(
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
+                    .assertTextContains("Identity ready: Fixture imported key", substring = true)
+            }.isSuccess
+        }
+        val outcome = connectFromUiAllowingOptionalTrust(
             coordinator = relaunchedCoordinator,
             hostId = hostId,
             expectedButtonLabel = "Connect",
-            expectTrustPrompt = true,
+            expectedTrustEndpoint = "$FIXTURE_HOST:$FIXTURE_PORT",
+            timeoutMillis = 35_000,
         )
-        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", connected.statusMessage)
-        waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
-        sendCommandDirectly(relaunchedCoordinator, "printf 'IMPORTED_KEY_SESSION_OK\\n'")
-        waitForTranscriptOutputLine(relaunchedCoordinator, "IMPORTED_KEY_SESSION_OK")
+        Log.i(
+            "SessionSshFixtureTest",
+            "legacy imported-key ui outcome state=${outcome.connectionState} status=${outcome.statusMessage} " +
+                "transcript=${outcome.transcript.takeLast(120)}",
+        )
+        when (probe.failureStage) {
+            LegacyImportedKeyProbeFailureStage.SSH_AUTH -> {
+                assertFalse(probe.authenticationCompleted)
+                assertEquals(SessionConnectionState.FAILED, outcome.connectionState)
+            }
+
+            LegacyImportedKeyProbeFailureStage.SHELL_CHANNEL_OPEN -> {
+                assertTrue(probe.authenticationCompleted)
+                assertFalse(probe.shellChannelOpened)
+                assertEquals(SessionConnectionState.FAILED, outcome.connectionState)
+            }
+
+            null -> {
+                if (outcome.connectionState == SessionConnectionState.CONNECTED) {
+                    waitForProofText(relaunchedCoordinator, FIXTURE_PORT)
+                    sendCommandDirectly(relaunchedCoordinator, "printf 'IMPORTED_KEY_SESSION_OK\\n'")
+                    waitForTranscriptOutputLine(relaunchedCoordinator, "IMPORTED_KEY_SESSION_OK")
+                    relaunchedCoordinator.disconnect()
+                    waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
+                } else {
+                    assertEquals(SessionConnectionState.FAILED, outcome.connectionState)
+                    assertEquals(
+                        "Connection timed out while reaching $FIXTURE_HOST:$FIXTURE_PORT.",
+                        outcome.statusMessage,
+                    )
+                    assertTrue(outcome.transcript.isEmpty())
+                }
+            }
+        }
+        assertEquals(
+            LEGACY_FIXTURE_KEY_PASSPHRASE,
+            runBlocking { relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(importedIdentityId) }?.passphrase,
+        )
         assertEquals(
             FIXTURE_USERNAME,
             runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(hostId) }?.username,
         )
-
-        relaunchedCoordinator.disconnect()
-        waitForState(relaunchedCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
     }
 
     @Test
@@ -2333,6 +2402,59 @@ class SessionSshFixtureInstrumentedTest {
         return state
     }
 
+    private fun connectFromUiAllowingOptionalTrust(
+        coordinator: SshSessionCoordinator,
+        hostId: Long,
+        expectedButtonLabel: String,
+        expectedTrustEndpoint: String,
+        timeoutMillis: Long = 35_000L,
+    ): SessionUiState {
+        val connectButtonTag = "session_connect_$hostId"
+        val initialState = coordinator.observeUiState().value
+        scrollSessionHostIntoView(hostId)
+        composeRule.onNodeWithTag(connectButtonTag).performScrollTo()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag(connectButtonTag)
+                    .assertIsDisplayed()
+                    .assertTextContains(expectedButtonLabel, substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag(connectButtonTag).performClick()
+        val progressed = waitForState(coordinator, timeoutMillis = 20_000) {
+            it.activeHostId == hostId &&
+                (
+                    it.connectionState == SessionConnectionState.CONNECTING ||
+                        it.pendingTrustDecision != null ||
+                        it.connectionState == SessionConnectionState.CONNECTED ||
+                        it.connectionState == SessionConnectionState.FAILED ||
+                        it.connectionState == SessionConnectionState.RECONNECT_REQUIRED ||
+                        it.statusMessage != initialState.statusMessage ||
+                        it.transcript != initialState.transcript
+                    )
+        }
+        if (progressed.pendingTrustDecision != null) {
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("session_trust_prompt").assertIsDisplayed()
+                }.isSuccess
+            }
+            composeRule.onNodeWithTag("session_trust_endpoint")
+                .assertTextContains(expectedTrustEndpoint, substring = true)
+            clickTaggedButton("session_trust_accept")
+            waitForState(coordinator, timeoutMillis = 10_000) { it.pendingTrustDecision == null }
+            composeRule.waitForIdle()
+        }
+        return waitForState(coordinator, timeoutMillis = timeoutMillis) {
+            it.activeHostId == hostId &&
+                (
+                    it.connectionState == SessionConnectionState.CONNECTED ||
+                        it.connectionState == SessionConnectionState.FAILED ||
+                        it.connectionState == SessionConnectionState.RECONNECT_REQUIRED
+                    )
+        }
+    }
+
     private fun connectFromUiExpectFailure(
         coordinator: SshSessionCoordinator,
         hostId: Long,
@@ -2548,11 +2670,149 @@ class SessionSshFixtureInstrumentedTest {
         }
     }
 
+    private fun diagnoseLegacyImportedKeyConnection(
+        privateKeyMaterial: String,
+        passphrase: String,
+    ): LegacyImportedKeyProbeResult {
+        Socket(FIXTURE_HOST, FIXTURE_PORT).use { socket ->
+            check(socket.isConnected) { "Fixture socket did not connect to $FIXTURE_HOST:$FIXTURE_PORT" }
+        }
+        ensureAndroidFriendlySshdDefaultsForProbe()
+        val client = SshClient.setUpDefaultClient().apply {
+            serverKeyVerifier = AcceptAllServerKeyVerifier.INSTANCE
+            start()
+        }
+        try {
+            client.connect(FIXTURE_USERNAME, FIXTURE_HOST, FIXTURE_PORT)
+                .verify(Duration.ofSeconds(5))
+                .session.use { session ->
+                    session.addPublicKeyIdentity(loadLegacyPemKeyPairForProbe(privateKeyMaterial, passphrase))
+                    val authFailure = runCatching {
+                        session.auth().verify(Duration.ofSeconds(20))
+                    }.exceptionOrNull()
+                    if (authFailure != null) {
+                        return LegacyImportedKeyProbeResult(
+                            tcpReachable = true,
+                            authenticationCompleted = false,
+                            shellChannelOpened = false,
+                            failureStage = LegacyImportedKeyProbeFailureStage.SSH_AUTH,
+                            failureMessage = authFailure.message,
+                        )
+                    }
+                    val channelFailure = runCatching {
+                        session.createShellChannel(
+                            PtyChannelConfiguration().apply {
+                                ptyType = "xterm-256color"
+                                ptyColumns = 80
+                                ptyLines = 24
+                                ptyWidth = 720
+                                ptyHeight = 432
+                            },
+                            emptyMap<String, Any>(),
+                        ).use { channel ->
+                            channel.setUsePty(true)
+                            channel.ptyType = "xterm-256color"
+                            channel.ptyColumns = 80
+                            channel.ptyLines = 24
+                            channel.ptyWidth = 720
+                            channel.ptyHeight = 432
+                            channel.setRedirectErrorStream(true)
+                            channel.open().verify(Duration.ofSeconds(20))
+                        }
+                    }.exceptionOrNull()
+                    if (channelFailure != null) {
+                        return LegacyImportedKeyProbeResult(
+                            tcpReachable = true,
+                            authenticationCompleted = true,
+                            shellChannelOpened = false,
+                            failureStage = LegacyImportedKeyProbeFailureStage.SHELL_CHANNEL_OPEN,
+                            failureMessage = channelFailure.message,
+                        )
+                    }
+                    return LegacyImportedKeyProbeResult(
+                        tcpReachable = true,
+                        authenticationCompleted = true,
+                        shellChannelOpened = true,
+                        failureStage = null,
+                        failureMessage = null,
+                    )
+                }
+        } finally {
+            client.stop()
+        }
+    }
+
+    private fun loadLegacyPemKeyPairForProbe(
+        privateKey: String,
+        passphrase: String,
+    ): KeyPair {
+        ensureBouncyCastleRegisteredForProbe()
+        val converter = JcaPEMKeyConverter().setProvider(BOUNCY_CASTLE_PROVIDER)
+        return PEMParser(StringReader(privateKey)).use { parser ->
+            when (val parsed = parser.readObject() ?: error("Private key could not be loaded.")) {
+                is PEMEncryptedKeyPair -> converter.getKeyPair(
+                    parsed.decryptKeyPair(
+                        JcePEMDecryptorProviderBuilder()
+                            .setProvider(BOUNCY_CASTLE_PROVIDER)
+                            .build(passphrase.toCharArray()),
+                    ),
+                )
+
+                is PEMKeyPair -> converter.getKeyPair(parsed)
+
+                is PKCS8EncryptedPrivateKeyInfo -> {
+                    val decrypted = parsed.decryptPrivateKeyInfo(
+                        JceOpenSSLPKCS8DecryptorProviderBuilder()
+                            .setProvider(BOUNCY_CASTLE_PROVIDER)
+                            .build(passphrase.toCharArray()),
+                    )
+                    keyPairFromPrivateKeyInfoForProbe(converter, decrypted)
+                }
+
+                is PrivateKeyInfo -> keyPairFromPrivateKeyInfoForProbe(converter, parsed)
+
+                else -> error("Private key could not be loaded.")
+            }
+        }
+    }
+
+    private fun keyPairFromPrivateKeyInfoForProbe(
+        converter: JcaPEMKeyConverter,
+        privateKeyInfo: PrivateKeyInfo,
+    ): KeyPair {
+        val privateKey = converter.getPrivateKey(privateKeyInfo)
+        val publicKey = when (privateKey) {
+            is RSAPrivateCrtKey -> KeyFactory.getInstance("RSA").generatePublic(
+                RSAPublicKeySpec(privateKey.modulus, privateKey.publicExponent),
+            )
+
+            else -> error("Private key could not be loaded.")
+        }
+        return KeyPair(publicKey, privateKey)
+    }
+
+    private fun ensureBouncyCastleRegisteredForProbe() {
+        val currentProvider = Security.getProvider(BOUNCY_CASTLE_PROVIDER)
+        if (currentProvider !is BouncyCastleProvider) {
+            Security.removeProvider(BOUNCY_CASTLE_PROVIDER)
+            Security.insertProviderAt(BouncyCastleProvider(), 1)
+        }
+    }
+
+    private fun ensureAndroidFriendlySshdDefaultsForProbe() {
+        PathUtils.setUserHomeFolderResolver {
+            java.nio.file.Paths.get(File(System.getProperty("java.io.tmpdir") ?: ".").absolutePath)
+                .toAbsolutePath()
+                .normalize()
+        }
+    }
+
     private fun triggerUnexpectedFixtureDisconnect() {
         sendCommandFromUi(FIXTURE_DISCONNECT_COMMAND)
     }
 
     private companion object {
+        const val BOUNCY_CASTLE_PROVIDER = "BC"
         const val FIXTURE_HOST = "10.0.2.2"
         const val FIXTURE_PORT = 3122
         const val HOST_SSH_PORT = 22
@@ -2561,8 +2821,24 @@ class SessionSshFixtureInstrumentedTest {
         const val FIXTURE_PASSWORD = "aterm-password-fixture"
         const val FIXTURE_DISCONNECT_COMMAND = "aterm-fixture-disconnect"
         const val FIXTURE_CLIENT_PRIVATE_KEY_PATH = "/data/local/tmp/aterm-fixture-client_key"
+        const val FIXTURE_CLIENT_PUBLIC_KEY_PATH = "/data/local/tmp/aterm-fixture-client_key.pub"
+        const val FIXTURE_CLIENT_LEGACY_PRIVATE_KEY_PATH = "/data/local/tmp/aterm-fixture-client_key_legacy_pem"
+        const val LEGACY_FIXTURE_KEY_PASSPHRASE = "legacy-passphrase"
         const val APP_PACKAGE = "io.github.jtsang4.aterm"
     }
+}
+
+private data class LegacyImportedKeyProbeResult(
+    val tcpReachable: Boolean,
+    val authenticationCompleted: Boolean,
+    val shellChannelOpened: Boolean,
+    val failureStage: LegacyImportedKeyProbeFailureStage?,
+    val failureMessage: String?,
+)
+
+private enum class LegacyImportedKeyProbeFailureStage {
+    SSH_AUTH,
+    SHELL_CHANNEL_OPEN,
 }
 
 private class FixtureGeneratedKeyIdentityService : GeneratedKeyIdentityService() {

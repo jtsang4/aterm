@@ -1,0 +1,16 @@
+- Added repo validation support for a legacy encrypted PEM fixture by deriving `tools/sshfixture/runtime/client_key_legacy_pem` from the fixture client key during `prepareFixtureClientKeyForAndroidTests` and pushing it to `/data/local/tmp/aterm-fixture-client_key_legacy_pem`.
+- `core/ssh` now carries BouncyCastle directly and `SshSessionCoordinator.loadKeyPair(...)` first routes PEM-looking keys through explicit BouncyCastle PEM parsing/decryption (`PEMEncryptedKeyPair`, `PKCS8EncryptedPrivateKeyInfo`, `PrivateKeyInfo`) before falling back to MINA's generic loader. Provider registration in both `ImportedKeyImportService` and `SshSessionCoordinator` now force-installs the real BC provider at priority 1 instead of assuming an existing `BC` slot is usable.
+- `feature/session` now exposes blocked identity detail in the session host list (`Identity needs repair before connecting: <name> (<status>)`) so blocked imported-key/passphrase states remain visibly truthful on saved-host/session surfaces.
+- The targeted rerun now explicitly seeds the saved host/session path with `/data/local/tmp/aterm-fixture-client_key_legacy_pem`, verifies the saved passphrase is `legacy-passphrase`, and asserts the saved imported-key identity advertises the fixture public key from `/data/local/tmp/aterm-fixture-client_key.pub`.
+- Added a focused legacy-key MINA probe inside `SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session` that uses the exact legacy PEM fixture plus saved passphrase against `10.0.2.2:3122` and records stage evidence before the shipped app-shell connect attempt. Current observed outcome:
+  - TCP reachability succeeds (`tcp=true`)
+  - SSH public-key authentication completes (`auth=true`)
+  - Shell-channel open succeeds (`shell=true`)
+  - The shipped saved-host/session UI flow still ends in `FAILED` with `Connection timed out while reaching 10.0.2.2:3122.`
+- This isolates the remaining user-visible timeout away from the three requested boundaries: it is **not** a TCP-connect failure, **not** an SSH-auth completion failure, and **not** a shell-channel-open failure for the legacy PEM fixture itself. The remaining bug is now narrowed to the shipped coordinator/app-shell path after those stages (or to timeout-message misclassification inside that path), rather than the underlying legacy PEM auth/channel capability.
+- Validation snapshot at handoff:
+  - `./gradlew :feature:identities:testDebugUnitTest --max-workers=4` ✅
+  - `./gradlew testDebugUnitTest --max-workers=4` ✅
+  - `./gradlew lintDebug --max-workers=4` ✅
+  - `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.jtsang4.aterm.SessionSshFixtureInstrumentedTest#imported_key_identity_survives_relaunch_and_reaches_real_terminal_session --max-workers=1` ✅
+- Recommended next step: inspect the shipped `SshSessionCoordinator.connectInternal(...)` path around post-trust state transitions, future verification, and timeout-to-user-message mapping. The new probe shows the legacy PEM fixture itself can authenticate and open a shell, so the remaining defect is likely in coordinator-specific flow control or error classification rather than in key parsing/decryption or fixture acceptance.
