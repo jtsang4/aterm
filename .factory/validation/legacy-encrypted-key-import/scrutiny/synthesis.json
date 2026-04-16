@@ -1,7 +1,7 @@
 {
   "milestone": "legacy-encrypted-key-import",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,51 +21,13 @@
   },
   "reviewsSummary": {
     "total": 4,
-    "passed": 0,
-    "failed": 4,
-    "failedFeatures": [
-      "legacy-encrypted-key-import-and-persistence-choice",
-      "imported-key-passphrase-maintenance-and-relaunch-state",
-      "encrypted-imported-key-session-timeout-diagnosis",
-      "encrypted-imported-key-host-session-truthfulness"
-    ]
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "legacy-encrypted-key-import-and-persistence-choice",
-      "severity": "blocking",
-      "description": "Importing an encrypted key without saving its passphrase forces `passphraseStorageState` to `BLOCKED`, so the library/details surfaces show a generic Keystore-invalidated repair message instead of a truthful intentionally-unsaved, non-ready state."
-    },
-    {
-      "featureId": "imported-key-passphrase-maintenance-and-relaunch-state",
-      "severity": "blocking",
-      "description": "Replacing an encrypted imported key without persisting the new passphrase preserves the previous encrypted passphrase blob, allowing reload to promote the replaced identity back to `AVAILABLE` and silently reuse stale passphrase material."
-    },
-    {
-      "featureId": "encrypted-imported-key-session-timeout-diagnosis",
-      "severity": "blocking",
-      "description": "The targeted legacy-PEM timeout diagnostic was not reproducible from a clean emulator in the reviewed commit because `/data/local/tmp/aterm-fixture-client_key_legacy_pem` was not provisioned there, and its required follow-up library note overstated changes not present in that diff."
-    },
-    {
-      "featureId": "encrypted-imported-key-host-session-truthfulness",
-      "severity": "blocking",
-      "description": "Runtime PEM detection in `SshSessionCoordinator` accepts a narrower header set than the import/repair path, so encrypted EC/DSA PEM identities can import successfully but miss the runtime PEM loader in saved-host/session flows."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "skill:ssh-terminal-worker",
-      "suggestion": "When a feature changes imported-key authentication across identity import/repair and runtime session flows, require a parity check or shared helper covering the accepted PEM header families on both sides, plus regression coverage for at least one non-RSA PEM form when the import path advertises broader support.",
-      "evidence": "The `encrypted-imported-key-host-session-truthfulness` review found that `ImportedKeyImportService` accepts RSA/EC/DSA/PKCS#8 PEM headers while `SshSessionCoordinator` only routes RSA/PKCS#8-looking keys through the runtime PEM loader, allowing import/runtime support to drift apart.",
-      "isSystemic": true
-    }
-  ],
-  "rejectedObservations": [
-    {
-      "observation": "The timeout-diagnosis review noted that `.factory/library/encrypted-imported-key-host-session-truthfulness-followup.md` described fixture-prep and coordinator/session changes not present in commit `1840b96`.",
-      "reason": "Rejected as an immediate shared-state update because the current branch already contains later cumulative changes matching that note, so the observation is historical-to-that-commit rather than a clear present-state library correction."
-    }
-  ],
-  "previousRound": null
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": "/root/workspace/github/jtsang4/aterm/.factory/validation/legacy-encrypted-key-import/scrutiny/synthesis.round1.json"
 }

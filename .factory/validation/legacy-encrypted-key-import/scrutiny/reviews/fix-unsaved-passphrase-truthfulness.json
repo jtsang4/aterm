@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-unsaved-passphrase-truthfulness",
+  "reviewedAt": "2026-04-16T05:26:58.039937Z",
+  "commitId": "f350b9a87fed41ec44afb0a3811e79d9bdd04696",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix resolves the original blocking issue by storing intentionally-unsaved imported-key passphrases as `MISSING` instead of `BLOCKED`, which removes the false keystore-invalidated repair presentation while keeping the identity non-ready. The follow-up wiring is consistent across identity, host, session, and coordinator messaging, and the added regression coverage exercises the saved-versus-unsaved contract together with downstream blocked-session behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/legacy-encrypted-key-import/scrutiny/reviews/legacy-encrypted-key-import-and-persistence-choice.json",
+  "summary": "Pass: reviewing the original and fix diffs together shows the rerun corrects the prior scrutiny failure without introducing new review findings. Unsaved encrypted imported keys now stay truthfully non-ready rather than masquerading as keystore-invalidated secrets, and the regression tests cover identity presentation plus host/session blocking behavior."
+}

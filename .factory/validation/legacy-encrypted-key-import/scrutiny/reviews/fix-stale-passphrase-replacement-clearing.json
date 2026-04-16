@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-stale-passphrase-replacement-clearing",
+  "reviewedAt": "2026-04-16T13:30:00Z",
+  "commitId": "0927681c3a3c11e07b6b00c6dae019b85c81e6ed",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewing the original failing change together with the fix shows the blocking stale-passphrase bug is resolved: imported-key replacement now clears persisted passphrase ciphertext/IV whenever replacement key material is saved without an explicitly usable replacement passphrase, so reload cannot resurrect the prior passphrase and incorrectly promote the identity back to AVAILABLE. The added repository and relaunch instrumentation regressions directly exercise the previously failing unsaved-replacement path, while the earlier maintenance tests for saved-passphrase replacement and failed replacement rollback still cover the adjacent behaviors.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/legacy-encrypted-key-import/scrutiny/reviews/imported-key-passphrase-maintenance-and-relaunch-state.json",
+  "summary": "Pass: the fix commit closes the prior blocking stale-passphrase replacement bug, and its new repository plus relaunch UI regressions appear adequate and truthful for the repaired behavior. I found no new blocking or non-blocking issues in the reviewed fix scope."
+}

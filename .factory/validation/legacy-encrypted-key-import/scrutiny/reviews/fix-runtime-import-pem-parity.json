@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-runtime-import-pem-parity",
+  "reviewedAt": "2026-04-16T05:27:26Z",
+  "commitId": "057aac3f1f998acff7e8aa14a5f48d1a535f97a4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewing the original failing host/session change together with this fix shows the blocking PEM-family drift is resolved: import-time and runtime PEM detection now share the same helper, so encrypted EC/DSA legacy PEM headers that import successfully also route through the runtime PEM loader instead of falling back to MINA's generic parser. The added regression coverage is truthful for this narrowly scoped fix: the prior feature already supplied the real saved-host/session instrumentation proof for the shipped flow, and this fix adds shared-format tests plus import/runtime parity tests for a non-RSA encrypted EC PEM fixture.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/root/workspace/github/jtsang4/aterm/.factory/validation/legacy-encrypted-key-import/scrutiny/reviews/encrypted-imported-key-host-session-truthfulness.json",
+  "summary": "Pass: the fix closes the prior blocking import/runtime PEM-header mismatch without introducing new review findings. The combined evidence from the original real-fixture host/session coverage and the new non-RSA PEM parity tests is adequate and truthful for this repair."
+}
