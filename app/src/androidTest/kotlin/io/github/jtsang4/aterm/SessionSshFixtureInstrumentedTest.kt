@@ -8,6 +8,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -975,6 +977,187 @@ class SessionSshFixtureInstrumentedTest {
             FIXTURE_USERNAME,
             runBlocking { relaunchedContainer.foundationGraph.hostRepository.getHost(hostId) }?.username,
         )
+    }
+
+    @Test
+    fun encrypted_imported_key_saved_host_stays_blocked_until_repair_then_reuses_same_records() {
+        assertFixtureReachableFromHost()
+        val container = AppContainer.create(context)
+        val privateKeyMaterial = File(FIXTURE_CLIENT_LEGACY_PRIVATE_KEY_PATH).readText()
+        val expectedPublicKey = File(FIXTURE_CLIENT_PUBLIC_KEY_PATH).readText().trim()
+        val importedIdentityId = runBlocking {
+            container.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Repairable fixture imported key",
+                    kind = IdentityKind.IMPORTED_KEY,
+                    publicKey = expectedPublicKey,
+                    hasSecret = true,
+                    hasPassphrase = true,
+                    secretStorageState = SecretStorageState.AVAILABLE,
+                    passphraseStorageState = SecretStorageState.BLOCKED,
+                ),
+                secrets = IdentitySecretMaterial(
+                    primarySecret = privateKeyMaterial,
+                    passphrase = null,
+                ),
+            ).id
+        }
+        val hostId = runBlocking {
+            container.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Repairable imported key fixture",
+                    address = FIXTURE_HOST,
+                    port = FIXTURE_PORT,
+                    username = FIXTURE_USERNAME,
+                    identityId = importedIdentityId,
+                    authKind = HostAuthKind.KEY,
+                ),
+            ).id
+        }
+        application.replaceAppContainerForTesting(container)
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
+                    .assertTextContains("Identity needs repair before connecting: Repairable fixture imported key", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("session_host_identity_$hostId")
+            .assertTextContains("Passphrase unavailable until repaired", substring = true)
+        composeRule.onNodeWithTag("session_connect_$hostId").assertIsNotEnabled()
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+        val initiallyBlocked = container.sshSessionCoordinator.observeUiState().value
+        assertEquals(SessionConnectionState.DISCONNECTED, initiallyBlocked.connectionState)
+        assertNull(initiallyBlocked.activeHostId)
+        assertTrue(initiallyBlocked.transcript.isEmpty())
+        assertEquals(
+            0,
+            runBlocking { container.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
+        )
+
+        openImportedKeyIdentityMaintenanceEditor(importedIdentityId)
+        composeRule.onNodeWithTag("identity_existing_passphrase_status")
+            .assertTextContains("Passphrase unavailable until repaired", substring = true)
+        setPassphrasePersistenceToggle(checked = true)
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performScrollTo()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput(LEGACY_FIXTURE_KEY_PASSPHRASE)
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("screen_identities").assertIsDisplayed()
+            }.isSuccess
+        }
+        assertEquals(
+            LEGACY_FIXTURE_KEY_PASSPHRASE,
+            runBlocking { container.foundationGraph.identityRepository.getSecretMaterial(importedIdentityId) }?.passphrase,
+        )
+        assertEquals(
+            SecretStorageState.AVAILABLE,
+            runBlocking { container.foundationGraph.identityRepository.getIdentity(importedIdentityId) }?.passphraseStorageState,
+        )
+        assertEquals(importedIdentityId, runBlocking { container.foundationGraph.hostRepository.getHost(hostId) }?.identityId)
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
+                    .assertTextContains("Identity ready: Repairable fixture imported key", substring = true)
+            }.isSuccess
+        }
+        val firstConnected = connectFromUi(
+            coordinator = container.sshSessionCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Connect",
+            expectTrustPrompt = true,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", firstConnected.statusMessage)
+        waitForProofText(container.sshSessionCoordinator, FIXTURE_PORT)
+        composeRule.onNodeWithTag("session_disconnect_button").performClick()
+        waitForUiDisconnect(container.sshSessionCoordinator, "Disconnected.")
+        assertEquals(
+            1,
+            runBlocking { container.foundationGraph.knownHostTrustRepository.observeTrustedHosts().first().size },
+        )
+
+        openImportedKeyIdentityMaintenanceEditor(importedIdentityId)
+        composeRule.onNodeWithTag("identity_existing_passphrase_status")
+            .assertTextContains("Saved key passphrase available", substring = true)
+        setPassphrasePersistenceToggle(checked = false)
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("screen_identities").assertIsDisplayed()
+            }.isSuccess
+        }
+        val clearedSecrets = runBlocking {
+            container.foundationGraph.identityRepository.getSecretMaterial(importedIdentityId)
+        }
+        assertEquals(
+            SecretStorageState.MISSING,
+            runBlocking { container.foundationGraph.identityRepository.getIdentity(importedIdentityId) }?.passphraseStorageState,
+        )
+        assertEquals(privateKeyMaterial, clearedSecrets?.primarySecret)
+        assertNull(clearedSecrets?.passphrase)
+        assertEquals(importedIdentityId, runBlocking { container.foundationGraph.hostRepository.getHost(hostId) }?.identityId)
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
+                    .assertTextContains("Identity needs repair before connecting: Repairable fixture imported key", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("session_host_identity_$hostId")
+            .assertTextContains("Passphrase required before this key can connect", substring = true)
+        composeRule.onNodeWithTag("session_connect_$hostId").assertIsNotEnabled()
+        composeRule.onAllNodesWithTag("session_trust_prompt").assertCountEquals(0)
+        val clearedState = container.sshSessionCoordinator.observeUiState().value
+        assertEquals(SessionConnectionState.DISCONNECTED, clearedState.connectionState)
+        assertFalse(clearedState.isConnecting)
+        assertFalse(clearedState.isConnected)
+        assertFalse(clearedState.canSendInput)
+
+        openImportedKeyIdentityMaintenanceEditor(importedIdentityId)
+        composeRule.onNodeWithTag("identity_existing_passphrase_status")
+            .assertTextContains("Passphrase required before this key can connect", substring = true)
+        setPassphrasePersistenceToggle(checked = true)
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performScrollTo()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput(LEGACY_FIXTURE_KEY_PASSPHRASE)
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("screen_identities").assertIsDisplayed()
+            }.isSuccess
+        }
+        assertEquals(
+            SecretStorageState.AVAILABLE,
+            runBlocking { container.foundationGraph.identityRepository.getIdentity(importedIdentityId) }?.passphraseStorageState,
+        )
+        assertEquals(importedIdentityId, runBlocking { container.foundationGraph.identityRepository.getIdentity(importedIdentityId) }?.id)
+        assertEquals(hostId, runBlocking { container.foundationGraph.hostRepository.getHost(hostId) }?.id)
+
+        composeRule.onNodeWithTag("nav_session").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("session_host_identity_$hostId")
+                    .assertTextContains("Identity ready: Repairable fixture imported key", substring = true)
+            }.isSuccess
+        }
+        val repairedConnected = connectFromUi(
+            coordinator = container.sshSessionCoordinator,
+            hostId = hostId,
+            expectedButtonLabel = "Reconnect",
+            expectTrustPrompt = false,
+        )
+        assertEquals("Connected to $FIXTURE_HOST:$FIXTURE_PORT.", repairedConnected.statusMessage)
+        waitForProofText(container.sshSessionCoordinator, FIXTURE_PORT)
+        sendCommandDirectly(container.sshSessionCoordinator, "printf 'REPAIRED_IMPORTED_KEY_SESSION_OK\\n'")
+        waitForTranscriptOutputLine(container.sshSessionCoordinator, "REPAIRED_IMPORTED_KEY_SESSION_OK")
+        container.sshSessionCoordinator.disconnect()
+        waitForState(container.sshSessionCoordinator) { it.connectionState == SessionConnectionState.DISCONNECTED }
     }
 
     @Test
@@ -2549,6 +2732,58 @@ class SessionSshFixtureInstrumentedTest {
             composeRule.onAllNodesWithTag("identity_password_editor").fetchSemanticsNodes().isEmpty()
         }
         composeRule.onNodeWithTag("screen_identities").assertIsDisplayed()
+    }
+
+    private fun openImportedKeyIdentityMaintenanceEditor(identityId: Long) {
+        composeRule.onNodeWithTag("nav_identities").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("screen_identities").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.waitForIdle()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("identity_edit_$identityId").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("identity_edit_$identityId").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("identity_import_name_field").assertIsDisplayed()
+            }.isSuccess || runCatching {
+                composeRule.onNodeWithTag("identity_key_editor").assertIsDisplayed()
+            }.isSuccess
+        }
+        if (composeRule.onAllNodesWithTag("identity_existing_passphrase_status").fetchSemanticsNodes().isEmpty()) {
+            val keepExistingNodes = composeRule.onAllNodesWithTag("identity_keep_existing_secret").fetchSemanticsNodes()
+            if (keepExistingNodes.isNotEmpty()) {
+                composeRule.onNodeWithTag("identity_keep_existing_secret").performClick()
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("identity_existing_passphrase_status").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun setPassphrasePersistenceToggle(checked: Boolean) {
+        composeRule.onNodeWithTag("identity_import_passphrase_persistence_row").performScrollTo()
+        repeat(3) {
+            val toggle = composeRule.onNodeWithTag("identity_import_save_passphrase_toggle")
+            val alreadyExpected = if (checked) {
+                runCatching { toggle.assertIsOn() }.isSuccess
+            } else {
+                runCatching { toggle.assertIsOff() }.isSuccess
+            }
+            if (alreadyExpected) {
+                return
+            }
+            toggle.performSemanticsAction(SemanticsActions.OnClick)
+            composeRule.waitForIdle()
+        }
+        if (checked) {
+            composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").assertIsOn()
+        } else {
+            composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").assertIsOff()
+        }
     }
 
 

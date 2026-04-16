@@ -35,5 +35,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.mina.sshd.common)
     implementation(libs.mina.sshd.core)
+    implementation(libs.bouncycastle.provider)
+    implementation(libs.bouncycastle.pkix)
     testImplementation(libs.junit4)
 }

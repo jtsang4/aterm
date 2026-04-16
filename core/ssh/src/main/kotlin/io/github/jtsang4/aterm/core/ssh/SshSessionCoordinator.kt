@@ -1,5 +1,4 @@
 package io.github.jtsang4.aterm.core.ssh
-
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
 import io.github.jtsang4.aterm.core.domain.model.IdentityKind
@@ -20,11 +19,17 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.StringReader
 import java.net.SocketAddress
 import java.nio.file.Paths
+import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.MessageDigest
 import java.security.PublicKey
+import java.security.Security
+import java.security.interfaces.RSAPrivateCrtKey
+import java.security.spec.RSAPrivateCrtKeySpec
+import java.security.spec.RSAPublicKeySpec
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
@@ -47,6 +52,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
+import org.bouncycastle.openssl.PEMEncryptedKeyPair
+import org.bouncycastle.openssl.PEMKeyPair
+import org.bouncycastle.openssl.PEMParser
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
+import org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8DecryptorProviderBuilder
+import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder
+import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo
 import org.apache.sshd.client.SshClient
 import org.apache.sshd.client.channel.ChannelShell
 import org.apache.sshd.client.keyverifier.ServerKeyVerifier
@@ -722,6 +736,10 @@ class SshSessionCoordinator(
     }
 
     private fun loadKeyPair(privateKey: String, passphrase: String?): KeyPair {
+        ensureBouncyCastleRegistered()
+        if (looksLikePemPrivateKey(privateKey)) {
+            return loadPemKeyPair(privateKey, passphrase)
+        }
         val pairs = ByteArrayInputStream(privateKey.encodeToByteArray()).use { input ->
             SecurityUtils.loadKeyPairIdentities(
                 null,
@@ -732,6 +750,106 @@ class SshSessionCoordinator(
             )
         }?.toList().orEmpty()
         return pairs.firstOrNull() ?: error("Private key could not be loaded.")
+    }
+
+    private fun loadPemKeyPair(
+        privateKey: String,
+        passphrase: String?,
+    ): KeyPair {
+        val converter = JcaPEMKeyConverter().setProvider(BOUNCY_CASTLE_PROVIDER)
+        return PEMParser(StringReader(privateKey)).use { parser ->
+            when (val parsed = parser.readObject() ?: error("Private key could not be loaded.")) {
+                is PEMEncryptedKeyPair -> {
+                    val password = passphrase?.takeIf(String::isNotBlank)?.toCharArray()
+                        ?: error("Private key could not be loaded.")
+                    normalizeKeyPair(
+                        parsed.decryptKeyPair(
+                            JcePEMDecryptorProviderBuilder()
+                                .setProvider(BOUNCY_CASTLE_PROVIDER)
+                                .build(password),
+                        ).let(converter::getKeyPair),
+                    )
+                }
+
+                is PEMKeyPair -> normalizeKeyPair(converter.getKeyPair(parsed))
+
+                is PKCS8EncryptedPrivateKeyInfo -> {
+                    val password = passphrase?.takeIf(String::isNotBlank)?.toCharArray()
+                        ?: error("Private key could not be loaded.")
+                    val decrypted = parsed.decryptPrivateKeyInfo(
+                        JceOpenSSLPKCS8DecryptorProviderBuilder()
+                            .setProvider(BOUNCY_CASTLE_PROVIDER)
+                            .build(password),
+                    )
+                    keyPairFromPrivateKeyInfo(converter, decrypted)
+                }
+
+                is PrivateKeyInfo -> keyPairFromPrivateKeyInfo(converter, parsed)
+
+                else -> error("Private key could not be loaded.")
+            }
+        }
+    }
+
+    private fun keyPairFromPrivateKeyInfo(
+        converter: JcaPEMKeyConverter,
+        privateKeyInfo: PrivateKeyInfo,
+    ): KeyPair {
+        val privateKey = converter.getPrivateKey(privateKeyInfo)
+        val keyFactory = KeyFactory.getInstance("RSA")
+        val publicKey = when (privateKey) {
+            is RSAPrivateCrtKey -> {
+                keyFactory.generatePublic(
+                    RSAPublicKeySpec(privateKey.modulus, privateKey.publicExponent),
+                )
+            }
+
+            else -> error("Private key could not be loaded.")
+        }
+        val normalizedPrivateKey = when (privateKey) {
+            is RSAPrivateCrtKey -> keyFactory.generatePrivate(
+                RSAPrivateCrtKeySpec(
+                    privateKey.modulus,
+                    privateKey.publicExponent,
+                    privateKey.privateExponent,
+                    privateKey.primeP,
+                    privateKey.primeQ,
+                    privateKey.primeExponentP,
+                    privateKey.primeExponentQ,
+                    privateKey.crtCoefficient,
+                ),
+            )
+
+            else -> error("Private key could not be loaded.")
+        }
+        return KeyPair(publicKey, normalizedPrivateKey)
+    }
+
+    private fun normalizeKeyPair(keyPair: KeyPair): KeyPair {
+        val privateKey = keyPair.private
+        return when (privateKey) {
+            is RSAPrivateCrtKey -> {
+                val keyFactory = KeyFactory.getInstance("RSA")
+                val normalizedPublicKey = keyFactory.generatePublic(
+                    RSAPublicKeySpec(privateKey.modulus, privateKey.publicExponent),
+                )
+                val normalizedPrivateKey = keyFactory.generatePrivate(
+                    RSAPrivateCrtKeySpec(
+                        privateKey.modulus,
+                        privateKey.publicExponent,
+                        privateKey.privateExponent,
+                        privateKey.primeP,
+                        privateKey.primeQ,
+                        privateKey.primeExponentP,
+                        privateKey.primeExponentQ,
+                        privateKey.crtCoefficient,
+                    ),
+                )
+                KeyPair(normalizedPublicKey, normalizedPrivateKey)
+            }
+
+            else -> keyPair
+        }
     }
 
     private fun Throwable.toUserMessage(host: Host?): String {
@@ -940,6 +1058,8 @@ class SshSessionCoordinator(
     private class ConnectCanceledException : IllegalStateException("Connection canceled.")
 
     companion object {
+        private const val TAG = "SshSessionCoordinator"
+        private const val BOUNCY_CASTLE_PROVIDER = "BC"
         private val IMPORT_RESOURCE = NamedResource { "saved-private-key" }
         private const val CONNECT_TIMEOUT_MILLIS = 20_000L
         private const val AUTH_TIMEOUT_MILLIS = 20_000L
@@ -951,5 +1071,18 @@ class SshSessionCoordinator(
         private const val CELL_HEIGHT_PIXELS = 18
         private val nextAttemptId = AtomicLong(1L)
         private val userHomeConfigured = AtomicBoolean(false)
+
+        private fun ensureBouncyCastleRegistered() {
+            val currentProvider = Security.getProvider(BOUNCY_CASTLE_PROVIDER)
+            if (currentProvider !is BouncyCastleProvider) {
+                Security.removeProvider(BOUNCY_CASTLE_PROVIDER)
+                Security.insertProviderAt(BouncyCastleProvider(), 1)
+            }
+        }
+
+        private fun looksLikePemPrivateKey(privateKey: String): Boolean =
+            privateKey.contains("-----BEGIN RSA PRIVATE KEY-----") ||
+                privateKey.contains("-----BEGIN PRIVATE KEY-----") ||
+                privateKey.contains("-----BEGIN ENCRYPTED PRIVATE KEY-----")
     }
 }

@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import io.github.jtsang4.aterm.core.designsystem.AppScreenScaffold
 import io.github.jtsang4.aterm.core.domain.model.Host
 import io.github.jtsang4.aterm.core.domain.model.Identity
+import io.github.jtsang4.aterm.core.domain.model.IdentityKind
+import io.github.jtsang4.aterm.core.domain.model.passphraseStatusLabel
+import io.github.jtsang4.aterm.core.domain.model.secretStatusLabel
 import io.github.jtsang4.aterm.core.domain.repository.HostRepository
 import io.github.jtsang4.aterm.core.domain.repository.IdentityRepository
 import io.github.jtsang4.aterm.core.domain.repository.KnownHostTrustRepository
@@ -255,8 +258,10 @@ private fun SessionHostList(
                                 Text(
                                     text = if (isReady) {
                                         "Identity ready: ${identity?.name}"
+                                    } else if (identity != null) {
+                                        "Identity needs repair before connecting: ${identity.name} (${identity.sessionRepairStatusLabel()})"
                                     } else {
-                                        "Identity needs repair before connecting."
+                                        "Linked identity is missing. Repair this host before connecting."
                                     },
                                     modifier = Modifier.testTag("session_host_identity_${host.id}"),
                                 )
@@ -287,6 +292,13 @@ private fun SessionHostList(
             }
         }
     }
+}
+
+private fun Identity.sessionRepairStatusLabel(): String = when (kind) {
+    IdentityKind.PASSWORD -> secretStatusLabel()
+    IdentityKind.IMPORTED_KEY,
+    IdentityKind.GENERATED_KEY,
+    -> if (hasPassphrase) passphraseStatusLabel() else secretStatusLabel()
 }
 
 @Composable

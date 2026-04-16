@@ -2,10 +2,23 @@ package io.github.jtsang4.aterm.feature.identities
 
 import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.io.StringReader
 import java.security.GeneralSecurityException
 import java.security.KeyPair
+import java.security.KeyFactory
 import java.security.Security
+import java.security.interfaces.RSAPrivateCrtKey
+import java.security.spec.RSAPrivateCrtKeySpec
+import java.security.spec.RSAPublicKeySpec
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
+import org.bouncycastle.openssl.PEMEncryptedKeyPair
+import org.bouncycastle.openssl.PEMKeyPair
+import org.bouncycastle.openssl.PEMParser
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
+import org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8DecryptorProviderBuilder
+import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder
+import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo
 import org.apache.sshd.common.NamedResource
 import org.apache.sshd.common.config.keys.FilePasswordProvider
 import org.apache.sshd.common.config.keys.PublicKeyEntry
@@ -40,14 +53,122 @@ open class ImportedKeyImportService {
     private fun loadKeyPairs(
         privateKeyMaterial: String,
         passphrase: String?,
-    ): List<KeyPair> = ByteArrayInputStream(privateKeyMaterial.encodeToByteArray()).use { input ->
-        SecurityUtils.loadKeyPairIdentities(
-            null,
-            IMPORT_RESOURCE,
-            input,
-            passphrase?.takeIf(String::isNotBlank)?.let(FilePasswordProvider::of) ?: FilePasswordProvider.EMPTY,
-        )
-    }?.toList().orEmpty()
+    ): List<KeyPair> {
+        if (looksLikePemPrivateKey(privateKeyMaterial)) {
+            return listOf(loadPemKeyPair(privateKeyMaterial, passphrase))
+        }
+        return ByteArrayInputStream(privateKeyMaterial.encodeToByteArray()).use { input ->
+            SecurityUtils.loadKeyPairIdentities(
+                null,
+                IMPORT_RESOURCE,
+                input,
+                passphrase?.takeIf(String::isNotBlank)?.let(FilePasswordProvider::of) ?: FilePasswordProvider.EMPTY,
+            )
+        }?.map(::normalizeKeyPair)?.toList().orEmpty()
+    }
+
+    private fun loadPemKeyPair(
+        privateKeyMaterial: String,
+        passphrase: String?,
+    ): KeyPair {
+        val converter = JcaPEMKeyConverter().setProvider(BOUNCY_CASTLE_PROVIDER)
+        return PEMParser(StringReader(privateKeyMaterial)).use { parser ->
+            when (val parsed = parser.readObject() ?: error("Private key could not be loaded.")) {
+                is PEMEncryptedKeyPair -> {
+                    val password = passphrase?.takeIf(String::isNotBlank)?.toCharArray()
+                        ?: error("Private key could not be loaded.")
+                    normalizeKeyPair(
+                        converter.getKeyPair(
+                            parsed.decryptKeyPair(
+                                JcePEMDecryptorProviderBuilder()
+                                    .setProvider(BOUNCY_CASTLE_PROVIDER)
+                                    .build(password),
+                            ),
+                        ),
+                    )
+                }
+
+                is PEMKeyPair -> normalizeKeyPair(converter.getKeyPair(parsed))
+
+                is PKCS8EncryptedPrivateKeyInfo -> {
+                    val password = passphrase?.takeIf(String::isNotBlank)?.toCharArray()
+                        ?: error("Private key could not be loaded.")
+                    keyPairFromPrivateKeyInfo(
+                        converter,
+                        parsed.decryptPrivateKeyInfo(
+                            JceOpenSSLPKCS8DecryptorProviderBuilder()
+                                .setProvider(BOUNCY_CASTLE_PROVIDER)
+                                .build(password),
+                        ),
+                    )
+                }
+
+                is PrivateKeyInfo -> keyPairFromPrivateKeyInfo(converter, parsed)
+
+                else -> error("Private key could not be loaded.")
+            }
+        }
+    }
+
+    private fun keyPairFromPrivateKeyInfo(
+        converter: JcaPEMKeyConverter,
+        privateKeyInfo: PrivateKeyInfo,
+    ): KeyPair {
+        val privateKey = converter.getPrivateKey(privateKeyInfo)
+        val keyFactory = KeyFactory.getInstance("RSA")
+        val publicKey = when (privateKey) {
+            is RSAPrivateCrtKey -> keyFactory.generatePublic(
+                RSAPublicKeySpec(privateKey.modulus, privateKey.publicExponent),
+            )
+
+            else -> error("Private key could not be loaded.")
+        }
+        val normalizedPrivateKey = when (privateKey) {
+            is RSAPrivateCrtKey -> keyFactory.generatePrivate(
+                RSAPrivateCrtKeySpec(
+                    privateKey.modulus,
+                    privateKey.publicExponent,
+                    privateKey.privateExponent,
+                    privateKey.primeP,
+                    privateKey.primeQ,
+                    privateKey.primeExponentP,
+                    privateKey.primeExponentQ,
+                    privateKey.crtCoefficient,
+                ),
+            )
+
+            else -> error("Private key could not be loaded.")
+        }
+        return KeyPair(publicKey, normalizedPrivateKey)
+    }
+
+    private fun normalizeKeyPair(keyPair: KeyPair): KeyPair {
+        val privateKey = keyPair.private
+        return when (privateKey) {
+            is RSAPrivateCrtKey -> {
+                val keyFactory = KeyFactory.getInstance("RSA")
+                KeyPair(
+                    keyFactory.generatePublic(
+                        RSAPublicKeySpec(privateKey.modulus, privateKey.publicExponent),
+                    ),
+                    keyFactory.generatePrivate(
+                        RSAPrivateCrtKeySpec(
+                            privateKey.modulus,
+                            privateKey.publicExponent,
+                            privateKey.privateExponent,
+                            privateKey.primeP,
+                            privateKey.primeQ,
+                            privateKey.primeExponentP,
+                            privateKey.primeExponentQ,
+                            privateKey.crtCoefficient,
+                        ),
+                    ),
+                )
+            }
+
+            else -> keyPair
+        }
+    }
 
     private fun requiresPassphrase(privateKeyMaterial: String): Boolean = try {
         loadKeyPairs(privateKeyMaterial, passphrase = null)
@@ -67,6 +188,14 @@ open class ImportedKeyImportService {
     ): ImportedKeyParseResult {
         val normalizedMessages = throwable.messageChain().map { it.lowercase() }
         if (normalizedMessages.any { "encrypted resource" in it || "password data" in it }) {
+            return ImportedKeyParseResult.PassphraseRequired
+        }
+        if (
+            passphrase.isNullOrBlank() &&
+            looksLikePrivateKey(privateKeyMaterial) &&
+            looksLikeEncryptedPrivateKey(privateKeyMaterial) &&
+            normalizedMessages.none { message -> INVALID_KEY_MATERIAL_MARKERS.any(message::contains) }
+        ) {
             return ImportedKeyParseResult.PassphraseRequired
         }
         if (
@@ -110,6 +239,12 @@ open class ImportedKeyImportService {
     private fun looksLikePrivateKey(privateKeyMaterial: String): Boolean =
         PRIVATE_KEY_HEADER_REGEX.containsMatchIn(privateKeyMaterial)
 
+    private fun looksLikePemPrivateKey(privateKeyMaterial: String): Boolean =
+        privateKeyMaterial.contains("BEGIN RSA PRIVATE KEY") ||
+            privateKeyMaterial.contains("BEGIN EC PRIVATE KEY") ||
+            privateKeyMaterial.contains("BEGIN DSA PRIVATE KEY") ||
+            privateKeyMaterial.contains("BEGIN ENCRYPTED PRIVATE KEY")
+
     private fun looksLikeEncryptedPrivateKey(privateKeyMaterial: String): Boolean =
         ENCRYPTED_PRIVATE_KEY_MARKERS.any(privateKeyMaterial::contains)
 
@@ -117,8 +252,10 @@ open class ImportedKeyImportService {
 
     private companion object {
         fun ensureBouncyCastleRegistered() {
-            if (Security.getProvider(BOUNCY_CASTLE_PROVIDER) == null) {
-                Security.addProvider(BouncyCastleProvider())
+            val currentProvider = Security.getProvider(BOUNCY_CASTLE_PROVIDER)
+            if (currentProvider !is BouncyCastleProvider) {
+                Security.removeProvider(BOUNCY_CASTLE_PROVIDER)
+                Security.insertProviderAt(BouncyCastleProvider(), 1)
             }
         }
 

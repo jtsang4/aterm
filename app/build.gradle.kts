@@ -116,11 +116,21 @@ val prepareFixtureClientKeyForAndroidTests by tasks.registering(Exec::class) {
         JAVA_HOME=/root/.local/share/aterm-jdk-17 \
         ANDROID_SDK_ROOT=/root/Android/Sdk \
         PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
+        cp ./tools/sshfixture/runtime/client_key ./tools/sshfixture/runtime/client_key_legacy_pem && \
+        chmod 600 ./tools/sshfixture/runtime/client_key_legacy_pem && \
+        ssh-keygen -p -m PEM -N legacy-passphrase -P '' -f ./tools/sshfixture/runtime/client_key_legacy_pem -q >/dev/null && \
+        JAVA_HOME=/root/.local/share/aterm-jdk-17 \
+        ANDROID_SDK_ROOT=/root/Android/Sdk \
+        PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
         adb -s emulator-5554 push ./tools/sshfixture/runtime/client_key /data/local/tmp/aterm-fixture-client_key >/dev/null && \
         JAVA_HOME=/root/.local/share/aterm-jdk-17 \
         ANDROID_SDK_ROOT=/root/Android/Sdk \
         PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
-        adb -s emulator-5554 push ./tools/sshfixture/runtime/client_key.pub /data/local/tmp/aterm-fixture-client_key.pub >/dev/null
+        adb -s emulator-5554 push ./tools/sshfixture/runtime/client_key.pub /data/local/tmp/aterm-fixture-client_key.pub >/dev/null && \
+        JAVA_HOME=/root/.local/share/aterm-jdk-17 \
+        ANDROID_SDK_ROOT=/root/Android/Sdk \
+        PATH=/root/.local/share/aterm-jdk-17/bin:/root/Android/Sdk/cmdline-tools/latest/bin:/root/Android/Sdk/platform-tools:/root/Android/Sdk/emulator:${'$'}PATH \
+        adb -s emulator-5554 push ./tools/sshfixture/runtime/client_key_legacy_pem /data/local/tmp/aterm-fixture-client_key_legacy_pem >/dev/null
         """.trimIndent(),
     )
 }
