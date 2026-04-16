@@ -364,6 +364,109 @@ class FoundationRepositoriesInstrumentedTest {
     }
 
     @Test
+    fun updating_only_passphrase_preserves_existing_key_material_and_identity_row() = runTest {
+        val created = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, kind = IdentityKind.IMPORTED_KEY, hasPassphrase = true),
+            IdentitySecretMaterial(
+                primarySecret = "encrypted-private-key",
+                passphrase = "initial-passphrase",
+            ),
+        )
+
+        val updated = identityRepository.upsert(
+            created.copy(
+                passphraseStorageState = SecretStorageState.AVAILABLE,
+            ),
+            IdentitySecretMaterial(passphrase = "updated-passphrase"),
+        )
+
+        val persistedIdentity = identityRepository.getIdentity(updated.id)
+        val persistedSecrets = identityRepository.getSecretMaterial(updated.id)
+        val rawEntity = database.identityDao().getById(updated.id)
+
+        assertEquals(created.id, updated.id)
+        assertEquals(created.publicKey, persistedIdentity?.publicKey)
+        assertEquals(SecretStorageState.AVAILABLE, persistedIdentity?.passphraseStorageState)
+        assertEquals("encrypted-private-key", persistedSecrets?.primarySecret)
+        assertEquals("updated-passphrase", persistedSecrets?.passphrase)
+        assertNotNull(rawEntity?.primaryCipherText)
+        assertNotNull(rawEntity?.passphraseCipherText)
+    }
+
+    @Test
+    fun clearing_saved_passphrase_keeps_key_material_but_marks_identity_non_ready() = runTest {
+        val created = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, kind = IdentityKind.IMPORTED_KEY, hasPassphrase = true),
+            IdentitySecretMaterial(
+                primarySecret = "encrypted-private-key",
+                passphrase = "stored-passphrase",
+            ),
+        )
+
+        val updated = identityRepository.upsert(
+            created.copy(
+                passphraseStorageState = SecretStorageState.MISSING,
+            ),
+            secrets = null,
+        )
+
+        val persistedIdentity = identityRepository.getIdentity(updated.id)
+        val persistedSecrets = identityRepository.getSecretMaterial(updated.id)
+        val rawEntity = database.identityDao().getById(updated.id)
+
+        assertEquals(created.id, updated.id)
+        assertEquals(true, persistedIdentity?.hasPassphrase)
+        assertEquals(SecretStorageState.MISSING, persistedIdentity?.passphraseStorageState)
+        assertFalse(persistedIdentity?.isAuthenticationReady == true)
+        assertEquals("encrypted-private-key", persistedSecrets?.primarySecret)
+        assertNull(persistedSecrets?.passphrase)
+        assertNull(rawEntity?.passphraseCipherText)
+        assertNull(rawEntity?.passphraseIv)
+    }
+
+    @Test
+    fun failed_passphrase_only_update_leaves_existing_identity_row_unchanged() = runTest {
+        val created = identityRepository.upsert(
+            sampleIdentity().copy(id = 0, kind = IdentityKind.IMPORTED_KEY, hasPassphrase = true),
+            IdentitySecretMaterial(
+                primarySecret = "encrypted-private-key",
+                passphrase = "stored-passphrase",
+            ),
+        )
+        val originalEntity = database.identityDao().getById(created.id)
+
+        try {
+            RoomIdentityRepository(
+                database = database,
+                identityDao = database.identityDao(),
+                fieldCipher = object : SecretFieldCipher {
+                    override fun encrypt(plaintext: ByteArray, associatedData: ByteArray?): EncryptedPayload {
+                        throw IllegalStateException("encrypt failure")
+                    }
+
+                    override fun decrypt(payload: EncryptedPayload, associatedData: ByteArray?): ByteArray =
+                        cipher.decrypt(payload, associatedData)
+                },
+            ).upsert(
+                created.copy(passphraseStorageState = SecretStorageState.AVAILABLE),
+                IdentitySecretMaterial(passphrase = "new-passphrase"),
+            )
+            error("Expected encryption failure")
+        } catch (expected: IllegalStateException) {
+            assertEquals("encrypt failure", expected.message)
+        }
+
+        val persistedIdentity = identityRepository.getIdentity(created.id)
+        val persistedSecrets = identityRepository.getSecretMaterial(created.id)
+        val rawEntity = database.identityDao().getById(created.id)
+
+        assertEquals(SecretStorageState.AVAILABLE, persistedIdentity?.passphraseStorageState)
+        assertEquals("encrypted-private-key", persistedSecrets?.primarySecret)
+        assertEquals("stored-passphrase", persistedSecrets?.passphrase)
+        assertTrue(rawEntity?.passphraseCipherText?.contentEquals(originalEntity?.passphraseCipherText) == true)
+    }
+
+    @Test
     fun identity_repository_marks_secret_blocked_when_keystore_access_is_lost() = runTest {
         val identity = identityRepository.upsert(
             sampleIdentity().copy(id = 0, hasPassphrase = false),

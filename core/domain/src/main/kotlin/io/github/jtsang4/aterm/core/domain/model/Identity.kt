@@ -47,7 +47,7 @@ data class Identity(
         secretStorageState == SecretStorageState.BLOCKED ||
             passphraseStorageState == SecretStorageState.BLOCKED
     val isAuthenticationReady: Boolean =
-        hasAccessibleSecret && passphraseStorageState != SecretStorageState.BLOCKED
+        hasAccessibleSecret && (!hasPassphrase || passphraseStorageState == SecretStorageState.AVAILABLE)
 }
 
 data class IdentitySecretMaterial(

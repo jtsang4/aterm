@@ -50,6 +50,7 @@ import org.apache.sshd.common.util.security.SecurityUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -604,6 +605,275 @@ class IdentityPasswordFlowsInstrumentedTest {
     }
 
     @Test
+    fun encrypted_key_passphrase_can_be_added_updated_and_cleared_without_replacing_key_material() {
+        val originalIdentity = Identity(
+            id = 10,
+            name = "Encrypted maintenance key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAMaintenanceKey maintenance@test",
+            hasSecret = true,
+            hasPassphrase = true,
+            passphraseStorageState = SecretStorageState.BLOCKED,
+        )
+        val repository = FakeIdentityRepository(
+            initialIdentities = listOf(originalIdentity),
+            initialSecrets = mapOf(10L to IdentitySecretMaterial(primarySecret = "existing-encrypted-key")),
+        )
+        val scriptedImportService = ScriptedImportedKeyImportService(
+            listOf(
+                ImportedKeyParseResult.IncorrectPassphrase,
+                ImportedKeyParseResult.Success(
+                    publicKey = originalIdentity.publicKey.orEmpty(),
+                    hasPassphrase = true,
+                ),
+                ImportedKeyParseResult.Success(
+                    publicKey = originalIdentity.publicKey.orEmpty(),
+                    hasPassphrase = true,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = repository,
+                importedKeyImportService = scriptedImportService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_edit_10").performClick()
+        composeRule.onNodeWithTag("identity_keep_existing_secret").assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_existing_passphrase_status")
+            .assertTextContains("Passphrase unavailable until repaired", substring = true)
+        composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").performClick()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("wrong-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+        composeRule.onNodeWithText("Passphrase was incorrect. Try again.").assertIsDisplayed()
+
+        val unchangedAfterWrongPassphrase = repository.currentIdentities().first()
+        assertEquals(10L, unchangedAfterWrongPassphrase.id)
+        assertEquals(originalIdentity.publicKey, unchangedAfterWrongPassphrase.publicKey)
+        assertEquals(SecretStorageState.BLOCKED, unchangedAfterWrongPassphrase.passphraseStorageState)
+        assertEquals("existing-encrypted-key", runBlocking { repository.getSecretMaterial(10) }?.primarySecret)
+        assertNull(runBlocking { repository.getSecretMaterial(10) }?.passphrase)
+
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextClearance()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("correct-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().passphraseStorageState == SecretStorageState.AVAILABLE
+        }
+
+        val afterAdd = repository.currentIdentities().first()
+        assertEquals(10L, afterAdd.id)
+        assertEquals(originalIdentity.publicKey, afterAdd.publicKey)
+        assertEquals(SecretStorageState.AVAILABLE, afterAdd.passphraseStorageState)
+        assertEquals("existing-encrypted-key", runBlocking { repository.getSecretMaterial(10) }?.primarySecret)
+        assertEquals("correct-passphrase", runBlocking { repository.getSecretMaterial(10) }?.passphrase)
+
+        composeRule.onNodeWithTag("identity_edit_10").performClick()
+        composeRule.onNodeWithTag("identity_existing_passphrase_status")
+            .assertTextContains("Saved key passphrase available", substring = true)
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("updated-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { repository.getSecretMaterial(10) }?.passphrase == "updated-passphrase"
+        }
+
+        val afterUpdate = repository.currentIdentities().first()
+        assertEquals(10L, afterUpdate.id)
+        assertEquals(originalIdentity.publicKey, afterUpdate.publicKey)
+        assertEquals(SecretStorageState.AVAILABLE, afterUpdate.passphraseStorageState)
+        assertEquals("existing-encrypted-key", runBlocking { repository.getSecretMaterial(10) }?.primarySecret)
+        assertEquals("updated-passphrase", runBlocking { repository.getSecretMaterial(10) }?.passphrase)
+
+        composeRule.onNodeWithTag("identity_edit_10").performClick()
+        composeRule.onNodeWithTag("identity_import_save_passphrase_toggle").performClick()
+        composeRule.onNodeWithText("returns this identity to a non-ready state", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().passphraseStorageState == SecretStorageState.MISSING
+        }
+
+        val afterClear = repository.currentIdentities().first()
+        val afterClearSecrets = runBlocking { repository.getSecretMaterial(10) }
+        assertEquals(10L, afterClear.id)
+        assertEquals(originalIdentity.publicKey, afterClear.publicKey)
+        assertEquals(SecretStorageState.MISSING, afterClear.passphraseStorageState)
+        assertFalse(afterClear.isAuthenticationReady)
+        assertEquals("existing-encrypted-key", afterClearSecrets?.primarySecret)
+        assertNull(afterClearSecrets?.passphrase)
+        composeRule.onNodeWithTag("identity_row_10").assertIsDisplayed()
+        composeRule.onNodeWithText("Passphrase required before this key can connect").assertIsDisplayed()
+    }
+
+    @Test
+    fun replacing_encrypted_key_requires_new_valid_passphrase_and_failed_attempt_leaves_prior_identity_unchanged() {
+        val originalIdentity = Identity(
+            id = 11,
+            name = "Encrypted replacement key",
+            kind = IdentityKind.IMPORTED_KEY,
+            publicKey = "ssh-rsa AAAAOldEncryptedKey replacement@test",
+            hasSecret = true,
+            hasPassphrase = true,
+            passphraseStorageState = SecretStorageState.AVAILABLE,
+        )
+        val repository = FakeIdentityRepository(
+            initialIdentities = listOf(originalIdentity),
+            initialSecrets = mapOf(
+                11L to IdentitySecretMaterial(
+                    primarySecret = "old-encrypted-key",
+                    passphrase = "old-passphrase",
+                ),
+            ),
+        )
+        val replacementKey = """
+            -----BEGIN RSA PRIVATE KEY-----
+            Proc-Type: 4,ENCRYPTED
+            DEK-Info: AES-128-CBC,0123456789ABCDEF0123456789ABCDEF
+
+            replacement-ui-test-placeholder
+            -----END RSA PRIVATE KEY-----
+        """.trimIndent()
+        val scriptedImportService = ScriptedImportedKeyImportService(
+            listOf(
+                ImportedKeyParseResult.PassphraseRequired,
+                ImportedKeyParseResult.IncorrectPassphrase,
+                ImportedKeyParseResult.Success(
+                    publicKey = "ssh-rsa AAAANewEncryptedKey replacement@test",
+                    hasPassphrase = true,
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            IdentitiesScreen(
+                identityRepository = repository,
+                importedKeyImportService = scriptedImportService,
+            )
+        }
+
+        composeRule.onNodeWithTag("identity_edit_11").performClick()
+        composeRule.onNodeWithTag("identity_replace_secret").performClick()
+        composeRule.onNodeWithTag("identity_import_key_field").performTextInput(replacementKey)
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("identity_import_passphrase_field").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("wrong-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+        composeRule.onNodeWithText("Passphrase was incorrect. Try again.").assertIsDisplayed()
+
+        val afterWrongReplacement = repository.currentIdentities().first()
+        val afterWrongSecrets = runBlocking { repository.getSecretMaterial(11) }
+        assertEquals(originalIdentity.publicKey, afterWrongReplacement.publicKey)
+        assertEquals(SecretStorageState.AVAILABLE, afterWrongReplacement.passphraseStorageState)
+        assertEquals("old-encrypted-key", afterWrongSecrets?.primarySecret)
+        assertEquals("old-passphrase", afterWrongSecrets?.passphrase)
+
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextClearance()
+        composeRule.onNodeWithTag("identity_import_passphrase_field").performTextInput("new-passphrase")
+        composeRule.onNodeWithTag("identity_import_save").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            repository.currentIdentities().first().publicKey == "ssh-rsa AAAANewEncryptedKey replacement@test"
+        }
+
+        val updatedIdentity = repository.currentIdentities().first()
+        val updatedSecrets = runBlocking { repository.getSecretMaterial(11) }
+        assertEquals(11L, updatedIdentity.id)
+        assertEquals("ssh-rsa AAAANewEncryptedKey replacement@test", updatedIdentity.publicKey)
+        assertEquals(SecretStorageState.AVAILABLE, updatedIdentity.passphraseStorageState)
+        assertEquals(replacementKey, updatedSecrets?.primarySecret)
+        assertEquals("new-passphrase", updatedSecrets?.passphrase)
+    }
+
+    @Test
+    fun cleared_saved_passphrase_survives_relaunch_and_stays_blocked_in_host_flows() {
+        val firstContainer = AppContainer.create(context)
+        val identityId = runBlocking {
+            val created = firstContainer.foundationGraph.identityRepository.upsert(
+                identity = Identity(
+                    name = "Relaunch encrypted key",
+                    kind = IdentityKind.IMPORTED_KEY,
+                    publicKey = "ssh-rsa AAAARelaunchKey relaunch@test",
+                    hasSecret = true,
+                    hasPassphrase = true,
+                    passphraseStorageState = SecretStorageState.AVAILABLE,
+                ),
+                secrets = IdentitySecretMaterial(
+                    primarySecret = "existing-relaunch-encrypted-key",
+                    passphrase = "saved-passphrase",
+                ),
+            )
+            firstContainer.foundationGraph.identityRepository.upsert(
+                identity = created.copy(passphraseStorageState = SecretStorageState.MISSING),
+                secrets = null,
+            ).id
+        }
+        val hostId = runBlocking {
+            firstContainer.foundationGraph.hostRepository.upsert(
+                Host(
+                    label = "Relaunch encrypted host",
+                    address = "10.0.2.2",
+                    port = 3122,
+                    username = "fixture",
+                    identityId = identityId,
+                    authKind = HostAuthKind.KEY,
+                ),
+            ).id
+        }
+        val clearedIdentity = runBlocking {
+            firstContainer.foundationGraph.identityRepository.getIdentity(identityId)
+        }
+        val clearedSecrets = runBlocking {
+            firstContainer.foundationGraph.identityRepository.getSecretMaterial(identityId)
+        }
+        assertEquals(SecretStorageState.MISSING, clearedIdentity?.passphraseStorageState)
+        assertFalse(clearedIdentity?.isAuthenticationReady == true)
+        assertEquals("existing-relaunch-encrypted-key", clearedSecrets?.primarySecret)
+        assertNull(clearedSecrets?.passphrase)
+
+        val relaunchedContainer = AppContainer.create(context)
+        composeRule.setContent {
+            HostsScreen(
+                hostRepository = relaunchedContainer.foundationGraph.hostRepository,
+                identityRepository = relaunchedContainer.foundationGraph.identityRepository,
+            )
+        }
+        composeRule.waitForIdle()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_identity_label_$hostId")
+                    .assertTextContains("Identity needs repair", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("host_identity_label_$hostId").assertTextContains("Identity needs repair")
+        composeRule.onNodeWithTag("host_repair_$hostId").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("host_no_key_identities").assertIsDisplayed()
+            }.isSuccess
+        }
+
+        val relaunchedIdentity = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.getIdentity(identityId)
+        }
+        val relaunchedSecrets = runBlocking {
+            relaunchedContainer.foundationGraph.identityRepository.getSecretMaterial(identityId)
+        }
+        assertEquals(SecretStorageState.MISSING, relaunchedIdentity?.passphraseStorageState)
+        assertFalse(relaunchedIdentity?.isAuthenticationReady == true)
+        assertEquals("existing-relaunch-encrypted-key", relaunchedSecrets?.primarySecret)
+        assertNull(relaunchedSecrets?.passphrase)
+    }
+
+    @Test
     fun deleting_identity_warns_and_leaves_host_repair_path_with_duplicate_details() {
         val identityOne = Identity(
             id = 1,
@@ -916,10 +1186,26 @@ private class FakeIdentityRepository(
             blockedSecrets.remove(persistedId)
         }
         val sanitizedSecrets = when {
-            secrets == null -> this.secrets[persistedId] ?: IdentitySecretMaterial()
+            secrets == null -> {
+                val previous = this.secrets[persistedId]
+                IdentitySecretMaterial(
+                    primarySecret = previous?.primarySecret,
+                    passphrase = when {
+                        !identity.hasPassphrase -> null
+                        identity.passphraseStorageState == SecretStorageState.MISSING -> null
+                        else -> previous?.passphrase
+                    },
+                )
+            }
+
             else -> IdentitySecretMaterial(
                 primarySecret = secrets.primarySecret ?: this.secrets[persistedId]?.primarySecret,
-                passphrase = secrets.passphrase?.takeIf { identity.hasPassphrase },
+                passphrase = when {
+                    !identity.hasPassphrase -> null
+                    identity.passphraseStorageState == SecretStorageState.MISSING -> null
+                    secrets.passphrase != null -> secrets.passphrase
+                    else -> this.secrets[persistedId]?.passphrase
+                },
             )
         }
         this.secrets[persistedId] = sanitizedSecrets

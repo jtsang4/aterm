@@ -41,7 +41,6 @@ class FoundationDomainModelTest {
     @Test
     fun key_based_identity_reports_its_material_type() {
         assertTrue(sampleIdentity().usesKeyMaterial)
-        assertFalse(sampleIdentity().copy(kind = IdentityKind.PASSWORD).usesKeyMaterial)
     }
 
     @Test
@@ -54,6 +53,17 @@ class FoundationDomainModelTest {
         assertFalse(blockedIdentity.isAuthenticationReady)
     }
 
+    @Test
+    fun missing_passphrase_for_encrypted_key_keeps_identity_not_ready_without_marking_keystore_repair() {
+        val missingPassphraseIdentity = sampleIdentity().copy(
+            hasPassphrase = true,
+            passphraseStorageState = SecretStorageState.MISSING,
+        )
+
+        assertFalse(missingPassphraseIdentity.requiresSecretRepair)
+        assertFalse(missingPassphraseIdentity.isAuthenticationReady)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun password_identity_cannot_claim_a_passphrase() {
         Identity(
@@ -63,6 +73,17 @@ class FoundationDomainModelTest {
             hasSecret = true,
             hasPassphrase = true,
         )
+    }
+
+    @Test
+    fun password_identity_without_passphrase_does_not_use_key_material() {
+        val passwordIdentity = sampleIdentity().copy(
+            kind = IdentityKind.PASSWORD,
+            hasPassphrase = false,
+            passphraseStorageState = SecretStorageState.MISSING,
+        )
+
+        assertFalse(passwordIdentity.usesKeyMaterial)
     }
 
     @Test

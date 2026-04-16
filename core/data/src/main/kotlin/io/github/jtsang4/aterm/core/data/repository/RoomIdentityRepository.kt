@@ -34,17 +34,23 @@ class RoomIdentityRepository(
             } else {
                 null
             }
-            val replacingPrimarySecret = secrets?.primarySecret != null
-            val updatingSecrets = secrets != null
-            val passphraseWasExplicitlyProvided = secrets?.passphrase != null
+            val replacingPrimarySecret = !secrets?.primarySecret.isNullOrEmpty()
+            val storingPassphrase = !secrets?.passphrase.isNullOrEmpty()
             val finalHasSecret = when {
                 replacingPrimarySecret -> true
-                updatingSecrets -> identity.hasSecret
-                else -> existing?.hasSecret == true || identity.hasSecret
+                identity.id != 0L -> identity.hasSecret || existing?.hasSecret == true
+                else -> identity.hasSecret
             }
-            val finalHasPassphrase = when {
-                updatingSecrets -> identity.hasPassphrase
-                else -> identity.hasPassphrase
+            val finalHasPassphrase = identity.hasPassphrase
+            val desiredSecretState = when {
+                !finalHasSecret -> SecretStorageState.MISSING
+                replacingPrimarySecret -> SecretStorageState.AVAILABLE
+                else -> identity.secretStorageState
+            }
+            val desiredPassphraseState = when {
+                !finalHasPassphrase -> SecretStorageState.MISSING
+                storingPassphrase -> SecretStorageState.AVAILABLE
+                else -> identity.passphraseStorageState
             }
             val baseEntity = identity.toEntity(
                 primaryCipherText = existing?.primaryCipherText,
@@ -54,25 +60,8 @@ class RoomIdentityRepository(
             ).copy(
                 hasSecret = finalHasSecret,
                 hasPassphrase = finalHasPassphrase,
-                secretStorageState = when {
-                    !finalHasSecret -> SecretStorageState.MISSING.name
-                    replacingPrimarySecret -> SecretStorageState.AVAILABLE.name
-                    else -> existing?.secretStorageState ?: identity.secretStorageState.name
-                },
-                passphraseStorageState = when {
-                    !finalHasPassphrase -> SecretStorageState.MISSING.name
-                    updatingSecrets -> {
-                        if (passphraseWasExplicitlyProvided) {
-                            SecretStorageState.AVAILABLE.name
-                        } else if (identity.hasPassphrase) {
-                            SecretStorageState.BLOCKED.name
-                        } else {
-                            SecretStorageState.MISSING.name
-                        }
-                    }
-
-                    else -> existing?.passphraseStorageState ?: identity.passphraseStorageState.name
-                },
+                secretStorageState = desiredSecretState.name,
+                passphraseStorageState = desiredPassphraseState.name,
             )
 
             val persistedId = if (identity.id == 0L) {
@@ -82,52 +71,43 @@ class RoomIdentityRepository(
                 identity.id
             }
 
-            if (secrets != null && !secrets.isEmpty) {
-                val persisted = requireNotNull(identityDao.getById(persistedId)) { "Identity $persistedId was not persisted." }
-                val primaryPayload = secrets.primarySecret?.let {
-                    encryptString(it, aadFor(persistedId, "primary"))
-                }
-                val passphrasePayload = secrets.passphrase?.let {
-                    encryptString(it, aadFor(persistedId, "passphrase"))
-                }
-                identityDao.update(
-                    persisted.copy(
-                        hasSecret = finalHasSecret,
-                        hasPassphrase = finalHasPassphrase,
-                        secretStorageState = when {
-                            !finalHasSecret -> SecretStorageState.MISSING.name
-                            replacingPrimarySecret -> SecretStorageState.AVAILABLE.name
-                            else -> persisted.secretStorageState
-                        },
-                        passphraseStorageState = when {
-                            !finalHasPassphrase -> SecretStorageState.MISSING.name
-                            finalHasPassphrase && passphrasePayload != null -> SecretStorageState.AVAILABLE.name
-                            updatingSecrets && identity.hasPassphrase -> SecretStorageState.BLOCKED.name
-                            else -> persisted.passphraseStorageState
-                        },
-                        primaryCipherText = when {
-                            replacingPrimarySecret -> primaryPayload?.cipherText
-                            !finalHasSecret -> null
-                            else -> persisted.primaryCipherText
-                        },
-                        primaryIv = when {
-                            replacingPrimarySecret -> primaryPayload?.iv
-                            !finalHasSecret -> null
-                            else -> persisted.primaryIv
-                        },
-                        passphraseCipherText = when {
-                            finalHasPassphrase && passphrasePayload != null -> passphrasePayload.cipherText
-                            !finalHasPassphrase -> null
-                            else -> persisted.passphraseCipherText
-                        },
-                        passphraseIv = when {
-                            finalHasPassphrase && passphrasePayload != null -> passphrasePayload.iv
-                            !finalHasPassphrase -> null
-                            else -> persisted.passphraseIv
-                        },
-                    ),
-                )
+            val persisted = requireNotNull(identityDao.getById(persistedId)) { "Identity $persistedId was not persisted." }
+            val primaryPayload = secrets?.primarySecret?.takeIf(String::isNotBlank)?.let {
+                encryptString(it, aadFor(persistedId, "primary"))
             }
+            val passphrasePayload = secrets?.passphrase?.takeIf(String::isNotBlank)?.let {
+                encryptString(it, aadFor(persistedId, "passphrase"))
+            }
+            identityDao.update(
+                persisted.copy(
+                    hasSecret = finalHasSecret,
+                    hasPassphrase = finalHasPassphrase,
+                    secretStorageState = desiredSecretState.name,
+                    passphraseStorageState = desiredPassphraseState.name,
+                    primaryCipherText = when {
+                        !finalHasSecret -> null
+                        replacingPrimarySecret -> primaryPayload?.cipherText
+                        else -> persisted.primaryCipherText
+                    },
+                    primaryIv = when {
+                        !finalHasSecret -> null
+                        replacingPrimarySecret -> primaryPayload?.iv
+                        else -> persisted.primaryIv
+                    },
+                    passphraseCipherText = when {
+                        !finalHasPassphrase -> null
+                        desiredPassphraseState == SecretStorageState.MISSING -> null
+                        storingPassphrase -> passphrasePayload?.cipherText
+                        else -> persisted.passphraseCipherText
+                    },
+                    passphraseIv = when {
+                        !finalHasPassphrase -> null
+                        desiredPassphraseState == SecretStorageState.MISSING -> null
+                        storingPassphrase -> passphrasePayload?.iv
+                        else -> persisted.passphraseIv
+                    },
+                ),
+            )
 
             persistedId
         }
@@ -152,7 +132,7 @@ class RoomIdentityRepository(
         )
         entity.persistResolvedStates(primaryState, passphraseState)
 
-        if (primaryState == SecretStorageState.BLOCKED || passphraseState == SecretStorageState.BLOCKED) {
+        if (primaryState == SecretStorageState.BLOCKED) {
             throw SecretMaterialUnavailableException()
         }
 
@@ -225,7 +205,11 @@ class RoomIdentityRepository(
             return SecretStorageState.MISSING
         }
         if (cipherText == null || iv == null) {
-            return SecretStorageState.BLOCKED
+            return if (storedState == SecretStorageState.MISSING.name) {
+                SecretStorageState.MISSING
+            } else {
+                SecretStorageState.BLOCKED
+            }
         }
 
         return try {

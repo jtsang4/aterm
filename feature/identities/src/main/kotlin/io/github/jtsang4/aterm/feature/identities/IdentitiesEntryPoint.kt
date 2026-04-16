@@ -494,6 +494,7 @@ private fun KeyIdentityEditorScreen(
 ) {
     val isEditing = identity != null
     val requiresRepair = identity?.requiresSecretRepair == true
+    val canMaintainExistingSecret = identity?.secretStorageState == SecretStorageState.AVAILABLE
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     var mode by remember(identity?.id) {
@@ -506,7 +507,7 @@ private fun KeyIdentityEditorScreen(
     var savePassphrase by remember(identity?.id) {
         mutableStateOf(identity?.passphraseStorageState == SecretStorageState.AVAILABLE)
     }
-    var replacePrivateKey by remember(identity?.id) { mutableStateOf(identity == null || requiresRepair) }
+    var replacePrivateKey by remember(identity?.id) { mutableStateOf(identity == null || !canMaintainExistingSecret) }
     var passphraseRequested by remember(identity?.id) { mutableStateOf(false) }
     var showPassphrase by remember(identity?.id) { mutableStateOf(false) }
     var nameError by remember(identity?.id) { mutableStateOf<String?>(null) }
@@ -523,8 +524,12 @@ private fun KeyIdentityEditorScreen(
             else -> "Import key identity"
         },
         supportingText = when {
-            isEditing && requiresRepair -> "The saved private key or passphrase is unavailable. Replace the blocked secret material to repair this identity."
-            isEditing -> "Update the identity name, keep the existing private key, or replace it with new imported or generated key material. Later authentication uses the latest saved secret."
+            isEditing && requiresRepair && canMaintainExistingSecret ->
+                "The private key is still available, but the passphrase is not ready. Re-enter, update, or clear the saved passphrase without replacing the key material."
+            isEditing && requiresRepair ->
+                "The saved private key is unavailable. Replace the blocked secret material to repair this identity."
+            isEditing ->
+                "Update the identity name, keep the existing private key, add or update its saved passphrase, or replace it with new imported or generated key material."
             mode == KeyEditorMode.Generate -> "Generate a reusable key pair, then copy or review the public key so you can install it on a server."
             else -> "Import supported OpenSSH or PEM private keys. Encrypted keys prompt for a passphrase and keep your draft intact if the first attempt fails."
         },
@@ -603,7 +608,7 @@ private fun KeyIdentityEditorScreen(
                             saveError = null
                         },
                         modifier = Modifier.testTag("identity_keep_existing_secret"),
-                        enabled = !requiresRepair,
+                        enabled = canMaintainExistingSecret,
                     ) {
                         Text("Keep existing secret")
                     }
@@ -626,6 +631,8 @@ private fun KeyIdentityEditorScreen(
                 }
             }
             val requiresKeyEditor = !isEditing || replacePrivateKey
+            val isPassphraseMaintenance = isEditing && !replacePrivateKey && identity?.hasPassphrase == true
+            val maintainedIdentity = identity?.takeIf { isPassphraseMaintenance }
             if (requiresKeyEditor) {
                 if (mode == KeyEditorMode.Import) {
                     OutlinedTextField(
@@ -723,6 +730,77 @@ private fun KeyIdentityEditorScreen(
                                 "This imported key will stay ready to connect after import."
                             } else {
                                 "Leave unchecked to import without saving the passphrase. The identity will stay blocked until you repair it later."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("identity_import_passphrase_persistence_hint"),
+                        )
+                    }
+                }
+            }
+            if (maintainedIdentity != null) {
+                Text(
+                    text = "Current passphrase state: ${maintainedIdentity.passphraseStatusLabel()}",
+                    modifier = Modifier.testTag("identity_existing_passphrase_status"),
+                )
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = {
+                        passphrase = it
+                        passphraseError = null
+                        saveError = null
+                    },
+                    label = { Text("Passphrase") },
+                    isError = passphraseError != null,
+                    visualTransformation = if (showPassphrase) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    supportingText = {
+                        Text(
+                            passphraseError ?: if (maintainedIdentity.passphraseStorageState == SecretStorageState.AVAILABLE) {
+                                "Leave blank to keep the current saved passphrase, or enter a replacement to validate and update it."
+                            } else {
+                                "Enter the passphrase to make this encrypted key ready again."
+                            },
+                        )
+                    },
+                    trailingIcon = {
+                        TextButton(
+                            onClick = { showPassphrase = !showPassphrase },
+                            modifier = Modifier.testTag("identity_import_passphrase_toggle"),
+                        ) {
+                            Text(if (showPassphrase) "Hide" else "Show")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("identity_import_passphrase_field"),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("identity_import_passphrase_persistence_row"),
+                ) {
+                    Checkbox(
+                        checked = savePassphrase,
+                        onCheckedChange = { checked ->
+                            savePassphrase = checked
+                            passphraseError = null
+                            saveError = null
+                        },
+                        modifier = Modifier.testTag("identity_import_save_passphrase_toggle"),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Save passphrase for future connections")
+                        Text(
+                            text = if (savePassphrase) {
+                                "Saving changes validates this passphrase against the existing encrypted key and keeps the same identity record ready to connect."
+                            } else if (maintainedIdentity.passphraseStorageState == SecretStorageState.AVAILABLE) {
+                                "Saving changes clears the stored passphrase and returns this identity to a non-ready state."
+                            } else {
+                                "Leave unchecked to keep this encrypted key in a truthful non-ready state until you repair it later."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.testTag("identity_import_passphrase_persistence_hint"),
@@ -841,6 +919,72 @@ private fun KeyIdentityEditorScreen(
                                 }
 
                                 is ImportedKeyParseResult.Success -> {
+                                    val maintenanceUpdate = if (isPassphraseMaintenance) {
+                                        when {
+                                            !savePassphrase -> PassphraseMaintenancePlan(
+                                                secrets = null,
+                                                passphraseStorageState = when (existing?.passphraseStorageState) {
+                                                    SecretStorageState.AVAILABLE -> SecretStorageState.MISSING
+                                                    else -> existing?.passphraseStorageState ?: SecretStorageState.MISSING
+                                                },
+                                            )
+
+                                            passphrase.isBlank() && existing?.passphraseStorageState == SecretStorageState.AVAILABLE ->
+                                                PassphraseMaintenancePlan(
+                                                    secrets = null,
+                                                    passphraseStorageState = SecretStorageState.AVAILABLE,
+                                                )
+
+                                            passphrase.isBlank() -> {
+                                                passphraseError = "Enter the passphrase to save or repair this encrypted key."
+                                                null
+                                            }
+
+                                            else -> {
+                                                val existingPrivateKey = runCatching {
+                                                    identityRepository.getSecretMaterial(requireNotNull(existing).id)?.primarySecret
+                                                }.getOrElse { throwable ->
+                                                    saveError = when (throwable) {
+                                                        is SecretMaterialUnavailableException ->
+                                                            "Stored secret material is unavailable. Replace it to repair this identity."
+                                                        else -> throwable.message ?: "Unable to read the existing key material."
+                                                    }
+                                                    null
+                                                }
+                                                if (existingPrivateKey.isNullOrBlank()) {
+                                                    saveError = "Stored secret material is unavailable. Replace it to repair this identity."
+                                                    null
+                                                } else {
+                                                    when (importService.parse(existingPrivateKey, passphrase)) {
+                                                        ImportedKeyParseResult.PassphraseRequired -> {
+                                                            passphraseError = "Enter the passphrase to save or repair this encrypted key."
+                                                            null
+                                                        }
+
+                                                        ImportedKeyParseResult.IncorrectPassphrase -> {
+                                                            passphraseError = "Passphrase was incorrect. Try again."
+                                                            null
+                                                        }
+
+                                                        ImportedKeyParseResult.InvalidKeyMaterial -> {
+                                                            saveError = "Unable to validate the existing encrypted key. Replace it to repair this identity."
+                                                            null
+                                                        }
+
+                                                        is ImportedKeyParseResult.Success -> PassphraseMaintenancePlan(
+                                                            secrets = IdentitySecretMaterial(passphrase = passphrase),
+                                                            passphraseStorageState = SecretStorageState.AVAILABLE,
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    }
+                                    if (isPassphraseMaintenance && maintenanceUpdate == null) {
+                                        return@launch
+                                    }
                                     val targetKind = when {
                                         !requiresKeyEditor -> existing?.kind ?: IdentityKind.IMPORTED_KEY
                                         mode == KeyEditorMode.Generate -> IdentityKind.GENERATED_KEY
@@ -861,6 +1005,7 @@ private fun KeyIdentityEditorScreen(
                                                     else -> SecretStorageState.MISSING
                                                 },
                                                 passphraseStorageState = when {
+                                                    maintenanceUpdate != null -> maintenanceUpdate.passphraseStorageState
                                                     !parsed.hasPassphrase && !requiresKeyEditor ->
                                                         existing?.passphraseStorageState ?: SecretStorageState.MISSING
                                                     parsed.hasPassphrase && savePassphrase && passphrase.isNotBlank() ->
@@ -871,15 +1016,18 @@ private fun KeyIdentityEditorScreen(
                                                 createdAt = existing?.createdAt ?: Instant.now(),
                                                 updatedAt = Instant.now(),
                                             ),
-                                            secrets = if (requiresKeyEditor) {
+                                            secrets = when {
+                                                maintenanceUpdate != null -> maintenanceUpdate.secrets
+                                                requiresKeyEditor -> {
                                                 IdentitySecretMaterial(
                                                     primarySecret = normalizedKeyMaterial,
                                                     passphrase = passphrase.takeIf {
                                                         parsed.hasPassphrase && savePassphrase && it.isNotBlank()
                                                     },
                                                 )
-                                            } else {
-                                                null
+                                                }
+
+                                                else -> null
                                             },
                                         )
                                     }.onSuccess { savedIdentity ->
@@ -913,6 +1061,11 @@ private fun KeyIdentityEditorScreen(
         }
     }
 }
+
+private data class PassphraseMaintenancePlan(
+    val secrets: IdentitySecretMaterial?,
+    val passphraseStorageState: SecretStorageState,
+)
 
 @Composable
 private fun DeleteIdentityScreen(
